@@ -3,277 +3,92 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>8BIT AGENCY ★ Creative Simulation</title>
+  <title>8BIT AGENCY ★ Креативна Симуляція</title>
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
   <header class="header">
-    <div class="header-inner">
-      <div class="title">★ 8BIT AGENCY ★</div>
-      <div class="subtitle">CREATIVE SIMULATION v1.0</div>
-    </div>
-    <div class="status-bar-top">
+    <div class="title">★ 8BIT AGENCY ★</div>
+    <div class="status-line">
       <span class="status-dot" id="statusDot"></span>
-      <span id="statusText">OFFLINE</span>
+      <span id="statusText">ОФЛАЙН</span>
       <span class="spacer"></span>
-      <span id="clockDisplay">00:00:00</span>
+      <span class="phase-badge" id="phaseBadge">—</span>
+      <span class="spacer"></span>
+      <span id="clockDisplay">00:00</span>
     </div>
   </header>
 
-  <main class="app-main">
+  <main class="main">
+    <!-- ═══ OFFICE VIEWPORT ═══ -->
+    <div class="viewport" id="viewport">
+      <canvas id="office" width="800" height="500"></canvas>
 
-    <!-- ══ OFFICE ══ -->
-    <section class="office" id="office">
-
-      <!-- Wall decorations -->
-      <div class="wall"></div>
-
-      <div class="wall-logo">CREATIVE<br>DEPT.</div>
-
-      <div class="brief-board" id="briefBoard">
-        <div class="board-header">▶ ACTIVE PROJECT</div>
-        <div class="board-title" id="projectName">—</div>
-        <div class="board-brief" id="projectBrief">Start simulation to load project</div>
+      <!-- Thought bubbles (overlaid on canvas) -->
+      <div class="bubble" id="bubble-max">
+        <div class="bubble-who" style="color:#C62828">МАКС</div>
+        <div class="bubble-text" id="bubbleText-max"></div>
+        <div class="bubble-tail"></div>
+      </div>
+      <div class="bubble" id="bubble-pixel">
+        <div class="bubble-who" style="color:#6A1B9A">ПІКСЕЛЬ</div>
+        <div class="bubble-text" id="bubbleText-pixel"></div>
+        <div class="bubble-tail"></div>
+      </div>
+      <div class="bubble" id="bubble-vera">
+        <div class="bubble-who" style="color:#00695C">ВІРА</div>
+        <div class="bubble-text" id="bubbleText-vera"></div>
+        <div class="bubble-tail"></div>
       </div>
 
-      <div class="wall-clock">
-        <div class="clock-face">
-          <div class="clock-hand" id="clockHand"></div>
-        </div>
+      <!-- Phase overlay -->
+      <div class="phase-overlay" id="phaseOverlay">
+        <div class="phase-title" id="phaseTitle"></div>
       </div>
+    </div>
 
-      <!-- Furniture -->
-      <div class="desk desk-1">
-        <div class="desk-monitor"><div class="monitor-glow"></div></div>
-        <div class="desk-surface"></div>
-        <div class="desk-legs"><span></span><span></span></div>
-      </div>
-
-      <div class="desk desk-2">
-        <div class="desk-monitor drawing-tablet"><div class="monitor-glow glow-purple"></div></div>
-        <div class="desk-surface"></div>
-        <div class="desk-legs"><span></span><span></span></div>
-      </div>
-
-      <div class="desk desk-3">
-        <div class="desk-monitor"><div class="monitor-glow glow-green"></div></div>
-        <div class="desk-surface"></div>
-        <div class="desk-legs"><span></span><span></span></div>
-      </div>
-
-      <div class="coffee-machine" id="coffeeMachine">
-        <div class="coffee-top"></div>
-        <div class="coffee-body">
-          <div class="coffee-btn"></div>
-          <div class="coffee-btn"></div>
-        </div>
-        <div class="coffee-cup"></div>
-        <div class="coffee-steam" id="coffeeSteam">~ ~ ~</div>
-      </div>
-
-      <div class="plant plant-1">
-        <div class="plant-leaves">🌿</div>
-        <div class="plant-pot"></div>
-      </div>
-      <div class="plant plant-2">
-        <div class="plant-leaves">🪴</div>
-        <div class="plant-pot"></div>
-      </div>
-
-      <!-- ══ CHARACTERS ══ -->
-
-      <!-- MAX — Strategist -->
-      <div class="character" id="char-max" data-role="strategist">
-        <div class="thought-bubble" id="bubble-max">
-          <div class="bubble-text" id="bubbleText-max">...</div>
-          <div class="bubble-tail"></div>
-        </div>
-        <div class="sprite sprite-max" id="sprite-max">
-          <svg viewBox="0 0 10 16" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
-            <!-- Head -->
-            <rect x="2" y="0" width="6" height="5" fill="#f5cba7"/>
-            <!-- Hair -->
-            <rect x="2" y="0" width="6" height="1" fill="#5d4037"/>
-            <rect x="2" y="1" width="1" height="1" fill="#5d4037"/>
-            <rect x="7" y="1" width="1" height="1" fill="#5d4037"/>
-            <!-- Eyes -->
-            <rect x="3" y="2" width="1" height="1" fill="#333"/>
-            <rect x="6" y="2" width="1" height="1" fill="#333"/>
-            <!-- Mouth -->
-            <rect x="4" y="4" width="2" height="1" fill="#c0392b"/>
-            <!-- Collar -->
-            <rect x="3" y="5" width="4" height="1" fill="#fff"/>
-            <!-- Suit body -->
-            <rect x="1" y="5" width="8" height="6" fill="#e94560"/>
-            <rect x="3" y="6" width="4" height="4" fill="#c0392b"/>
-            <!-- Tie -->
-            <rect x="4" y="6" width="2" height="4" fill="#ffd166"/>
-            <!-- Pants -->
-            <rect x="2" y="11" width="6" height="3" fill="#2c3e50"/>
-            <!-- Shoes -->
-            <rect x="2" y="14" width="2" height="2" fill="#1a1a1a"/>
-            <rect x="6" y="14" width="2" height="2" fill="#1a1a1a"/>
-          </svg>
-        </div>
-        <div class="char-label">
-          <div class="char-name" style="color:#e94560">MAX</div>
-          <div class="char-role">STRATEGIST</div>
-        </div>
-      </div>
-
-      <!-- PIXEL — Designer -->
-      <div class="character" id="char-pixel" data-role="designer">
-        <div class="thought-bubble" id="bubble-pixel">
-          <div class="bubble-text" id="bubbleText-pixel">...</div>
-          <div class="bubble-tail"></div>
-        </div>
-        <div class="sprite sprite-pixel" id="sprite-pixel">
-          <svg viewBox="0 0 10 16" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
-            <!-- Head -->
-            <rect x="2" y="0" width="6" height="5" fill="#f5cba7"/>
-            <!-- Hair (curly/creative) -->
-            <rect x="1" y="0" width="8" height="2" fill="#6c3483"/>
-            <rect x="1" y="2" width="1" height="2" fill="#6c3483"/>
-            <rect x="8" y="2" width="1" height="2" fill="#6c3483"/>
-            <!-- Headphones -->
-            <rect x="1" y="1" width="1" height="3" fill="#333"/>
-            <rect x="8" y="1" width="1" height="3" fill="#333"/>
-            <rect x="0" y="2" width="2" height="2" fill="#00b4d8"/>
-            <rect x="8" y="2" width="2" height="2" fill="#00b4d8"/>
-            <!-- Eyes -->
-            <rect x="3" y="2" width="1" height="1" fill="#333"/>
-            <rect x="6" y="2" width="1" height="1" fill="#333"/>
-            <!-- Mouth smile -->
-            <rect x="3" y="4" width="1" height="1" fill="#e74c3c"/>
-            <rect x="6" y="4" width="1" height="1" fill="#e74c3c"/>
-            <rect x="4" y="4" width="2" height="1" fill="#c0392b"/>
-            <!-- T-shirt -->
-            <rect x="1" y="5" width="8" height="6" fill="#00b4d8"/>
-            <!-- Design on shirt -->
-            <rect x="3" y="6" width="4" height="3" fill="#7d3c98"/>
-            <rect x="4" y="7" width="2" height="1" fill="#ffd166"/>
-            <!-- Pants (jeans) -->
-            <rect x="2" y="11" width="6" height="3" fill="#1a5276"/>
-            <!-- Sneakers -->
-            <rect x="1" y="14" width="3" height="2" fill="#f0f0f0"/>
-            <rect x="6" y="14" width="3" height="2" fill="#f0f0f0"/>
-            <rect x="1" y="15" width="3" height="1" fill="#00b4d8"/>
-            <rect x="6" y="15" width="3" height="1" fill="#00b4d8"/>
-          </svg>
-        </div>
-        <div class="char-label">
-          <div class="char-name" style="color:#00b4d8">PIXEL</div>
-          <div class="char-role">DESIGNER</div>
-        </div>
-      </div>
-
-      <!-- VERA — Copywriter -->
-      <div class="character" id="char-vera" data-role="copywriter">
-        <div class="thought-bubble" id="bubble-vera">
-          <div class="bubble-text" id="bubbleText-vera">...</div>
-          <div class="bubble-tail"></div>
-        </div>
-        <div class="sprite sprite-vera" id="sprite-vera">
-          <svg viewBox="0 0 10 16" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
-            <!-- Head -->
-            <rect x="2" y="0" width="6" height="5" fill="#f5cba7"/>
-            <!-- Hair (long) -->
-            <rect x="2" y="0" width="6" height="1" fill="#e67e22"/>
-            <rect x="1" y="1" width="1" height="6" fill="#e67e22"/>
-            <rect x="8" y="1" width="1" height="6" fill="#e67e22"/>
-            <rect x="2" y="0" width="1" height="2" fill="#e67e22"/>
-            <rect x="7" y="0" width="1" height="2" fill="#e67e22"/>
-            <!-- Eyes -->
-            <rect x="3" y="2" width="1" height="1" fill="#333"/>
-            <rect x="6" y="2" width="1" height="1" fill="#333"/>
-            <!-- Glasses -->
-            <rect x="2" y="2" width="3" height="2" fill="none" stroke="#333" stroke-width="0.3"/>
-            <rect x="5" y="2" width="3" height="2" fill="none" stroke="#333" stroke-width="0.3"/>
-            <!-- Mouth -->
-            <rect x="4" y="4" width="2" height="1" fill="#e74c3c"/>
-            <!-- Hoodie -->
-            <rect x="1" y="5" width="8" height="6" fill="#06d6a0"/>
-            <rect x="3" y="5" width="4" height="2" fill="#04a07a"/>
-            <!-- Coffee cup (in hand) -->
-            <rect x="8" y="7" width="2" height="3" fill="#fff"/>
-            <rect x="8" y="10" width="2" height="1" fill="#8B4513"/>
-            <!-- Notebook -->
-            <rect x="0" y="7" width="1" height="3" fill="#ffd166"/>
-            <!-- Pants -->
-            <rect x="2" y="11" width="6" height="3" fill="#27ae60"/>
-            <!-- Boots -->
-            <rect x="2" y="14" width="2" height="2" fill="#333"/>
-            <rect x="6" y="14" width="2" height="2" fill="#333"/>
-          </svg>
-        </div>
-        <div class="char-label">
-          <div class="char-name" style="color:#06d6a0">VERA</div>
-          <div class="char-role">COPYWRITER</div>
-        </div>
-      </div>
-
-      <!-- Floor -->
-      <div class="floor">
-        <div class="floor-tiles"></div>
-      </div>
-
-      <!-- Scan lines overlay -->
-      <div class="scanlines"></div>
-
-    </section>
-
-    <!-- ══ CONTROL PANEL ══ -->
+    <!-- ═══ SIDE PANEL ═══ -->
     <aside class="panel">
+      <!-- Setup -->
+      <div class="panel-section">
+        <div class="section-title">⚙ НАЛАШТУВАННЯ</div>
+        <label class="lbl">ANTHROPIC API KEY</label>
+        <input type="password" class="inp" id="apiKey" placeholder="sk-ant-..." autocomplete="off"/>
+        <div class="hint">Без ключа = демо-режим</div>
 
-      <div class="panel-block">
-        <div class="panel-title">⚙ SETUP</div>
+        <label class="lbl">ЗАВДАННЯ ДЛЯ АГЕНЦІЇ</label>
+        <textarea class="inp task-input" id="taskInput" rows="4" placeholder="Опишіть задачу, наприклад:&#10;Зробити бренд для кав'ярні в Києві, яка спеціалізується на specialty coffee для молодих професіоналів"></textarea>
 
-        <label class="field-label">ANTHROPIC API KEY</label>
-        <input
-          type="password"
-          class="pixel-input"
-          id="apiKey"
-          placeholder="sk-ant-..."
-          autocomplete="off"
-        />
-        <div class="hint">Leave empty for DEMO mode</div>
-
-        <label class="field-label">PROJECT BRIEF</label>
-        <select class="pixel-select" id="projectSelect">
-          <option value="random">★ RANDOM PROJECT</option>
-          <option value="ecobrew">EcoBrews — Sustainable Coffee</option>
-          <option value="neofit">NeoFit — AI Fitness App</option>
-          <option value="retrowave">RetroWave — Y2K Fashion</option>
-          <option value="pixelbank">PixelBank — Gen Z Banking</option>
-          <option value="greenbite">GreenBite — Plant-Based Fast Food</option>
-          <option value="lunatech">LunaTech — Smart Home Startup</option>
-        </select>
-
-        <button class="pixel-btn btn-start" id="btnStart" onclick="startSimulation()">
-          ▶ START AGENCY
-        </button>
-        <button class="pixel-btn btn-stop" id="btnStop" onclick="stopSimulation()" disabled>
-          ■ STOP
-        </button>
-        <button class="pixel-btn btn-think" id="btnThink" onclick="triggerAllThoughts()" disabled>
-          ⚡ THINK NOW
-        </button>
+        <button class="btn btn-go" id="btnStart" onclick="window.Agency.start()">▶ ЗАПУСТИТИ</button>
+        <button class="btn btn-stop" id="btnStop" onclick="window.Agency.stop()" disabled>■ ЗУПИНИТИ</button>
       </div>
 
-      <div class="panel-block log-block">
-        <div class="panel-title">📋 ACTIVITY LOG</div>
-        <div class="log-feed" id="logFeed">
-          <div class="log-entry system">
-            <span class="log-who">SYSTEM</span>
-            <span class="log-msg">Waiting for simulation start...</span>
-          </div>
+      <!-- Log -->
+      <div class="panel-section log-section">
+        <div class="section-title">📋 АКТИВНІСТЬ</div>
+        <div class="log" id="logFeed"></div>
+      </div>
+
+      <!-- Results -->
+      <div class="panel-section results-section" id="resultsSection" style="display:none">
+        <div class="section-title">🏆 РЕЗУЛЬТАТ</div>
+        <div class="result-block">
+          <div class="result-role" style="color:#C62828">МАКС — СТРАТЕГ</div>
+          <div class="result-content" id="resultStrategy">—</div>
+        </div>
+        <div class="result-block">
+          <div class="result-role" style="color:#00695C">ВІРА — КОПІРАЙТЕР</div>
+          <div class="result-content" id="resultCopy">—</div>
+        </div>
+        <div class="result-block">
+          <div class="result-role" style="color:#6A1B9A">ПІКСЕЛЬ — ДИЗАЙНЕР</div>
+          <div class="result-content" id="resultDesign">—</div>
+          <div class="logo-preview" id="logoPreview"></div>
         </div>
       </div>
-
     </aside>
-
   </main>
 
   <script src="agency.js"></script>
