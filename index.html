@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>8BIT AGENCY ★ Креативна Симуляція</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header class="header">
+    <div class="title">★ 8BIT AGENCY ★</div>
+    <div class="status-line">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">ОФЛАЙН</span>
+      <span class="spacer"></span>
+      <span class="phase-badge" id="phaseBadge">—</span>
+      <span class="spacer"></span>
+      <span id="clockDisplay">00:00</span>
+    </div>
+  </header>
+
+  <main class="main">
+    <!-- ═══ OFFICE VIEWPORT ═══ -->
+    <div class="viewport" id="viewport">
+      <canvas id="office" width="800" height="500"></canvas>
+
+      <!-- Thought bubbles (overlaid on canvas) -->
+      <div class="bubble" id="bubble-max">
+        <div class="bubble-who" style="color:#C62828">МАКС</div>
+        <div class="bubble-text" id="bubbleText-max"></div>
+        <div class="bubble-tail"></div>
+      </div>
+      <div class="bubble" id="bubble-pixel">
+        <div class="bubble-who" style="color:#6A1B9A">ПІКСЕЛЬ</div>
+        <div class="bubble-text" id="bubbleText-pixel"></div>
+        <div class="bubble-tail"></div>
+      </div>
+      <div class="bubble" id="bubble-vera">
+        <div class="bubble-who" style="color:#00695C">ВІРА</div>
+        <div class="bubble-text" id="bubbleText-vera"></div>
+        <div class="bubble-tail"></div>
+      </div>
+
+      <!-- Phase overlay -->
+      <div class="phase-overlay" id="phaseOverlay">
+        <div class="phase-title" id="phaseTitle"></div>
+      </div>
+    </div>
+
+    <!-- ═══ SIDE PANEL ═══ -->
+    <aside class="panel">
+      <!-- Setup -->
+      <div class="panel-section">
+        <div class="section-title">⚙ НАЛАШТУВАННЯ</div>
+        <label class="lbl">ANTHROPIC API KEY</label>
+        <input type="password" class="inp" id="apiKey" placeholder="sk-ant-..." autocomplete="off"/>
+        <div class="hint">Без ключа = демо-режим</div>
+
+        <label class="lbl">ЗАВДАННЯ ДЛЯ АГЕНЦІЇ</label>
+        <textarea class="inp task-input" id="taskInput" rows="4" placeholder="Опишіть задачу, наприклад:&#10;Зробити бренд для кав'ярні в Києві, яка спеціалізується на specialty coffee для молодих професіоналів"></textarea>
+
+        <button class="btn btn-go" id="btnStart" onclick="window.Agency.start()">▶ ЗАПУСТИТИ</button>
+        <button class="btn btn-stop" id="btnStop" onclick="window.Agency.stop()" disabled>■ ЗУПИНИТИ</button>
+      </div>
+
+      <!-- Log -->
+      <div class="panel-section log-section">
+        <div class="section-title">📋 АКТИВНІСТЬ</div>
+        <div class="log" id="logFeed"></div>
+      </div>
+
+      <!-- Results -->
+      <div class="panel-section results-section" id="resultsSection" style="display:none">
+        <div class="section-title">🏆 РЕЗУЛЬТАТ</div>
+        <div class="result-block">
+          <div class="result-role" style="color:#C62828">МАКС — СТРАТЕГ</div>
+          <div class="result-content" id="resultStrategy">—</div>
+        </div>
+        <div class="result-block">
+          <div class="result-role" style="color:#00695C">ВІРА — КОПІРАЙТЕР</div>
+          <div class="result-content" id="resultCopy">—</div>
+        </div>
+        <div class="result-block">
+          <div class="result-role" style="color:#6A1B9A">ПІКСЕЛЬ — ДИЗАЙНЕР</div>
+          <div class="result-content" id="resultDesign">—</div>
+          <div class="logo-preview" id="logoPreview"></div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <script src="agency.js"></script>
+</body>
+</html>
