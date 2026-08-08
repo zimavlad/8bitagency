@@ -1,133 +1,230 @@
-/* ═════════════════════════════════════════════════════════════
-   8BIT AGENCY — Isometric Office Simulation Engine
-   Canvas-rendered warm pixel art + Claude AI agent brains
-   ═════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════
+   8BIT AGENCY — ізометричний офіс + автономні агенти
+   ══════════════════════════════════════════════════════════════ */
 'use strict';
 
-/* ── ISOMETRIC CONFIG ──────────────────────────────────────── */
-const TW = 32;          // tile half-width
-const TH = 16;          // tile half-height
-const GW = 10;          // grid width
-const GH = 8;           // grid height
-const WALL_H = 100;     // wall height px
-const PX = 3;            // sprite pixel size
-let OX, OY;             // origin (back corner) screen coords
-let canvas, ctx;
-let W, H;               // canvas actual size
+/* ─────────────────────────────────────────────────────────────
+   1. ГЕОМЕТРІЯ СЦЕНИ
+   Сцена малюється у фіксованих «логічних» координатах, а потім
+   масштабується під будь-який екран — тому композиція однакова
+   і на телефоні, і на десктопі.
+   ───────────────────────────────────────────────────────────── */
+const TW = 24;    // пів-ширина тайла
+const TH = 12;    // пів-висота тайла
+const GW = 8;     // тайлів по gx (вправо-вниз)
+const GH = 6;     // тайлів по gy (вліво-вниз)
+const WH = 80;    // висота стін
+const PAD = 14;
 
-/* ── COLORS — warm Stardew Valley palette ──────────────────── */
+const OX = GH * TW + PAD;             // 158
+const OY = WH + PAD;                  // 94
+const SCENE_W = (GW + GH) * TW + PAD * 2;   // 364
+const SCENE_H = (GW + GH) * TH + WH + PAD * 2; // 276
+
+/** тайл → логічний піксель (точка на підлозі) */
+const s = (gx, gy) => ({ x: OX + (gx - gy) * TW, y: OY + (gx + gy) * TH });
+/** точка на ЛІВІЙ стіні: d — вздовж gy, h — висота над підлогою */
+const wL = (d, h) => ({ x: OX - d * TW, y: OY + d * TH - h });
+/** точка на ПРАВІЙ стіні: d — вздовж gx, h — висота над підлогою */
+const wR = (d, h) => ({ x: OX + d * TW, y: OY + d * TH - h });
+
+/* ─────────────────────────────────────────────────────────────
+   2. ПАЛІТРА — теплий cozy pixel art
+   ───────────────────────────────────────────────────────────── */
 const C = {
-  sky:        '#B8E0F6',
-  skyLight:   '#D4EEFB',
-  cloud:      '#FFFFFF',
-  wallL:      '#FFF3E0',
-  wallLShade: '#FFE8CC',
-  wallR:      '#FFE0B2',
-  wallRShade: '#FFD19A',
-  wallLine:   '#C9A87C',
-  floorA:     '#D4A574',
-  floorB:     '#C49060',
-  floorLine:  '#B88050',
-  wood:       '#8D6E42',
-  woodDk:     '#6D4C2A',
-  woodLt:     '#A68B5B',
-  window:     '#87CEEB',
-  windowLt:   '#C5E8F7',
-  windowFrame:'#A1887F',
-  curtain:    '#F8BBD0',
-  shelf:      '#8D6E42',
-  book1:      '#E57373',
-  book2:      '#64B5F6',
-  book3:      '#FFD54F',
-  book4:      '#81C784',
-  book5:      '#CE93D8',
-  plant:      '#66BB6A',
-  plantDk:    '#388E3C',
-  pot:        '#D4835E',
-  potDk:      '#B05E3A',
-  monitor:    '#263238',
-  screen:     '#1B5E20',
-  screenLt:   '#388E3C',
-  mug:        '#FFFFFF',
-  mugCoffee:  '#5D4037',
-  cat:        '#FFB74D',
-  catDk:      '#F57C00',
-  catEye:     '#333333',
-  carpet:     '#BCAAA4',
-  carpetDk:   '#A1887F',
-  board:      '#EFEBE9',
-  boardFrame: '#8D6E42',
-  skin:       '#FFCC80',
-  skinDk:     '#FFB74D',
-  max_hair:   '#5D4037',
-  max_shirt:  '#E57373',
-  max_shirtDk:'#C62828',
-  max_tie:    '#FFD54F',
-  max_pants:  '#546E7A',
-  pix_hair:   '#7E57C2',
-  pix_shirt:  '#CE93D8',
-  pix_shirtDk:'#6A1B9A',
-  pix_band:   '#FFD54F',
-  pix_pants:  '#1565C0',
-  vera_hair:  '#E65100',
-  vera_shirt: '#80CBC4',
-  vera_shirtDk:'#00695C',
-  vera_pants: '#37474F',
-  vera_glass: '#90A4AE',
-  shoes:      '#4E342E',
-  shoesDk:    '#3E2723',
+  bg:        '#FFF6EA',
+  bgVignette:'#F6E6D2',
+  shadow:    'rgba(120, 88, 64, .13)',
+
+  wallL:     '#FFE9CC',
+  wallLtop:  '#FFF1DE',
+  wallR:     '#F7D9AE',
+  wallRtop:  '#FFE6C2',
+  skirt:     '#C89B6A',
+  skirtDk:   '#A87A4E',
+
+  floorA:    '#DCA96F',
+  floorB:    '#CE9860',
+  floorLine: 'rgba(150, 104, 62, .30)',
+  sun:       'rgba(255, 214, 130, .30)',
+  sunHot:    'rgba(255, 226, 160, .28)',
+
+  frame:     '#8D6748',
+  frameDk:   '#6E4E33',
+  sky:       '#AEDCF0',
+  skyLo:     '#CDEBF8',
+  glass:     'rgba(255,255,255,.28)',
+  curtain:   '#F2B8C6',
+  curtainDk: '#DE9AAC',
+
+  board:     '#FBF7F0',
+  boardInk:  '#C3AE9A',
+  boardRed:  '#E07A6A',
+
+  wood:      '#B4835A',
+  woodTop:   '#C79B6E',
+  woodDk:    '#8B6039',
+  woodDkr:   '#70492A',
+
+  metal:     '#8C9AA3',
+  metalDk:   '#6B7880',
+  metalTop:  '#A4B1B8',
+
+  screen:    '#2E4A3C',
+  screenOn:  '#7FCB94',
+  screenOn2: '#A8DDB6',
+
+  rug:       '#9EB8B0',
+  rugIn:     '#BCD0C8',
+  rugEdge:   '#7D9A92',
+
+  plant:     '#6DAE5F',
+  plantDk:   '#4C8842',
+  plantLt:   '#8FC97F',
+  pot:       '#D98A63',
+  potDk:     '#B96A45',
+  potTop:    '#E39C76',
+
+  paper:     '#FFFDF5',
+  mug:       '#FFFFFF',
+  mugDk:     '#E4E4E4',
+  coffee:    '#6B4226',
+
+  cat:       '#F0A860',
+  catDk:     '#D2853F',
+  catLt:     '#FFC489',
+  ink:       '#4E342E',
+
+  book: ['#E07A6A', '#7BA7D4', '#F0C05A', '#8FC97F', '#B98FD0', '#E39C76'],
 };
 
-/* ── GRID → SCREEN conversion ──────────────────────────────── */
-function g2s(gx, gy) {
-  return {
-    x: OX + (gx - gy) * TW,
-    y: OY + (gx + gy) * TH,
-  };
-}
+/* ─────────────────────────────────────────────────────────────
+   3. СПРАЙТИ ПЕРСОНАЖІВ (12×18 пікселів)
+   ───────────────────────────────────────────────────────────── */
+const BODY = {
+  max: [
+    '....hhhh....',
+    '..hhhhhhhh..',
+    '..hHHHHHHh..',
+    '..hSSSSSSh..',
+    '..SSSSSSSS..',
+    '..SEESSEES..',
+    '..SSSSSSSS..',
+    '..SSSMMSSS..',
+    '..cWWAAWWc..',
+    '.CCCCAACCCC.',
+    '.CCCCAACCCC.',
+    '.SCCCAACCCS.',
+    '..cCCCCCCc..',
+    '..CCCCCCCC..',
+  ],
+  pixel: [
+    '...hhhhhh...',
+    '..hhhhhhhh..',
+    '.hhHHHHHHhh.',
+    '..AAAAAAAA..',
+    '..SSSSSSSS..',
+    '..SEESSEES..',
+    '..SSSSSSSS..',
+    '..SSMMMMSS..',
+    '..CCCCCCCC..',
+    '.CCCCCCCCCC.',
+    '.CCCCAACCCC.',
+    '.SCCCAACCCS.',
+    '..CCCCCCCC..',
+    '..cCCCCCCc..',
+  ],
+  vera: [
+    '...hhhhhh...',
+    '..hhhhhhhh..',
+    '.hhHHHHHHhh.',
+    '.hhSSSSSShh.',
+    '.hSSSSSSSSh.',
+    '.hGGESSEGGh.',
+    '.hSSSSSSSSh.',
+    '.hSSSMMSSSh.',
+    '.hcCCCCCCch.',
+    '.CCCCCCCCCC.',
+    '.CCCCccCCCC.',
+    '.SCCCccCCCS.',
+    '..CCCCCCCC..',
+    '..cCCCCCCc..',
+  ],
+};
 
-/* ── CANVAS SETUP ──────────────────────────────────────────── */
+const LEGS = [
+  [ '...PPPPPP...', '...PP..PP...', '...PP..PP...', '..BBB..BBB..' ],
+  [ '...PPPPPP...', '..PP...PP...', '..PP....PP..', '.BBB....BBB.' ],
+];
+
+const PAL = {
+  max:   { h:'#4E342E', H:'#6D4C41', S:'#FFCC80', E:'#3E2723', M:'#B03A2E',
+           c:'#A31E1E', C:'#D94A44', A:'#F0C05A', W:'#FFF6E2', P:'#4A5C68', B:'#3E2723' },
+  pixel: { h:'#5E35B1', H:'#7E57C2', S:'#FFCC80', E:'#3E2723', M:'#AD1457',
+           c:'#6A1B9A', C:'#A75BC0', A:'#F0C05A', W:'#FFFFFF', P:'#2A63A8', B:'#F4F4F4' },
+  vera:  { h:'#E06A20', H:'#F58F3C', S:'#FFCC80', E:'#3E2723', M:'#B03A6A',
+           c:'#00695C', C:'#33A597', A:'#F0C05A', W:'#FFFFFF', P:'#3B4A52', B:'#3E2723',
+           G:'#8FA6B0' },
+};
+
+const NAMES = { max: 'МАКС', pixel: 'ПІКСЕЛЬ', vera: 'ВІРА' };
+const ROLES = { max: 'strategist', pixel: 'designer', vera: 'copywriter' };
+const IDS = ['max', 'pixel', 'vera'];
+
+/* ─────────────────────────────────────────────────────────────
+   4. ПОЗИЦІЇ
+   ───────────────────────────────────────────────────────────── */
+const DESKS = {
+  max:   { gx: 0.75, gy: 1.05 },
+  pixel: { gx: 3.15, gy: 1.05 },
+  vera:  { gx: 5.55, gy: 1.05 },
+};
+const DESK_W = 1.55, DESK_D = 0.9, DESK_H = 16;
+const SPOTS = {
+  max:   { desk: { gx: DESKS.max.gx   + .7, gy: 0.6 }, table: { gx: 1.70, gy: 4.20 } },
+  pixel: { desk: { gx: DESKS.pixel.gx + .7, gy: 0.6 }, table: { gx: 3.40, gy: 2.95 } },
+  vera:  { desk: { gx: DESKS.vera.gx  + .7, gy: 0.6 }, table: { gx: 5.30, gy: 4.95 } },
+};
+
+const chars = {};
+IDS.forEach(id => {
+  const p = SPOTS[id].desk;
+  chars[id] = { gx: p.gx, gy: p.gy, tx: p.gx, ty: p.gy, at: 'desk' };
+});
+
+/* ─────────────────────────────────────────────────────────────
+   5. КАНВАС + FIT-ТРАНСФОРМ
+   ───────────────────────────────────────────────────────────── */
+let cv, ctx, S = 1, TX = 0, TY = 0, DPR = 1;
+
 function initCanvas() {
-  canvas = document.getElementById('office');
-  ctx = canvas.getContext('2d');
-  resize();
-  window.addEventListener('resize', resize);
+  cv = document.getElementById('office');
+  ctx = cv.getContext('2d');
+  fit();
+  const ro = new ResizeObserver(fit);
+  ro.observe(document.getElementById('stage'));
+  window.addEventListener('orientationchange', () => setTimeout(fit, 250));
 }
 
-function resize() {
-  const vp = document.getElementById('viewport');
-  W = vp.clientWidth;
-  H = vp.clientHeight;
-  canvas.width = W;
-  canvas.height = H;
-  OX = W * 0.42;
-  OY = H * 0.18;
-  drawScene();
+function fit() {
+  const st = document.getElementById('stage');
+  const w = st.clientWidth || 320;
+  const h = st.clientHeight || 240;
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.round(w * DPR);
+  cv.height = Math.round(h * DPR);
+
+  const raw = Math.min(w / SCENE_W, h / SCENE_H);
+  S = Math.max(0.7, Math.floor(raw * 4) / 4);   // кроки по чверті → чіткі пікселі
+  TX = (w - SCENE_W * S) / 2;
+  TY = (h - SCENE_H * S) / 2;
 }
 
-/* ── DRAW HELPERS ──────────────────────────────────────────── */
-function rect(x, y, w, h, color) {
-  ctx.fillStyle = color;
-  ctx.fillRect(Math.round(x), Math.round(y), w, h);
-}
+/** логічні координати → CSS-пікселі всередині .stage */
+const toCss = (lx, ly) => ({ x: TX + lx * S, y: TY + ly * S });
 
-function diamond(cx, cy, w, h, fill, stroke) {
-  ctx.beginPath();
-  ctx.moveTo(cx, cy - h);
-  ctx.lineTo(cx + w, cy);
-  ctx.lineTo(cx, cy + h);
-  ctx.lineTo(cx - w, cy);
-  ctx.closePath();
-  ctx.fillStyle = fill;
-  ctx.fill();
-  if (stroke) {
-    ctx.strokeStyle = stroke;
-    ctx.lineWidth = 0.6;
-    ctx.stroke();
-  }
-}
-
-function quad(pts, fill) {
+/* ─── примітиви (у логічних координатах) ─── */
+function poly(pts, fill) {
   ctx.beginPath();
   ctx.moveTo(pts[0].x, pts[0].y);
   for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
@@ -135,980 +232,895 @@ function quad(pts, fill) {
   ctx.fillStyle = fill;
   ctx.fill();
 }
+function px(x, y, w, h, fill) { ctx.fillStyle = fill; ctx.fillRect(x, y, w, h); }
+function tile(gx, gy, fill, line) {
+  const p = s(gx, gy);
+  poly([{x:p.x,y:p.y-TH},{x:p.x+TW,y:p.y},{x:p.x,y:p.y+TH},{x:p.x-TW,y:p.y}], fill);
+  if (line) {
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y - TH); ctx.lineTo(p.x + TW, p.y);
+    ctx.lineTo(p.x, p.y + TH); ctx.lineTo(p.x - TW, p.y);
+    ctx.closePath();
+    ctx.strokeStyle = line; ctx.lineWidth = 0.7; ctx.stroke();
+  }
+}
+/** прямокутник у площині лівої стіни */
+const qL = (d1, d2, h1, h2, fill) => poly([wL(d1,h1), wL(d2,h1), wL(d2,h2), wL(d1,h2)], fill);
+/** прямокутник у площині правої стіни */
+const qR = (d1, d2, h1, h2, fill) => poly([wR(d1,h1), wR(d2,h1), wR(d2,h2), wR(d1,h2)], fill);
+/** прямокутник на підлозі */
+const qF = (x1, y1, x2, y2, fill) =>
+  poly([s(x1,y1), s(x2,y1), s(x2,y2), s(x1,y2)], fill);
 
-function quadStroke(pts, stroke, lw) {
+/** ізометричний паралелепіпед */
+function box(gx, gy, w, d, h, top, right, left) {
+  const A = s(gx, gy), B = s(gx + w, gy), Cc = s(gx + w, gy + d), D = s(gx, gy + d);
+  const up = p => ({ x: p.x, y: p.y - h });
+  poly([up(B), up(Cc), Cc, B], right);
+  poly([up(D), up(Cc), Cc, D], left);
+  poly([up(A), up(B), up(Cc), up(D)], top);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   6. МАЛЮВАННЯ СЦЕНИ
+   ───────────────────────────────────────────────────────────── */
+function draw() {
+  const t = performance.now();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = C.bg;
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.setTransform(S * DPR, 0, 0, S * DPR, TX * DPR, TY * DPR);
+
+  roomShadow();
+  walls();
+  floor();
+  sunPatch();
+  wallDecor(t);
+  objects(t);
+}
+
+/* тінь під кімнатою — «острівець» */
+function roomShadow() {
+  const f = s(GW, GH), l = s(0, GH), r = s(GW, 0);
+  poly([
+    { x: l.x - 3, y: l.y + 5 }, { x: f.x, y: f.y + 8 },
+    { x: r.x + 3, y: r.y + 5 }, { x: f.x, y: f.y + 2 },
+  ], C.shadow);
+}
+
+function walls() {
+  // ліва стіна
+  qL(0, GH, 0, WH, C.wallL);
+  qL(0, GH, WH - 7, WH, C.wallLtop);
+  qL(0, GH, 0, 7, C.skirt);
+  // права стіна
+  qR(0, GW, 0, WH, C.wallR);
+  qR(0, GW, WH - 7, WH, C.wallRtop);
+  qR(0, GW, 0, 7, C.skirtDk);
+  // внутрішнє ребро в куті
+  poly([wL(0,0), wL(0,WH), {x:wL(0,WH).x+1.5,y:wL(0,WH).y}, {x:wL(0,0).x+1.5,y:wL(0,0).y}],
+       'rgba(150,104,62,.16)');
+}
+
+function floor() {
+  for (let gy = 0; gy < GH; gy++)
+    for (let gx = 0; gx < GW; gx++)
+      tile(gx + 0.5, gy + 0.5, (gx + gy) % 2 ? C.floorB : C.floorA, C.floorLine);
+}
+
+/* сонячна пляма з вікна */
+function sunPatch() {
+  poly([s(0, 1.1), s(4.4, 1.9), s(4.4, 4.2), s(0, 3.5)], C.sun);
+  poly([s(0, 1.5), s(2.6, 2.0), s(2.6, 3.3), s(0, 3.0)], C.sunHot);
+}
+
+function wallDecor(t) {
+  /* ═ ВІКНО на лівій стіні ═ */
+  const d1 = 1.15, d2 = 3.45, h1 = 24, h2 = 66;
+  qL(d1 - .18, d2 + .18, h1 - 4, h2 + 4, C.frame);          // рама
+  ctx.save();                                                // небо у вікні
   ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
-  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-  ctx.closePath();
-  ctx.strokeStyle = stroke;
-  ctx.lineWidth = lw || 1;
-  ctx.stroke();
-}
-
-/* ── DRAW ROOM ─────────────────────────────────────────────── */
-function drawScene() {
-  ctx.clearRect(0, 0, W, H);
-
-  // Sky gradient
-  const grad = ctx.createLinearGradient(0, 0, 0, H * 0.4);
-  grad.addColorStop(0, C.skyLight);
-  grad.addColorStop(1, C.sky);
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
-
-  // Clouds
-  drawClouds();
-
-  // Walls
-  drawWalls();
-
-  // Floor
-  drawFloor();
-
-  // Wall decorations
-  drawWallDecorations();
-
-  // Furniture (sorted by depth)
-  drawFurniture();
-
-  // Cat
-  drawCat();
-
-  // Characters
-  drawCharacters();
-}
-
-/* ── CLOUDS ────────────────────────────────────────────────── */
-function drawClouds() {
-  const t = Date.now() * 0.008;
-  [
-    { x: 60, y: 25, s: 1.0 },
-    { x: 300, y: 15, s: 0.7 },
-    { x: 550, y: 30, s: 0.9 },
-  ].forEach(c => {
-    const cx = ((c.x + t * c.s * 0.3) % (W + 100)) - 50;
-    const cy = c.y;
-    const s = c.s;
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    [[-12,0],[0,-5],[12,0],[6,0],[-6,0]].forEach(([dx,dy]) => {
-      ctx.fillRect(Math.round(cx+dx*s), Math.round(cy+dy*s), Math.round(14*s), Math.round(8*s));
-    });
-  });
-}
-
-/* ── WALLS ─────────────────────────────────────────────────── */
-function drawWalls() {
-  // Left wall (gy direction, at gx=0)
-  const lt = g2s(0, 0);      // back corner
-  const lb = g2s(0, GH);     // front-left corner
-  quad([
-    { x: lt.x - TW, y: lt.y - WALL_H },
-    { x: lt.x, y: lt.y - TH - WALL_H },
-    { x: lt.x, y: lt.y - TH },
-    { x: lb.x - TW, y: lb.y },
-    { x: lb.x - TW, y: lb.y - WALL_H },
-  ], C.wallL);
-  // Shade strip
-  quad([
-    { x: lb.x - TW, y: lb.y - WALL_H },
-    { x: lt.x - TW, y: lt.y - WALL_H },
-    { x: lt.x - TW + 8, y: lt.y - WALL_H + 2 },
-    { x: lb.x - TW + 8, y: lb.y - WALL_H + 2 },
-  ], C.wallLShade);
-
-  // Right wall (gx direction, at gy=0)
-  const rt = g2s(GW, 0);     // back-right corner
-  quad([
-    { x: lt.x, y: lt.y - TH - WALL_H },
-    { x: rt.x + TW, y: rt.y - WALL_H },
-    { x: rt.x + TW, y: rt.y },
-    { x: lt.x, y: lt.y - TH },
-  ], C.wallR);
-  // Shade strip
-  quad([
-    { x: lt.x, y: lt.y - TH - WALL_H },
-    { x: rt.x + TW, y: rt.y - WALL_H },
-    { x: rt.x + TW, y: rt.y - WALL_H + 6 },
-    { x: lt.x, y: lt.y - TH - WALL_H + 6 },
-  ], C.wallRShade);
-
-  // Wall outlines
-  ctx.strokeStyle = C.wallLine;
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  // Left wall bottom edge
-  ctx.moveTo(lt.x - TW, lt.y - WALL_H);
-  ctx.lineTo(lb.x - TW, lb.y);
-  // Floor left edge visible
-  ctx.moveTo(lt.x, lt.y - TH);
-  ctx.lineTo(lb.x - TW, lb.y);
-  // Right wall bottom edge
-  ctx.moveTo(lt.x, lt.y - TH);
-  ctx.lineTo(rt.x + TW, rt.y);
-  // Top edges
-  ctx.moveTo(lt.x - TW, lt.y - WALL_H);
-  ctx.lineTo(lt.x, lt.y - TH - WALL_H);
-  ctx.lineTo(rt.x + TW, rt.y - WALL_H);
-  ctx.stroke();
-}
-
-/* ── FLOOR ─────────────────────────────────────────────────── */
-function drawFloor() {
-  for (let gy = 0; gy < GH; gy++) {
-    for (let gx = 0; gx < GW; gx++) {
-      const { x, y } = g2s(gx, gy);
-      const light = (gx + gy) % 2 === 0;
-      diamond(x, y, TW, TH, light ? C.floorA : C.floorB, C.floorLine);
-    }
-  }
-}
-
-/* ── WALL DECORATIONS ──────────────────────────────────────── */
-function drawWallDecorations() {
-  // === Window on left wall ===
-  // Window is between gy=1 and gy=3
-  const wy1 = g2s(0, 1.5);
-  const wx = wy1.x - TW - 2;
-  const winY = wy1.y - WALL_H * 0.7;
-  const winW = 6;
-  const winH = WALL_H * 0.45;
-
-  // Window frame
-  const wfx = wx;
-  const wfy = winY;
-  for (let i = 0; i < 4; i++) {
-    const pane_y = wfy + i * (winH / 4);
-    const pane_x = wfx - (i * TW / 4) + 2;
-    // Pane
-    rect(pane_x, pane_y, winW + 4, winH / 4 - 2, C.windowLt);
-    // Frame
-    ctx.strokeStyle = C.windowFrame;
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(pane_x, pane_y, winW + 4, winH / 4 - 2);
-  }
-
-  // === Whiteboard on right wall ===
-  const bpos = g2s(4, 0);
-  const bx = bpos.x + 8;
-  const by = bpos.y - TH - WALL_H * 0.75;
-  const bw = TW * 3;
-  const bh = WALL_H * 0.4;
-  rect(bx - 2, by - 2, bw + 4, bh + 4, C.boardFrame);
-  rect(bx, by, bw, bh, C.board);
-  // Board text lines
-  ctx.fillStyle = C.wallLine;
-  for (let i = 0; i < 4; i++) {
-    rect(bx + 6, by + 8 + i * 9, bw * 0.5 - i * 6, 2, '#BCAAA4');
-  }
-  // Pin
-  rect(bx + bw - 10, by + 4, 4, 4, C.book1);
-
-  // === Shelves on right wall ===
-  drawShelf(7, 0, [C.book1, C.book2, C.book3, C.book5]);
-  drawShelf(8.5, 0, [C.book4, C.book1, C.book2]);
-
-  // === Wall art on left wall (picture frame) ===
-  const ap = g2s(0, 5);
-  const ax = ap.x - TW + 3;
-  const ay = ap.y - WALL_H * 0.65;
-  rect(ax - 1, ay - 1, 14, 12, C.boardFrame);
-  rect(ax, ay, 12, 10, '#C8E6C9');
-  // Little mountain landscape
-  ctx.fillStyle = '#81C784';
-  ctx.beginPath();
-  ctx.moveTo(ax, ay + 10);
-  ctx.lineTo(ax + 4, ay + 3);
-  ctx.lineTo(ax + 8, ay + 7);
-  ctx.lineTo(ax + 12, ay + 2);
-  ctx.lineTo(ax + 12, ay + 10);
-  ctx.fill();
-}
-
-function drawShelf(gx, gy, bookColors) {
-  const p = g2s(gx, gy);
-  const sx = p.x;
-  const sy = p.y - TH - WALL_H * 0.55;
-  // Shelf plank
-  rect(sx, sy + 14, TW * 1.2, 3, C.shelf);
-  // Books
-  bookColors.forEach((c, i) => {
-    const bh = 10 + (i % 3) * 2;
-    rect(sx + 3 + i * 8, sy + 14 - bh, 6, bh, c);
-    rect(sx + 3 + i * 8, sy + 14 - bh, 6, 1, 'rgba(0,0,0,0.15)');
-  });
-}
-
-/* ── FURNITURE ─────────────────────────────────────────────── */
-function drawFurniture() {
-  // Draw all furniture sorted by depth (gx + gy)
-  const items = [
-    { type: 'plant', gx: 0.5, gy: 0.5 },
-    { type: 'desk', gx: 2, gy: 2.5, color: C.max_shirt },
-    { type: 'desk', gx: 5, gy: 2.5, color: C.pix_shirt },
-    { type: 'desk', gx: 8, gy: 2.5, color: C.vera_shirt },
-    { type: 'plant', gx: 9.5, gy: 0.5 },
-    { type: 'table', gx: 5, gy: 5.5 },
-    { type: 'coffee', gx: 9, gy: 5.5 },
-    { type: 'plant', gx: 0.5, gy: 6 },
-    { type: 'carpet', gx: 5, gy: 5.5 },
-  ];
-
-  // Sort by depth
-  items.sort((a, b) => (a.gx + a.gy) - (b.gx + b.gy));
-
-  // Draw carpet first (under table)
-  drawCarpet(5, 5.5);
-
-  items.forEach(it => {
-    switch (it.type) {
-      case 'desk': drawDesk(it.gx, it.gy, it.color); break;
-      case 'plant': drawPlant(it.gx, it.gy); break;
-      case 'table': drawMeetingTable(it.gx, it.gy); break;
-      case 'coffee': drawCoffeeMachine(it.gx, it.gy); break;
-    }
-  });
-}
-
-function drawCarpet(gx, gy) {
-  const { x, y } = g2s(gx, gy);
-  for (let dy = -1; dy <= 1; dy++) {
-    for (let dx = -1; dx <= 1; dx++) {
-      const p = g2s(gx + dx, gy + dy);
-      const light = (dx + dy) % 2 === 0;
-      diamond(p.x, p.y, TW, TH, light ? C.carpet : C.carpetDk, C.carpetDk);
-    }
-  }
-}
-
-function drawDesk(gx, gy, accent) {
-  const { x, y } = g2s(gx, gy);
-  // Desk top (isometric box)
-  const dw = TW * 1.4;
-  const dh = TH * 1.4;
-  const dt = 4; // thickness
-  const dy_off = -6;
-
-  // Top face
-  diamond(x, y + dy_off, dw, dh, C.woodLt, C.woodDk);
-  // Front-right face
-  quad([
-    { x: x, y: y + dy_off + dh },
-    { x: x + dw, y: y + dy_off },
-    { x: x + dw, y: y + dy_off + dt },
-    { x: x, y: y + dy_off + dh + dt },
-  ], C.wood);
-  // Front-left face
-  quad([
-    { x: x - dw, y: y + dy_off },
-    { x: x, y: y + dy_off + dh },
-    { x: x, y: y + dy_off + dh + dt },
-    { x: x - dw, y: y + dy_off + dt },
-  ], C.woodDk);
-
-  // Legs
-  const legH = 18;
-  [[-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]].forEach(([lx, ly]) => {
-    const lp = { x: x + lx * dw * 0.7, y: y + dy_off + ly * dh * 0.7 + dt };
-    rect(lp.x - 1, lp.y, 3, legH, C.woodDk);
-  });
-
-  // Monitor
-  const mx = x - 4;
-  const my = y + dy_off - 22;
-  rect(mx, my, 14, 12, C.monitor);
-  rect(mx + 1, my + 1, 12, 9, C.screen);
-  // Screen glow lines
+  const w1 = wL(d1,h1), w2 = wL(d2,h1), w3 = wL(d2,h2), w4 = wL(d1,h2);
+  ctx.moveTo(w1.x,w1.y); ctx.lineTo(w2.x,w2.y); ctx.lineTo(w3.x,w3.y); ctx.lineTo(w4.x,w4.y);
+  ctx.closePath(); ctx.clip();
+  qL(d1, d2, h1, h2, C.sky);
+  qL(d1, d2, h1, h1 + 14, C.skyLo);
+  // хмарки повзуть
   for (let i = 0; i < 3; i++) {
-    rect(mx + 3, my + 3 + i * 3, 8, 1, C.screenLt);
+    const span = d2 - d1;
+    const dd = d1 + ((t * 0.000042 * (1 + i * .3) + i * .42) % 1) * span;
+    const hh = h1 + 16 + i * 12;
+    qL(dd, dd + .55, hh, hh + 5, 'rgba(255,255,255,.85)');
+    qL(dd + .2, dd + .8, hh + 3, hh + 8, 'rgba(255,255,255,.7)');
   }
-  // Stand
-  rect(mx + 5, my + 12, 4, 4, C.monitor);
-  rect(mx + 3, my + 15, 8, 2, C.monitor);
+  ctx.restore();
+  // палітурки
+  qL(d1, d2, 44.4, 45.6, C.frame);
+  qL(2.24, 2.36, h1, h2, C.frame);
+  qL(d1, d2, h1, h2, C.glass);
+  // підвіконня
+  qL(d1 - .3, d2 + .3, h1 - 6, h1 - 3, C.frameDk);
+  // штори
+  qL(d1 - .34, d1 + .12, h1 - 2, h2 + 8, C.curtain);
+  qL(d2 - .12, d2 + .34, h1 - 2, h2 + 8, C.curtain);
+  qL(d1 - .34, d1 - .1, h1 - 2, h2 + 8, C.curtainDk);
+  qL(d2 + .1, d2 + .34, h1 - 2, h2 + 8, C.curtainDk);
+  // карниз
+  qL(d1 - .5, d2 + .5, h2 + 8, h2 + 10.5, C.frameDk);
 
-  // Coffee mug on desk
-  const mugX = x + 12;
-  const mugY = y + dy_off - 6;
-  rect(mugX, mugY, 5, 6, C.mug);
-  rect(mugX + 1, mugY + 1, 3, 2, C.mugCoffee);
-  rect(mugX + 5, mugY + 2, 2, 2, C.mug); // handle
+  /* ═ КАРТИНА на лівій стіні ═ */
+  qL(4.5, 5.5, 36, 54, C.frame);
+  qL(4.62, 5.38, 38, 52, '#DCEBD6');
+  poly([wL(4.62,38), wL(5.38,38), wL(5.38,45), wL(5.0,49), wL(4.62,44)], '#8FC97F');
+  qL(4.85, 5.05, 48, 50.5, '#F0C05A');
+
+  /* ═ ДОШКА на правій стіні ═ */
+  const b1 = 0.9, b2 = 4.0, bh1 = 30, bh2 = 68;
+  qR(b1 - .16, b2 + .16, bh1 - 3, bh2 + 3, C.frame);
+  qR(b1, b2, bh1, bh2, C.board);
+  const lines = Math.min(6, 2 + phase * 2);
+  for (let i = 0; i < lines; i++) {
+    const y = bh2 - 8 - i * 7;
+    qR(b1 + .22, b1 + .22 + (2.4 - (i % 3) * .5), y, y + 1.6,
+       i % 3 === 0 ? C.boardRed : C.boardInk);
+  }
+  qR(b2 - .5, b2 - .28, bh2 - 6, bh2 - 3.4, C.boardRed);
+
+  /* ═ ПОЛИЦІ на правій стіні ═ */
+  shelf(5.0, 7.4, 52, [0, 1, 2, 3, 4]);
+  shelf(5.4, 7.4, 30, [3, 5, 1]);
+
+  /* ═ ГОДИННИК на правій стіні ═ */
+  const c1 = 4.45, c2 = 4.95, ch = 62;
+  qR(c1 - .06, c2 + .06, ch - .06, ch + 11, C.frameDk);
+  qR(c1, c2, ch, ch + 10.8, C.board);
+  const mins = (Date.now() / 1000 / 60) % 60;
+  const ang = mins / 60 * Math.PI * 2;
+  const cc = wR((c1 + c2) / 2, ch + 5.4);
+  ctx.strokeStyle = C.ink; ctx.lineWidth = 0.9;
+  ctx.beginPath(); ctx.moveTo(cc.x, cc.y);
+  ctx.lineTo(cc.x + Math.sin(ang) * 4, cc.y - Math.cos(ang) * 4); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cc.x, cc.y);
+  ctx.lineTo(cc.x + Math.sin(ang / 12) * 3, cc.y - Math.cos(ang / 12) * 3); ctx.stroke();
 }
 
-function drawPlant(gx, gy) {
-  const { x, y } = g2s(gx, gy);
-  const py = y - 4;
-  // Pot
-  ctx.fillStyle = C.pot;
-  ctx.fillRect(x - 5, py, 10, 8);
-  ctx.fillStyle = C.potDk;
-  ctx.fillRect(x - 6, py, 12, 3);
-  // Leaves
-  const leaves = [[-6,-8],[-2,-12],[2,-10],[5,-7],[0,-14],[-4,-11],[3,-13]];
-  leaves.forEach(([lx, ly]) => {
-    rect(x + lx, py + ly, 4, 4, C.plant);
-    rect(x + lx + 1, py + ly + 1, 2, 2, C.plantDk);
+function shelf(d1, d2, h, books) {
+  qR(d1 - .1, d2 + .1, h, h + 2.4, C.wood);
+  qR(d1 - .1, d2 + .1, h - 1.6, h, C.woodDk);
+  books.forEach((b, i) => {
+    const d = d1 + .16 + i * .42;
+    if (d + .3 > d2) return;
+    const bh = 9 + (i % 3) * 2.5;
+    qR(d, d + .3, h + 2.4, h + 2.4 + bh, C.book[b % C.book.length]);
+    qR(d, d + .3, h + 2.4 + bh - 1.4, h + 2.4 + bh, 'rgba(0,0,0,.14)');
+  });
+  // рослина, що звисає з верхньої полиці
+  if (h > 45) {
+    qR(d2 - .55, d2 - .12, h + 2.4, h + 9, C.pot);
+    for (let i = 0; i < 5; i++)
+      qR(d2 - .62 + (i % 2) * .12, d2 - .42 + (i % 2) * .12, h - 3 - i * 3.4, h + 1.5 - i * 3.4,
+         i % 2 ? C.plant : C.plantDk);
+  }
+}
+
+/* ─── об'єкти з сортуванням по глибині ─── */
+function objects(t) {
+  rug();
+
+  const list = [];
+  const add = (depth, fn) => list.push({ depth, fn });
+
+  // рослини в кутах
+  add(0.3, () => plant(0.35, 0.35, 1.15));
+  add(GW - 0.4 + 0.3, () => plant(GW - 0.45, 0.35, .95));
+  add(0.4 + GH - 0.6, () => plant(0.4, GH - 0.7, 1.05));
+
+  // стільці (за персонажем) + столи (перед ним)
+  IDS.forEach(id => {
+    const d = DESKS[id];
+    const c = chars[id];
+    add(c.gx + c.gy - .45, () => chair(d.gx + .44, 0.18));
+    add(d.gx + DESK_W + d.gy + DESK_D, () => desk(id, d.gx, d.gy, t));
+  });
+
+  // персонажі
+  IDS.forEach(id => {
+    const c = chars[id];
+    add(c.gx + c.gy, () => sprite(id, c, t));
+  });
+
+  // стіл переговорів
+  add(2.2 + 3.6 + 2.4 + 1.6, () => meetingTable(2.2, 3.6, t));
+
+  // кавовий куток
+  add(6.5 + 3.9 + 1.4 + 1.1, () => coffeeCorner(6.5, 3.9, t));
+
+  // кіт на килимі
+  add(2.9 + 5.05, () => cat(2.9, 5.05, t));
+
+  // коробки біля стіни
+  add(7.4 + 2.6, () => {
+    box(7.3, 2.35, .62, .62, 13, '#D9B98C', '#B4936A', '#A17F58');
+    box(7.42, 2.5, .5, .5, 10, '#E3C79E', '#C0A177', '#AC8C64');
+  });
+
+  list.sort((a, b) => a.depth - b.depth).forEach(o => o.fn());
+  labels();   // підписи — завжди поверх меблів
+}
+
+function labels() {
+  ctx.textAlign = 'center';
+  // компенсуємо масштаб — підпис має сталий розмір на екрані
+  const fs = Math.max(3.2, Math.min(7, 10 / S));
+  ctx.font = `${fs}px "Press Start 2P", monospace`;
+  IDS.forEach(id => {
+    const c = chars[id];
+    const p = s(c.gx, c.gy);
+    const y = p.y + fs + 5;
+    const w = ctx.measureText(NAMES[id]).width;
+    px(p.x - w / 2 - fs * .5, y - fs - 1.5, w + fs, fs + 4, 'rgba(255,246,234,.85)');
+    ctx.fillStyle = id === 'max' ? '#B03A2E' : id === 'pixel' ? '#6A1B9A' : '#00695C';
+    ctx.fillText(NAMES[id], p.x, y);
   });
 }
 
-function drawMeetingTable(gx, gy) {
-  const { x, y } = g2s(gx, gy);
-  // Round-ish table (bigger diamond)
-  diamond(x, y - 4, TW * 1.2, TH * 1.2, C.woodLt, C.woodDk);
-  // Thickness
-  quad([
-    { x: x, y: y - 4 + TH * 1.2 },
-    { x: x + TW * 1.2, y: y - 4 },
-    { x: x + TW * 1.2, y: y },
-    { x: x, y: y - 4 + TH * 1.2 + 4 },
-  ], C.wood);
-  // Leg
-  rect(x - 1, y, 3, 14, C.woodDk);
-  // Papers on table
-  rect(x - 6, y - 8, 8, 5, '#FFF');
-  rect(x + 2, y - 7, 6, 4, '#FFFDE7');
+function rug() {
+  poly([s(1.9,3.3), s(5.1,3.3), s(5.1,5.7), s(1.9,5.7)], C.rugEdge);
+  poly([s(2.02,3.42), s(4.98,3.42), s(4.98,5.58), s(2.02,5.58)], C.rug);
+  poly([s(2.3,3.7), s(4.7,3.7), s(4.7,5.3), s(2.3,5.3)], C.rugIn);
+  poly([s(2.6,4.0), s(4.4,4.0), s(4.4,5.0), s(2.6,5.0)], C.rug);
+  poly([s(2.85,4.25), s(4.15,4.25), s(4.15,4.75), s(2.85,4.75)], C.rugEdge);
 }
 
-function drawCoffeeMachine(gx, gy) {
-  const { x, y } = g2s(gx, gy);
-  // Machine body
-  rect(x - 8, y - 28, 16, 24, '#78909C');
-  rect(x - 6, y - 26, 12, 8, '#455A64');
-  // Buttons
-  rect(x - 4, y - 16, 3, 3, '#EF5350');
-  rect(x + 1, y - 16, 3, 3, '#66BB6A');
-  // Cup area
-  rect(x - 4, y - 10, 8, 6, '#37474F');
-  // Cup
-  rect(x - 2, y - 9, 5, 5, C.mug);
-  rect(x - 1, y - 8, 3, 2, C.mugCoffee);
-  // Steam
-  const st = Date.now() * 0.003;
-  ctx.fillStyle = 'rgba(255,255,255,0.4)';
-  for (let i = 0; i < 3; i++) {
-    const sy = y - 30 - i * 5 - Math.sin(st + i) * 2;
-    const sx = x - 1 + Math.cos(st + i * 0.7) * 2;
-    ctx.fillRect(Math.round(sx), Math.round(sy), 3, 3);
-  }
+/** точка на висоті h над тайлом */
+const at = (gx, gy, h) => { const p = s(gx, gy); return { x: p.x, y: p.y - h }; };
+/** горизонтальна площина на висоті h */
+const qH = (x1, y1, x2, y2, h, fill) =>
+  poly([at(x1,y1,h), at(x2,y1,h), at(x2,y2,h), at(x1,y2,h)], fill);
+/** передня (+gy) грань: від gx1 до gx2 на лінії gy, висоти h1..h2 */
+const qFace = (gx1, gx2, gy, h1, h2, fill) =>
+  poly([at(gx1,gy,h2), at(gx2,gy,h2), at(gx2,gy,h1), at(gx1,gy,h1)], fill);
+
+function chair(gx, gy) {
+  box(gx, gy, .52, .46, 9, C.woodDk, C.woodDkr, C.woodDkr);   // сидіння
+  box(gx, gy - .1, .52, .1, 23, C.woodDk, C.woodDkr, C.woodDkr); // спинка
 }
 
-/* ── CAT ───────────────────────────────────────────────────── */
-function drawCat() {
-  const { x, y } = g2s(1, 5);
-  const cx = x + 2;
-  const cy = y - 2;
-  // Body
-  rect(cx - 5, cy - 3, 10, 5, C.cat);
-  rect(cx - 5, cy - 3, 10, 2, C.catDk);
-  // Head
-  rect(cx - 7, cy - 6, 6, 5, C.cat);
-  // Ears
-  rect(cx - 7, cy - 8, 2, 2, C.catDk);
-  rect(cx - 3, cy - 8, 2, 2, C.catDk);
-  // Eyes
-  const blink = Math.sin(Date.now() * 0.002) > 0.95;
-  if (!blink) {
-    rect(cx - 6, cy - 4, 1, 1, C.catEye);
-    rect(cx - 3, cy - 4, 1, 1, C.catEye);
-  }
-  // Tail
-  const tw = Math.sin(Date.now() * 0.003) * 3;
-  rect(cx + 5, cy - 4, 3, 2, C.cat);
-  rect(cx + 7 + Math.round(tw), cy - 5, 3, 2, C.catDk);
-}
+function desk(id, gx, gy, t) {
+  const w = DESK_W, d = DESK_D, h = DESK_H;
 
-/* ── CHARACTER SPRITES ─────────────────────────────────────── */
-const CHAR_OFFSETS = {
-  max:   { home: { gx: 2, gy: 3.5 }, meeting: { gx: 4, gy: 5.5 }, coffee: { gx: 8, gy: 5.5 } },
-  pixel: { home: { gx: 5, gy: 3.5 }, meeting: { gx: 5, gy: 5.5 }, coffee: { gx: 8.5, gy: 6 } },
-  vera:  { home: { gx: 8, gy: 3.5 }, meeting: { gx: 6, gy: 5.5 }, coffee: { gx: 9, gy: 6.5 } },
-};
-
-let characters = {
-  max:   { gx: 2, gy: 3.5, targetGx: 2, targetGy: 3.5, frame: 0 },
-  pixel: { gx: 5, gy: 3.5, targetGx: 5, targetGy: 3.5, frame: 0 },
-  vera:  { gx: 8, gy: 3.5, targetGx: 8, targetGy: 3.5, frame: 0 },
-};
-
-function drawCharacters() {
-  // Sort by depth for correct overlap
-  const sorted = ['max', 'pixel', 'vera'].sort((a, b) => {
-    return (characters[a].gx + characters[a].gy) - (characters[b].gx + characters[b].gy);
+  // ніжки
+  [[.06,.06],[w-.16,.06],[.06,d-.16],[w-.16,d-.16]].forEach(([ox, oy]) => {
+    box(gx + ox, gy + oy, .1, .1, h - 1.5, C.woodDk, C.woodDkr, C.woodDkr);
   });
-  sorted.forEach(id => {
-    const ch = characters[id];
-    const { x, y } = g2s(ch.gx, ch.gy);
-    const bob = Math.sin(Date.now() * 0.004 + Object.keys(characters).indexOf(id) * 2) * 1.5;
-    drawSprite(id, x, y - 4 + bob);
-    // Name label
-    ctx.fillStyle = id === 'max' ? C.max_shirtDk : id === 'pixel' ? C.pix_shirtDk : C.vera_shirtDk;
-    ctx.font = '7px "Press Start 2P"';
-    ctx.textAlign = 'center';
-    const names = { max: 'МАКС', pixel: 'ПІКСЕЛЬ', vera: 'ВІРА' };
-    ctx.fillText(names[id], x, y + 16);
+  // стільниця
+  box(gx, gy, w, d, h, C.woodTop, C.wood, C.woodDk);
+
+  // ── монітор (лівий край стола, щоб не закривати обличчя) ──
+  const mx = gx + .08, my = gy + .12, mw = .55, md = .12;
+  const h0 = h, h1 = h + 4, h2 = h + 18;
+  qH(mx + .18, my, mx + .38, my + md, h1, C.metalDk);                 // ніжка
+  qFace(mx + .18, mx + .38, my + md, h0, h1, C.metalDk);
+  // корпус
+  qH(mx, my, mx + mw, my + md, h2, C.metalTop);
+  poly([at(mx+mw,my,h2), at(mx+mw,my+md,h2), at(mx+mw,my+md,h1), at(mx+mw,my,h1)], C.metal);
+  qFace(mx, mx + mw, my + md, h1, h2, C.metalDk);
+  // екран
+  qFace(mx + .05, mx + mw - .05, my + md, h1 + 1.6, h2 - 1.6, C.screen);
+  const flick = Math.sin(t * 0.004 + gx * 3) > .93 ? .5 : 1;
+  ctx.globalAlpha = flick;
+  for (let i = 0; i < 4; i++) {
+    const yy = h1 + 3 + i * 3.1;
+    const ww = (mw - .16) * (i % 3 === 0 ? 1 : i % 3 === 1 ? .62 : .82);
+    qFace(mx + .09, mx + .09 + ww, my + md, yy, yy + 1.5,
+          i === 0 ? C.screenOn2 : C.screenOn);
+  }
+  ctx.globalAlpha = 1;
+
+  // папери + кружка на стільниці
+  qH(gx + .78, gy + .5, gx + 1.14, gy + .76, h, C.paper);
+  qH(gx + .82, gy + .55, gx + 1.05, gy + .63, h + .6, '#EFE6D4');
+  qH(gx + .82, gy + .67, gx + 1.10, gy + .72, h + .6, '#EFE6D4');
+  mug(gx + 1.3, gy + .5, h);
+}
+
+function mug(gx, gy, base = 16) {
+  const p = s(gx, gy);
+  const y = p.y - base;
+  px(p.x - 2.6, y - 6, 5.2, 6, C.mug);
+  px(p.x - 2.6, y - 6, 5.2, 1.6, C.mugDk);
+  px(p.x - 2, y - 5.2, 4, 1.4, C.coffee);
+  px(p.x + 2.6, y - 4.6, 1.6, 2.6, C.mug);
+}
+
+function meetingTable(gx, gy, t) {
+  const w = 2.4, d = 1.6, h = 15;
+  box(gx, gy, w, d, h, C.woodTop, C.wood, C.woodDk);
+  box(gx + w/2 - .16, gy + d/2 - .16, .32, .32, h - 2, C.woodDk, C.woodDkr, C.woodDkr);
+  // папери, кружки, олівці
+  const top = (x, y) => ({ ...s(gx + x, gy + y) });
+  poly([top(.3,.3), top(.95,.3), top(.95,.78), top(.3,.78)].map(p=>({x:p.x,y:p.y-h})), C.paper);
+  poly([top(.42,.4), top(.86,.4), top(.86,.52), top(.42,.52)].map(p=>({x:p.x,y:p.y-h-1})), C.boardInk);
+  poly([top(.42,.58), top(.78,.58), top(.78,.68), top(.42,.68)].map(p=>({x:p.x,y:p.y-h-1})), C.boardInk);
+  poly([top(1.3,.72), top(1.95,.72), top(1.95,1.2), top(1.3,1.2)].map(p=>({x:p.x,y:p.y-h})), '#FFF7E4');
+  mug(gx + 1.9, gy + .42, h);
+  mug(gx + .55, gy + 1.25, h);
+  const pc = s(gx + 1.15, gy + 1.15);
+  px(pc.x - 5, pc.y - h - 2, 10, 2, '#E8A33D');
+  px(pc.x - 5, pc.y - h - 2, 2.5, 2, C.ink);
+}
+
+function coffeeCorner(gx, gy, t) {
+  const CH = 18;                        // висота тумби
+  box(gx, gy, 1.4, 1.05, CH, C.woodTop, C.wood, C.woodDk);
+  qH(gx + .06, gy + .06, gx + 1.34, gy + .99, CH + .5, '#D9BE97');  // стільниця
+
+  // кавомашина
+  const mx = gx + .16, my = gy + .18, mw = .58, md = .46;
+  const t1 = CH, t2 = CH + 24;
+  qH(mx, my, mx + mw, my + md, t2, C.metalTop);
+  poly([at(mx+mw,my,t2), at(mx+mw,my+md,t2), at(mx+mw,my+md,t1), at(mx+mw,my,t1)], C.metalDk);
+  qFace(mx, mx + mw, my + md, t1, t2, C.metal);
+  qFace(mx + .08, mx + mw - .08, my + md, t2 - 9, t2 - 2, '#3A4A52');   // дисплей
+  qFace(mx + .12, mx + .24, my + md, t1 + 8, t1 + 11, '#E07A6A');       // кнопки
+  qFace(mx + .32, mx + .44, my + md, t1 + 8, t1 + 11, '#8FC97F');
+  qFace(mx + .16, mx + .42, my + md, t1 + 1, t1 + 5, '#2E3A40');        // ніша
+  mug(mx + .29, my + md - .02, CH + 1);
+
+  // пара
+  for (let i = 0; i < 4; i++) {
+    const ph = (t * 0.00055 + i * .25) % 1;
+    const p = at(mx + mw / 2, my + md / 2, t2 + 2 + ph * 20);
+    ctx.globalAlpha = (1 - ph) * .55;
+    px(p.x + Math.sin(ph * 7 + i * 1.7) * 3 - 1.3, p.y, 2.8, 2.8, '#FFFFFF');
+  }
+  ctx.globalAlpha = 1;
+
+  mug(gx + 1.06, gy + .34, CH + .5);
+  mug(gx + 1.2, gy + .74, CH + .5);
+  plant(gx + .26, gy + 1.42, 1.2);
+}
+
+function plant(gx, gy, sc = 1) {
+  const p = s(gx, gy);
+  const pw = 9 * sc, ph = 9 * sc;
+  px(p.x - pw/2, p.y - ph, pw, ph, C.pot);
+  px(p.x - pw/2 - 1, p.y - ph, pw + 2, 2.6 * sc, C.potTop);
+  const leaves = [[-6,-8,C.plantDk],[-2,-13,C.plant],[3,-11,C.plantLt],
+                  [6,-7,C.plantDk],[0,-17,C.plant],[-5,-12,C.plantLt],[4,-15,C.plantDk]];
+  leaves.forEach(([lx, ly, col]) => {
+    px(p.x + lx*sc - 2*sc, p.y - ph + ly*sc, 4.4*sc, 4.4*sc, col);
   });
 }
 
-function drawSprite(id, x, y) {
-  const P = 3;
-  const frame = characters[id].frame;
-  const isWalking = Math.abs(characters[id].gx - characters[id].targetGx) > 0.1 ||
-                    Math.abs(characters[id].gy - characters[id].targetGy) > 0.1;
-  const legAnim = isWalking ? Math.floor(Date.now() / 200) % 2 : 0;
+function cat(gx, gy, t) {
+  const p = s(gx, gy);
+  const x = p.x, y = p.y;
+  const breathe = Math.sin(t * 0.0022) * 0.6;
+  // тіло (спить, клубочком)
+  px(x - 9, y - 7 + breathe, 18, 7, C.cat);
+  px(x - 9, y - 7 + breathe, 18, 2.4, C.catLt);
+  px(x - 9, y - 1, 18, 1.6, C.catDk);
+  // голова
+  px(x - 13, y - 9 + breathe, 8, 7, C.cat);
+  px(x - 13, y - 9 + breathe, 8, 2, C.catLt);
+  // вушка
+  px(x - 13, y - 11.5 + breathe, 2.6, 2.6, C.catDk);
+  px(x - 8.6, y - 11.5 + breathe, 2.6, 2.6, C.catDk);
+  // закриті очі + носик
+  px(x - 11.6, y - 6 + breathe, 2, 1, C.ink);
+  px(x - 7.8, y - 6 + breathe, 2, 1, C.ink);
+  px(x - 10, y - 4.4 + breathe, 1.6, 1.2, '#C2185B');
+  // хвіст
+  const wag = Math.sin(t * 0.0028) * 3;
+  px(x + 7, y - 5, 6, 2.4, C.catDk);
+  px(x + 12, y - 6 + wag, 5, 2.4, C.cat);
+  // z-z-z
+  ctx.fillStyle = 'rgba(78,52,46,.4)';
+  ctx.font = '5px "Press Start 2P", monospace';
+  ctx.textAlign = 'left';
+  const zp = (t * 0.0008) % 1;
+  ctx.globalAlpha = (1 - zp) * .8;
+  ctx.fillText('z', x - 16 - zp * 4, y - 14 - zp * 10);
+  ctx.globalAlpha = 1;
+}
 
-  if (id === 'max') {
-    // Hair
-    rect(x-4*P, y-13*P, 8*P, 2*P, C.max_hair);
-    rect(x-4*P, y-11*P, 1*P, 1*P, C.max_hair);
-    rect(x+3*P, y-11*P, 1*P, 1*P, C.max_hair);
-    // Head
-    rect(x-3*P, y-11*P, 6*P, 4*P, C.skin);
-    // Eyes
-    rect(x-2*P, y-10*P, P, P, '#333');
-    rect(x+1*P, y-10*P, P, P, '#333');
-    // Smile
-    rect(x-1*P, y-8*P, 2*P, P, '#C62828');
-    // Shirt/jacket
-    rect(x-4*P, y-7*P, 8*P, 5*P, C.max_shirt);
-    rect(x-4*P, y-7*P, 2*P, 5*P, C.max_shirtDk);
-    rect(x+2*P, y-7*P, 2*P, 5*P, C.max_shirtDk);
-    // Tie
-    rect(x-0.5*P, y-7*P, 1*P, 4*P, C.max_tie);
-    // Pants
-    rect(x-3*P, y-2*P, 6*P, 3*P, C.max_pants);
-    // Legs with walk animation
-    if (legAnim === 0) {
-      rect(x-3*P, y+1*P, 2*P, 3*P, C.max_pants);
-      rect(x+1*P, y+1*P, 2*P, 3*P, C.max_pants);
-    } else {
-      rect(x-3*P, y+1*P, 2*P, 2*P, C.max_pants);
-      rect(x+1*P, y, 2*P, 2*P, C.max_pants);
+/* ─── персонаж ─── */
+function sprite(id, c, t) {
+  const p = s(c.gx, c.gy);
+  const moving = Math.abs(c.tx - c.gx) > .02 || Math.abs(c.ty - c.gy) > .02;
+  const bob = moving ? 0 : Math.sin(t * 0.0033 + IDS.indexOf(id)) * 1.1;
+  const P = 2;
+  const x = p.x - 6 * P;
+  const y = p.y - 18 * P + bob;
+
+  // тінь
+  poly([{x:p.x,y:p.y-3.4},{x:p.x+10,y:p.y},{x:p.x,y:p.y+3.4},{x:p.x-10,y:p.y}],
+       'rgba(120,88,64,.18)');
+
+  const pal = PAL[id];
+  const legs = LEGS[moving ? (Math.floor(t / 170) % 2) : 0];
+  const rows = BODY[id].concat(legs);
+
+  // блимання очей
+  const blink = (Math.sin(t * 0.0011 + IDS.indexOf(id) * 2.1) > .985);
+
+  rows.forEach((row, ry) => {
+    for (let rx = 0; rx < row.length; rx++) {
+      let ch = row[rx];
+      if (ch === '.') continue;
+      if (ch === 'E' && blink) ch = 'S';
+      const col = pal[ch];
+      if (!col) continue;
+      ctx.fillStyle = col;
+      ctx.fillRect(x + rx * P, y + ry * P, P, P);
     }
-    // Shoes
-    rect(x-3*P, y+3*P+(legAnim?-1:0)*P, 3*P, P, C.shoes);
-    rect(x+1*P, y+3*P+(legAnim?1:-0)*P, 3*P, P, C.shoes);
-  }
-  else if (id === 'pixel') {
-    // Messy hair
-    rect(x-4*P, y-14*P, 8*P, 3*P, C.pix_hair);
-    rect(x-5*P, y-13*P, 2*P, 2*P, C.pix_hair);
-    rect(x+3*P, y-13*P, 2*P, 2*P, C.pix_hair);
-    rect(x-2*P, y-15*P, 3*P, 1*P, C.pix_hair);
-    // Head
-    rect(x-3*P, y-11*P, 6*P, 4*P, C.skin);
-    // Headband
-    rect(x-4*P, y-11*P, 8*P, P, C.pix_band);
-    // Eyes (big, artistic)
-    rect(x-2*P, y-10*P, 1*P, 1*P, '#333');
-    rect(x+1*P, y-10*P, 1*P, 1*P, '#333');
-    // Big smile
-    rect(x-2*P, y-8*P, 4*P, P, '#E91E63');
-    // T-shirt
-    rect(x-4*P, y-7*P, 8*P, 5*P, C.pix_shirt);
-    // Star on shirt
-    rect(x-1*P, y-5*P, 2*P, 2*P, C.pix_band);
-    // Jeans
-    rect(x-3*P, y-2*P, 6*P, 3*P, C.pix_pants);
-    // Legs
-    if (legAnim === 0) {
-      rect(x-3*P, y+1*P, 2*P, 3*P, C.pix_pants);
-      rect(x+1*P, y+1*P, 2*P, 3*P, C.pix_pants);
-    } else {
-      rect(x-3*P, y+1*P, 2*P, 2*P, C.pix_pants);
-      rect(x+1*P, y, 2*P, 2*P, C.pix_pants);
-    }
-    // Sneakers
-    rect(x-4*P, y+3*P+(legAnim?-1:0)*P, 3*P, P, '#FFF');
-    rect(x+1*P, y+3*P+(legAnim?1:0)*P, 3*P, P, '#FFF');
-  }
-  else if (id === 'vera') {
-    // Long hair
-    rect(x-4*P, y-13*P, 8*P, 2*P, C.vera_hair);
-    rect(x-5*P, y-11*P, 2*P, 7*P, C.vera_hair);
-    rect(x+3*P, y-11*P, 2*P, 7*P, C.vera_hair);
-    // Head
-    rect(x-3*P, y-11*P, 6*P, 4*P, C.skin);
-    // Glasses
-    rect(x-3*P, y-10*P, 2*P, 2*P, C.vera_glass);
-    rect(x+1*P, y-10*P, 2*P, 2*P, C.vera_glass);
-    rect(x-1*P, y-10*P, 2*P, P, C.vera_glass);
-    // Eyes behind glasses
-    rect(x-2*P, y-9*P, P, P, '#333');
-    rect(x+1*P, y-9*P, P, P, '#333');
-    // Mouth
-    rect(x-1*P, y-8*P, 2*P, P, '#C62828');
-    // Hoodie
-    rect(x-4*P, y-7*P, 8*P, 5*P, C.vera_shirt);
-    rect(x-4*P, y-7*P, 8*P, 1*P, C.vera_shirtDk);
-    // Hoodie pocket
-    rect(x-2*P, y-4*P, 4*P, 2*P, C.vera_shirtDk);
-    // Pants
-    rect(x-3*P, y-2*P, 6*P, 3*P, C.vera_pants);
-    // Legs
-    if (legAnim === 0) {
-      rect(x-3*P, y+1*P, 2*P, 3*P, C.vera_pants);
-      rect(x+1*P, y+1*P, 2*P, 3*P, C.vera_pants);
-    } else {
-      rect(x-3*P, y+1*P, 2*P, 2*P, C.vera_pants);
-      rect(x+1*P, y, 2*P, 2*P, C.vera_pants);
-    }
-    // Boots
-    rect(x-3*P, y+3*P+(legAnim?-1:0)*P, 3*P, P, C.shoesDk);
-    rect(x+1*P, y+3*P+(legAnim?1:0)*P, 3*P, P, C.shoesDk);
-  }
-}
-
-/* ── POSITION BUBBLE OVERLAYS ──────────────────────────────── */
-function updateBubblePositions() {
-  ['max', 'pixel', 'vera'].forEach(id => {
-    const ch = characters[id];
-    const { x, y } = g2s(ch.gx, ch.gy);
-    const bubble = document.getElementById(`bubble-${id}`);
-    if (!bubble) return;
-
-    // Convert canvas coords to viewport coords
-    const vp = document.getElementById('viewport');
-    const scaleX = vp.clientWidth / W;
-    const scaleY = vp.clientHeight / H;
-
-    const bx = x * scaleX;
-    const by = (y - 55) * scaleY;
-
-    bubble.style.left = `${bx}px`;
-    bubble.style.top = `${by}px`;
-    bubble.style.transform = 'translate(-50%, -100%)';
-  });
-}
-
-/* ── ANIMATION LOOP ────────────────────────────────────────── */
-function animate() {
-  // Interpolate character positions
-  ['max', 'pixel', 'vera'].forEach(id => {
-    const ch = characters[id];
-    const dx = ch.targetGx - ch.gx;
-    const dy = ch.targetGy - ch.gy;
-    if (Math.abs(dx) > 0.05 || Math.abs(dy) > 0.05) {
-      ch.gx += dx * 0.04;
-      ch.gy += dy * 0.04;
-    } else {
-      ch.gx = ch.targetGx;
-      ch.gy = ch.targetGy;
-    }
   });
 
-  drawScene();
-  updateBubblePositions();
-  requestAnimationFrame(animate);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   7. ЦИКЛ АНІМАЦІЇ
+   ───────────────────────────────────────────────────────────── */
+function loop() {
+  IDS.forEach(id => {
+    const c = chars[id];
+    const dx = c.tx - c.gx, dy = c.ty - c.gy;
+    if (Math.abs(dx) > .02 || Math.abs(dy) > .02) { c.gx += dx * .06; c.gy += dy * .06; }
+    else { c.gx = c.tx; c.gy = c.ty; }
+  });
+  draw();
+  placeBubbles();
+  requestAnimationFrame(loop);
+}
+
+function placeBubbles() {
+  const stw = cv.clientWidth || SCENE_W;
+  IDS.forEach(id => {
+    const el = document.getElementById(`bubble-${id}`);
+    if (!el || !el.classList.contains('on')) return;
+    const c = chars[id];
+    const p = s(c.gx, c.gy);
+    const cs = toCss(p.x, p.y - 40);
+    // тримаємо бабл у межах сцени, а «хвостик» — над персонажем
+    const half = el.offsetWidth / 2;
+    const left = Math.min(Math.max(cs.x, half + 4), stw - half - 4);
+    el.style.left = `${left}px`;
+    el.style.top = `${Math.max(cs.y, el.offsetHeight + 4)}px`;
+    el.style.setProperty('--tailx', `${Math.min(Math.max(cs.x - left + half, 12), el.offsetWidth - 12)}px`);
+  });
 }
 
 /* ══════════════════════════════════════════════════════════════
-   AGENT SIMULATION — 3-round workflow
+   8. МОЗОК АГЕНТІВ
    ══════════════════════════════════════════════════════════════ */
+const MODEL = 'claude-haiku-4-5-20251001';
 
-/* ── AGENT PROMPTS (Ukrainian) ─────────────────────────────── */
-const SYSTEM_PROMPTS = {
-  strategist: `Ти — Макс, бренд-стратег у маленькій креативній агенції.
-Ти думаєш про бізнес-цілі, цільову аудиторію, позиціонування, конкурентні переваги та культурні інсайти.
-Ти дуже гострий на думку, конкретний і стратегічний.
-Відповідай УКРАЇНСЬКОЮ. Коротко — 1-2 речення. Від першої особи, як думка вголос.`,
+const SYS = {
+  strategist: `Ти — Макс, бренд-стратег у невеликій креативній агенції.
+Ти думаєш категоріями: цільова аудиторія, інсайт, позиціонування, конкурентна відмінність, культурна напруга.
+Ти конкретний, гострий, не терпиш загальних слів на кшталт "якість" та "інновації".
+ВІДПОВІДАЙ УКРАЇНСЬКОЮ. Максимум 2 короткі речення. Від першої особи, як думка вголос. Без вступів і списків.`,
 
-  designer: `Ти — Піксель, візуальний дизайнер у маленькій креативній агенції.
-Ти думаєш про кольори, типографіку, візуальну ієрархію, емоції, стиль та UX.
-Ти пристрасний до естетики, ненавидиш кліше та завжди шукаєш несподівані рішення.
-Відповідай УКРАЇНСЬКОЮ. Коротко — 1-2 речення. Від першої особи, як думка вголос.`,
+  designer: `Ти — Піксель, візуальний дизайнер у невеликій креативній агенції.
+Ти думаєш категоріями: колір, типографіка, форма, композиція, ритм, емоція, матеріальність.
+Ти пристрасний до естетики і ненавидиш кліше та стокову "чистоту".
+ВІДПОВІДАЙ УКРАЇНСЬКОЮ. Максимум 2 короткі речення. Від першої особи, як думка вголос. Без вступів і списків.`,
 
-  copywriter: `Ти — Віра, копірайтер у маленькій креативній агенції.
-Ти думаєш про назви, слогани, tone of voice, наратив, точне слово, емоційний гачок.
-Ти одержима мовою, ненавидиш канцеляризми і шукаєш ідеальну фразу.
-Відповідай УКРАЇНСЬКОЮ. Коротко — 1-2 речення. Від першої особи, як думка вголос.`,
+  copywriter: `Ти — Віра, копірайтерка у невеликій креативній агенції.
+Ти думаєш категоріями: назва, слоган, tone of voice, наратив, точне слово, ритм фрази.
+Ти одержима мовою, ненавидиш канцелярит і порожній пафос.
+ВІДПОВІДАЙ УКРАЇНСЬКОЮ. Максимум 2 короткі речення. Від першої особи, як думка вголос. Без вступів і списків.`,
 };
 
-const FINAL_PROMPTS = {
-  strategist: `На основі всього обговорення, сформулюй ФІНАЛЬНЕ ПОЗИЦІОНУВАННЯ бренду.
-Формат відповіді (тільки це, нічого більше):
-ПОЗИЦІОНУВАННЯ: [одне чітке речення]`,
+const FINAL = {
+  strategist: `Сформулюй ФІНАЛЬНЕ позиціонування — рівно одне речення.
+Відповідай СТРОГО у форматі, без жодного іншого тексту:
+ПОЗИЦІОНУВАННЯ: <одне речення>`,
 
-  designer: `На основі обговорення, запропонуй концепцію логотипу.
-Формат відповіді (тільки це, нічого більше):
-КОНЦЕПЦІЯ: [опис логотипу: форма, кольори, стиль, в 2-3 реченнях]
-SVG: [простий SVG код логотипу, viewBox="0 0 100 100", максимум 3 кольори, прості геометричні форми, БЕЗ тексту в SVG]`,
+  copywriter: `Дай фінальну назву бренду і слоган.
+Відповідай СТРОГО у форматі, без жодного іншого тексту:
+НАЗВА: <назва>
+СЛОГАН: <слоган>`,
 
-  copywriter: `На основі обговорення, запропонуй назву бренду та слоган.
-Формат відповіді (тільки це, нічого більше):
-НАЗВА: [назва]
-СЛОГАН: [слоган]`,
+  designer: `Дай фінальну концепцію логотипу.
+Відповідай СТРОГО у форматі, без жодного іншого тексту:
+КОНЦЕПЦІЯ: <2 речення: форма, кольори, характер>
+SVG: <валідний SVG, viewBox="0 0 100 100", максимум 3 кольори, лише circle/rect/path/polygon/ellipse/g, БЕЗ text, БЕЗ image, БЕЗ script>`,
 };
 
-/* ── DEMO THOUGHTS (Ukrainian, for offline mode) ───────────── */
 const DEMO = {
   strategist: {
-    round1: [
-      "Цільова аудиторія — це не всі. Треба зрізати до болю конкретно, хто ці люди і чого вони бояться.",
-      "Головне питання: яку порожню нішу ми займемо? Конкуренти вже зайняли очевидне.",
-    ],
-    round2: [
-      "Згоден з Пікселем — візуальна мова має йти від позиціонування. Але спочатку — ЧИМ ми відрізняємося.",
-      "Віра правильно каже про емоцію. Але емоція без стратегії — це просто крик у порожнечу.",
-    ],
-    final: "ПОЗИЦІОНУВАННЯ: Бренд для тих, хто втомився від фальші — чесний, локальний, без зайвих прикрас.",
+    1: ['Спершу питання не "хто наша аудиторія", а "від чого вони втомилися". Саме там живе відмінність.',
+        'Категорія перевантажена однаковими обіцянками. Виграє той, хто скаже одну річ і доведе її ділом.',
+        'Мене цікавить культурна напруга: люди хочуть простоти, але не хочуть виглядати простими.'],
+    2: ['Піксель має рацію щодо матеріальності — але вона мусить доводити позиціонування, а не бути декором.',
+        'Віра точно вловила тон. Додам стратегічну рамку: ми не "для всіх", ми для тих, хто вже обирає свідомо.',
+        'Погоджуюсь із напрямком. Тільки приберімо все, що можна сказати про будь-якого конкурента.'],
+    3: 'ПОЗИЦІОНУВАННЯ: Бренд для тих, кому важливо походження й чесність деталей більше, ніж гучні обіцянки.',
   },
   designer: {
-    round1: [
-      "Вже бачу палітру: теплі відтінки, крафтові текстури, але з сучасним мінімалізмом. Ніякого глянцю.",
-      "Типографіка — це 50% характеру бренду. Потрібен шрифт з історією, не черговий гротеск.",
-    ],
-    round2: [
-      "Стратегія Макса про нішу — це добре. Візуально це означає: менше, але точніше. Кожен елемент має говорити.",
-      "Назва від Віри буде диктувати форму логотипу. Чекаю на неї, але вже скечу геометрію.",
-    ],
-    final: "КОНЦЕПЦІЯ: Мінімалістичний логотип — тепле коло з м'яким градієнтом, всередині — абстрактна геометрична форма.\nSVG: <svg viewBox=\"0 0 100 100\" xmlns=\"http://www.w3.org/2000/svg\"><circle cx=\"50\" cy=\"50\" r=\"45\" fill=\"#E8A87C\"/><circle cx=\"50\" cy=\"50\" r=\"30\" fill=\"#D4735E\"/><rect x=\"38\" y=\"35\" width=\"24\" height=\"24\" rx=\"4\" fill=\"#FFF5EE\" transform=\"rotate(45 50 47)\"/></svg>",
+    1: ['Бачу теплу палітру з приглушеним контрастом і паперовою текстурою. Жодного глянцю.',
+        'Типографіка витягне все: потрібен шрифт із характером і трохи неідеальними формами.',
+        'Ключ у ритмі композиції — багато повітря, один сильний акцент, і все читається за секунду.'],
+    2: ['Стратегія Макса про походження — це матеріальність. Отже: крафтовий папір, штамп, ручний знак.',
+        'Тон Віри теплий, тож геометрія має бути мʼяка — заокруглення, жодних гострих кутів.',
+        'Тоді знак мусить працювати і на 16 пікселях, і на вивісці. Спрощую до однієї форми.'],
+    3: `КОНЦЕПЦІЯ: Мʼякий круглий знак-штамп: тепле коло, всередині проста геометрична форма зі зсувом.
+Палітра — терракота, вершковий, глибокий графіт; характер спокійний і рукотворний.
+SVG: <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="46" fill="#D98A63"/><circle cx="50" cy="50" r="33" fill="#FFF3E3"/><path d="M50 26 L70 50 L50 74 L30 50 Z" fill="#4E342E"/><circle cx="50" cy="50" r="8" fill="#D98A63"/></svg>`,
   },
   copywriter: {
-    round1: [
-      "Ключове — знайти напругу між тим, що є, і тим, що хочуть. Саме в цій щілині живе бренд-войс.",
-      "Перші 30 назв — у кошик. Ідеальна назва прийде, коли перестанеш її шукати. Але працювати треба.",
-    ],
-    round2: [
-      "Макс каже — конкретність. Я перекладаю це в слова: не 'якість', а конкретна деталь, яку відчуваєш.",
-      "Піксель хоче крафт + мінімалізм. В словах це значить — коротко, тепло, без пафосу.",
-    ],
-    final: "НАЗВА: ТЕПЛИЦЯ\nСЛОГАН: Тут росте справжнє",
+    1: ['Перші двадцять назв — у кошик. Вони описують продукт, а треба назву, яка описує ставлення.',
+        'Шукаю напругу в одному слові: щоб було тепло, але не солодко. Це найважче.',
+        'Тон голосу: як розумний друг, що не повчає. Кожне речення проходить цей фільтр.'],
+    2: ['Макс каже — конкретика. Перекладаю в мову: не "натуральність", а назва конкретної деталі.',
+        'Піксель хоче рукотворність — отже і мова має бути з нерівностями, живою, не відполірованою.',
+        'Тоді слоган — коротке твердження без прикметників. Дієслово несе всю вагу.'],
+    3: 'НАЗВА: Тепличка\nСЛОГАН: Тут росте справжнє',
   },
 };
 
-/* ── SIMULATION STATE ──────────────────────────────────────── */
-let simRunning = false;
-let simTimer = null;
-let simSeconds = 0;
-let clockTimer = null;
-let currentBrief = '';
-let agentThoughts = { max: '', pixel: '', vera: '' };
-let currentPhase = 0; // 0=idle, 1=analysis, 2=discussion, 3=final
+const PRESETS = [
+  'Бренд спешелті-кавʼярні в Києві для молодих професіоналів',
+  'Запуск застосунку для трекінгу звичок серед студентів',
+  'Ребрендинг локальної пекарні з 20-річною історією',
+  'Позиціонування українського бренду вовняних ковдр на експорт',
+];
 
-/* ── CLAUDE API ────────────────────────────────────────────── */
-async function callClaude(system, user, apiKey) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+/* ─── стан ─── */
+let running = false, phase = 0, brief = '', secs = 0, tick = null;
+let thoughts = { max: '', pixel: '', vera: '' };
+let results = null;
+
+/* ─── API ─── */
+async function ask(system, user, key) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
+      'content-type': 'application/json',
+      'x-api-key': key,
       'anthropic-version': '2023-06-01',
       'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 200,
-      system,
+      model: MODEL, max_tokens: 400, system,
       messages: [{ role: 'user', content: user }],
     }),
   });
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({}));
-    throw new Error(e.error?.message || `API ${res.status}`);
+  if (!r.ok) {
+    let m = `HTTP ${r.status}`;
+    try { const j = await r.json(); if (j.error?.message) m = j.error.message; } catch {}
+    throw new Error(m);
   }
-  const data = await res.json();
-  return data.content[0]?.text?.trim() || '...';
+  const j = await r.json();
+  return (j.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim() || '…';
 }
 
-/* ── THINK FUNCTION ────────────────────────────────────────── */
-async function agentThink(id, role, prompt, apiKey) {
-  const bubble = document.getElementById(`bubble-${id}`);
-  const textEl = document.getElementById(`bubbleText-${id}`);
-  if (!bubble || !textEl) return '';
+/* ─── думка з бабликом ─── */
+async function think(id, prompt, key, isFinal) {
+  const role = ROLES[id];
+  hideBubbles(id);
+  const el = document.getElementById(`bubble-${id}`);
+  const tx = document.getElementById(`bt-${id}`);
+  tx.textContent = '';
+  tx.classList.add('wait');
+  el.classList.add('on');
+  placeBubbles();
 
-  // Show bubble with typing indicator
-  bubble.classList.add('visible');
-  textEl.textContent = '';
-  textEl.classList.add('typing');
-
-  let thought;
-  if (!apiKey) {
-    // Demo mode
-    const phase = currentPhase === 1 ? 'round1' : currentPhase === 2 ? 'round2' : 'final';
-    if (phase === 'final') {
-      thought = DEMO[role].final;
-    } else {
-      const pool = DEMO[role][phase];
-      thought = pool[Math.floor(Math.random() * pool.length)];
-    }
-    await sleep(1500 + Math.random() * 1000);
+  let out;
+  if (!key) {
+    await sleep(1100 + Math.random() * 700);
+    out = isFinal ? DEMO[role][3] : pick(DEMO[role][phase] || DEMO[role][1]);
   } else {
     try {
-      thought = await callClaude(SYSTEM_PROMPTS[role], prompt, apiKey);
-    } catch (err) {
-      log('СИСТЕМА', `Помилка API: ${err.message}`, 'system');
-      thought = '...не вдалося подумати...';
+      out = await ask(SYS[role], prompt, key);
+    } catch (e) {
+      log('СИСТЕМА', `Помилка API: ${e.message}`, 'system');
+      out = isFinal ? DEMO[role][3] : pick(DEMO[role][phase] || DEMO[role][1]);
+      log('СИСТЕМА', 'Перемикаюсь на демо-думку.', 'system');
     }
   }
+  if (!running) return out;
 
-  // Type out the thought
-  textEl.classList.remove('typing');
-  await typeText(textEl, thought, 25);
-
-  agentThoughts[id] = thought;
-  log(id === 'max' ? 'МАКС' : id === 'pixel' ? 'ПІКСЕЛЬ' : 'ВІРА', thought, role);
-
-  return thought;
+  tx.classList.remove('wait');
+  // у баблі показуємо коротку версію (без службових полів)
+  await type(tx, isFinal ? shorten(out) : out);
+  thoughts[id] = out;
+  log(NAMES[id], isFinal ? shorten(out) : out, role);
+  return out;
 }
 
-function hideBubble(id) {
-  const bubble = document.getElementById(`bubble-${id}`);
-  if (bubble) bubble.classList.remove('visible');
+const shorten = t => t.replace(/\s*SVG:[\s\S]*$/i, '')
+                      .replace(/^(ПОЗИЦІОНУВАННЯ|КОНЦЕПЦІЯ):\s*/i, '')
+                      .replace(/\n+/g, ' · ').trim().slice(0, 210);
+
+function hideBubbles(except) {
+  IDS.forEach(id => {
+    if (id !== except) document.getElementById(`bubble-${id}`).classList.remove('on');
+  });
 }
+const hideAll = () => IDS.forEach(id =>
+  document.getElementById(`bubble-${id}`).classList.remove('on'));
 
-/* ── PHASES ─────────────────────────────────────────────────── */
-function showPhase(text) {
-  const ov = document.getElementById('phaseOverlay');
-  const title = document.getElementById('phaseTitle');
-  title.textContent = text;
-  ov.classList.add('visible');
-  // Update badge
-  document.getElementById('phaseBadge').textContent = text;
-  setTimeout(() => ov.classList.remove('visible'), 3000);
-}
+/* ─── раунди ─── */
+async function run(key) {
+  const R = [
+    { n: 1, title: 'РАУНД 1 · АНАЛІЗ',      spot: 'desk'  },
+    { n: 2, title: 'РАУНД 2 · ОБГОВОРЕННЯ', spot: 'table' },
+    { n: 3, title: 'РАУНД 3 · ФІНАЛ',       spot: 'desk'  },
+  ];
 
-async function runSimulation(apiKey) {
-  if (!simRunning) return;
+  for (const r of R) {
+    if (!running) return;
+    phase = r.n;
+    banner(r.title);
+    badge(r.title.toLowerCase());
+    log('СИСТЕМА', `── ${r.title} ──`, 'system');
 
-  // ═══ PHASE 1: АНАЛІЗ ═══
-  currentPhase = 1;
-  showPhase('РАУНД 1 — АНАЛІЗ');
-  log('СИСТЕМА', '── Раунд 1: Кожен аналізує бриф ──', 'system');
+    IDS.forEach(id => move(id, r.spot));
+    await sleep(1900);
+    if (!running) return;
 
-  // Move everyone to desks
-  moveChar('max', 'home');
-  moveChar('pixel', 'home');
-  moveChar('vera', 'home');
-  await sleep(1500);
+    for (const id of IDS) {
+      if (!running) return;
+      const role = ROLES[id];
+      let prompt;
+      if (r.n === 1) {
+        prompt = `Бриф проєкту: ${brief}\n\nЯкі твої перші думки?`;
+      } else {
+        const others = IDS.filter(k => k !== id && thoughts[k])
+          .map(k => `${NAMES[k]} (${roleUa(k)}): "${thoughts[k]}"`).join('\n');
+        prompt = r.n === 2
+          ? `Бриф: ${brief}\n\nЩо сказали колеги:\n${others}\n\nТвоя реакція: з чим погоджуєшся, що заперечуєш, що розвиваєш?`
+          : `Бриф: ${brief}\n\nПідсумок обговорення:\n${others}\n\n${FINAL[role]}`;
+      }
+      const out = await think(id, prompt, key, r.n === 3);
+      if (r.n === 3) (results ||= {})[id] = out;
+      await sleep(r.n === 3 ? 1500 : 2100);
+    }
 
-  // Think sequentially with delays
-  for (const [id, role] of [['max','strategist'],['pixel','designer'],['vera','copywriter']]) {
-    if (!simRunning) return;
-    await agentThink(id, role, `Бриф проєкту: ${currentBrief}\n\nТвої перші думки і аналіз?`, apiKey);
-    await sleep(2000);
+    if (!running) return;
+    await sleep(2300);
+    hideAll();
+    await sleep(500);
   }
 
-  await sleep(4000);
-  ['max','pixel','vera'].forEach(hideBubble);
-
-  if (!simRunning) return;
-
-  // ═══ PHASE 2: ОБГОВОРЕННЯ ═══
-  currentPhase = 2;
-  showPhase('РАУНД 2 — ОБГОВОРЕННЯ');
-  log('СИСТЕМА', '── Раунд 2: Обговорення ідей ──', 'system');
-
-  // Move to meeting table
-  moveChar('max', 'meeting');
-  moveChar('pixel', 'meeting');
-  moveChar('vera', 'meeting');
-  await sleep(2000);
-
-  for (const [id, role] of [['max','strategist'],['pixel','designer'],['vera','copywriter']]) {
-    if (!simRunning) return;
-    const others = Object.entries(agentThoughts)
-      .filter(([k]) => k !== id)
-      .map(([k, v]) => {
-        const name = k === 'max' ? 'Макс (стратег)' : k === 'pixel' ? 'Піксель (дизайнер)' : 'Віра (копірайтер)';
-        return `${name}: "${v}"`;
-      }).join('\n');
-
-    const prompt = `Бриф: ${currentBrief}\n\nДумки колег:\n${others}\n\nТвоя реакція, зауваження, розвиток ідей?`;
-    await agentThink(id, role, prompt, apiKey);
-    await sleep(2500);
-  }
-
-  await sleep(4000);
-  ['max','pixel','vera'].forEach(hideBubble);
-
-  if (!simRunning) return;
-
-  // ═══ PHASE 3: ФІНАЛ ═══
-  currentPhase = 3;
-  showPhase('РАУНД 3 — ФІНАЛ');
-  log('СИСТЕМА', '── Раунд 3: Фінальні рішення ──', 'system');
-
-  // Back to desks
-  moveChar('max', 'home');
-  moveChar('pixel', 'home');
-  moveChar('vera', 'home');
-  await sleep(1500);
-
-  const results = {};
-  for (const [id, role] of [['max','strategist'],['pixel','designer'],['vera','copywriter']]) {
-    if (!simRunning) return;
-    const allThoughts = Object.entries(agentThoughts)
-      .map(([k, v]) => {
-        const name = k === 'max' ? 'Макс' : k === 'pixel' ? 'Піксель' : 'Віра';
-        return `${name}: "${v}"`;
-      }).join('\n');
-
-    const prompt = `Бриф: ${currentBrief}\n\nПідсумок обговорення:\n${allThoughts}\n\n${FINAL_PROMPTS[role]}`;
-    results[id] = await agentThink(id, role, prompt, apiKey);
-    await sleep(2000);
-  }
-
-  // Show results
-  showResults(results);
-  log('СИСТЕМА', '★ Агенція завершила роботу! ★', 'system');
-  currentPhase = 0;
-  document.getElementById('phaseBadge').textContent = 'ГОТОВО';
+  showResults(results || {});
+  banner('★ ГОТОВО ★');
+  badge('результат готовий');
+  log('СИСТЕМА', '★ Агенція завершила роботу.', 'system');
 }
 
-/* ── RESULTS ───────────────────────────────────────────────── */
-function showResults(results) {
-  const section = document.getElementById('resultsSection');
-  section.style.display = 'block';
+const roleUa = k => k === 'max' ? 'стратег' : k === 'pixel' ? 'дизайнер' : 'копірайтерка';
 
-  // Strategy
-  document.getElementById('resultStrategy').textContent =
-    extractField(results.max, 'ПОЗИЦІОНУВАННЯ') || results.max || '—';
-
-  // Copy
-  const name = extractField(results.vera, 'НАЗВА') || '—';
-  const slogan = extractField(results.vera, 'СЛОГАН') || '—';
-  document.getElementById('resultCopy').innerHTML =
-    `<strong>Назва:</strong> ${esc(name)}<br><strong>Слоган:</strong> ${esc(slogan)}`;
-
-  // Design
-  const concept = extractField(results.pixel, 'КОНЦЕПЦІЯ') || results.pixel || '—';
-  document.getElementById('resultDesign').textContent = concept;
-
-  // Try to render SVG logo
-  const svgMatch = (results.pixel || '').match(/<svg[\s\S]*?<\/svg>/i);
-  const preview = document.getElementById('logoPreview');
-  if (svgMatch) {
-    // Sanitize: only allow safe SVG elements
-    const safe = svgMatch[0]
-      .replace(/<script[\s\S]*?<\/script>/gi, '')
-      .replace(/on\w+="[^"]*"/gi, '');
-    preview.innerHTML = safe;
-  } else {
-    preview.innerHTML = '';
-  }
+function move(id, spot) {
+  const p = SPOTS[id][spot];
+  chars[id].tx = p.gx;
+  chars[id].ty = p.gy;
+  chars[id].at = spot;
 }
 
-function extractField(text, field) {
-  if (!text) return '';
-  const regex = new RegExp(`${field}:\\s*(.+?)(?:\\n|$)`, 'i');
-  const m = text.match(regex);
+/* ─── результати ─── */
+function showResults(r) {
+  const sec = document.getElementById('resSec');
+  sec.hidden = false;
+
+  const pos = field(r.max, 'ПОЗИЦІОНУВАННЯ') || clean(r.max) || '—';
+  document.getElementById('resStrategy').textContent = pos;
+
+  const nm = field(r.vera, 'НАЗВА') || '—';
+  const sl = field(r.vera, 'СЛОГАН') || '—';
+  const rc = document.getElementById('resCopy');
+  rc.textContent = '';
+  rc.append(bold('Назва: '), nm, document.createElement('br'),
+            bold('Слоган: '), sl);
+
+  document.getElementById('resDesign').textContent =
+    field(r.pixel, 'КОНЦЕПЦІЯ') || clean(r.pixel).replace(/<svg[\s\S]*$/i, '').trim() || '—';
+
+  const box = document.getElementById('logoPreview');
+  const svg = safeSvg(r.pixel || '');
+  if (svg) { box.replaceChildren(svg); box.hidden = false; }
+  else { box.replaceChildren(); box.hidden = true; }
+
+  window.__res = { pos, nm, sl, concept: document.getElementById('resDesign').textContent };
+  document.getElementById('btnAgain').disabled = false;
+  sec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function bold(t) { const b = document.createElement('b'); b.textContent = t; return b; }
+const clean = t => (t || '').trim();
+function field(t, name) {
+  if (!t) return '';
+  const m = t.match(new RegExp(`${name}\\s*:\\s*([\\s\\S]*?)(?=\\n\\s*[А-ЯІЇЄA-Z]{3,}\\s*:|$)`, 'i'));
   return m ? m[1].trim() : '';
 }
 
-function esc(s) {
-  const d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
+/* SVG від моделі — пропускаємо лише безпечну геометрію */
+const SVG_OK = new Set(['svg','g','circle','rect','path','polygon','polyline','ellipse','line',
+                        'defs','lineargradient','radialgradient','stop','title']);
+function safeSvg(text) {
+  const m = text.match(/<svg[\s\S]*?<\/svg>/i);
+  if (!m) return null;
+  let doc;
+  try { doc = new DOMParser().parseFromString(m[0], 'image/svg+xml'); } catch { return null; }
+  const root = doc.documentElement;
+  if (!root || root.nodeName.toLowerCase() !== 'svg' ||
+      doc.getElementsByTagName('parsererror').length) return null;
+
+  const walk = node => {
+    [...node.children].forEach(el => {
+      if (!SVG_OK.has(el.nodeName.toLowerCase())) { el.remove(); return; }
+      [...el.attributes].forEach(a => {
+        const n = a.name.toLowerCase();
+        if (n.startsWith('on') || n === 'href' || n === 'xlink:href' ||
+            /url\s*\(|javascript:/i.test(a.value)) el.removeAttribute(a.name);
+      });
+      walk(el);
+    });
+  };
+  walk(root);
+  root.removeAttribute('width');
+  root.removeAttribute('height');
+  if (!root.getAttribute('viewBox')) root.setAttribute('viewBox', '0 0 100 100');
+  return document.importNode(root, true);
 }
 
-/* ── MOVEMENT ──────────────────────────────────────────────── */
-function moveChar(id, location) {
-  const target = CHAR_OFFSETS[id][location];
-  if (!target) return;
-  characters[id].targetGx = target.gx;
-  characters[id].targetGy = target.gy;
-  const locNames = { home: 'за столом', meeting: 'на нараді', coffee: 'біля кави' };
-  const charNames = { max: 'МАКС', pixel: 'ПІКСЕЛЬ', vera: 'ВІРА' };
-  log(charNames[id], `→ ${locNames[location] || location}`, id === 'max' ? 'strategist' : id === 'pixel' ? 'designer' : 'copywriter');
+/* ─── UI ─── */
+const $ = id => document.getElementById(id);
+
+function badge(t) { $('phaseBadge').textContent = t; }
+
+let bannerT = null;
+function banner(t) {
+  const b = $('banner');
+  $('bannerText').textContent = t;
+  b.classList.add('on');
+  clearTimeout(bannerT);
+  bannerT = setTimeout(() => b.classList.remove('on'), 2600);
 }
 
-/* ── CONTROLS ──────────────────────────────────────────────── */
-window.Agency = {
-  start() {
-    if (simRunning) return;
-    const brief = document.getElementById('taskInput').value.trim();
-    if (!brief) {
-      log('СИСТЕМА', 'Введіть завдання для агенції!', 'system');
-      document.getElementById('taskInput').focus();
-      return;
-    }
-
-    currentBrief = brief;
-    simRunning = true;
-    simSeconds = 0;
-    agentThoughts = { max: '', pixel: '', vera: '' };
-    currentPhase = 0;
-
-    // Reset characters to home
-    Object.keys(characters).forEach(id => {
-      const home = CHAR_OFFSETS[id].home;
-      characters[id].gx = home.gx;
-      characters[id].gy = home.gy;
-      characters[id].targetGx = home.gx;
-      characters[id].targetGy = home.gy;
-    });
-
-    // UI
-    setStatus(true);
-    document.getElementById('btnStart').disabled = true;
-    document.getElementById('btnStop').disabled = false;
-    document.getElementById('resultsSection').style.display = 'none';
-
-    log('СИСТЕМА', `★ Агенція відкрита!`, 'system');
-    log('СИСТЕМА', `Бриф: "${brief}"`, 'system');
-
-    const apiKey = document.getElementById('apiKey').value.trim();
-    log('СИСТЕМА', apiKey ? 'Режим Claude AI.' : 'Демо-режим (без API ключа).', 'system');
-
-    // Clock
-    clockTimer = setInterval(() => {
-      simSeconds++;
-      const m = String(Math.floor(simSeconds / 60)).padStart(2, '0');
-      const s = String(simSeconds % 60).padStart(2, '0');
-      document.getElementById('clockDisplay').textContent = `${m}:${s}`;
-    }, 1000);
-
-    // Run the workflow
-    runSimulation(apiKey).then(() => {
-      if (simRunning) {
-        simRunning = false;
-        clearInterval(clockTimer);
-        setStatus(false);
-        document.getElementById('btnStart').disabled = false;
-        document.getElementById('btnStop').disabled = true;
-      }
-    });
-  },
-
-  stop() {
-    simRunning = false;
-    clearInterval(clockTimer);
-    ['max', 'pixel', 'vera'].forEach(hideBubble);
-    setStatus(false);
-    document.getElementById('btnStart').disabled = false;
-    document.getElementById('btnStop').disabled = true;
-    document.getElementById('phaseBadge').textContent = '—';
-    log('СИСТЕМА', '■ Симуляцію зупинено.', 'system');
-  }
-};
-
-/* ── UI HELPERS ────────────────────────────────────────────── */
-function setStatus(active) {
-  document.getElementById('statusDot').className = 'status-dot' + (active ? ' active' : '');
-  document.getElementById('statusText').textContent = active ? 'LIVE' : 'ОФЛАЙН';
+function status(on) {
+  $('statusDot').classList.toggle('on', on);
+  $('statusText').textContent = on ? 'LIVE' : 'ОФЛАЙН';
 }
 
 function log(who, msg, role) {
-  const feed = document.getElementById('logFeed');
+  const feed = $('log');
   const row = document.createElement('div');
-  row.className = `log-row ${role || 'system'}`;
-  row.innerHTML = `<span class="log-who">${esc(who)}</span><span class="log-msg">${esc(msg)}</span>`;
-  feed.insertBefore(row, feed.firstChild);
-  while (feed.children.length > 80) feed.removeChild(feed.lastChild);
+  row.className = `lrow ${role || 'system'}`;
+  const a = document.createElement('span'); a.className = 'lwho'; a.textContent = who;
+  const b = document.createElement('span'); b.className = 'lmsg'; b.textContent = msg;
+  row.append(a, b);
+  feed.prepend(row);
+  while (feed.children.length > 90) feed.lastChild.remove();
 }
 
-/* ── UTILITIES ─────────────────────────────────────────────── */
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const pick = a => a[Math.floor(Math.random() * a.length)];
 
-async function typeText(el, text, speed) {
+async function type(el, text) {
   el.textContent = '';
-  for (const ch of text) {
-    if (!simRunning) break;
-    el.textContent += ch;
-    await sleep(speed);
+  const step = text.length > 150 ? 2 : 1;
+  for (let i = 0; i < text.length; i += step) {
+    if (!running) { el.textContent = text; return; }
+    el.textContent = text.slice(0, i + step);
+    await sleep(16);
+  }
+  el.textContent = text;
+}
+
+/* ─── старт / стоп ─── */
+async function start() {
+  if (running) return;
+  const key = $('apiKey').value.trim();
+  brief = $('taskInput').value.trim();
+  if (!brief) {
+    log('СИСТЕМА', 'Впишіть завдання для агенції.', 'system');
+    $('taskInput').focus();
+    banner('ПОТРІБЕН БРИФ');
+    return;
+  }
+
+  try {
+    localStorage.setItem('8bit.key', key);
+    localStorage.setItem('8bit.brief', brief);
+  } catch {}
+
+  running = true; phase = 0; secs = 0;
+  thoughts = { max: '', pixel: '', vera: '' };
+  results = null;
+  hideAll();
+  $('resSec').hidden = true;
+  IDS.forEach(id => move(id, 'desk'));
+
+  status(true);
+  $('btnStart').disabled = true;
+  $('btnStop').disabled = false;
+  $('btnAgain').disabled = true;
+  if (window.matchMedia('(max-width: 899px)').matches) $('setupSec').classList.add('closed');
+
+  log('СИСТЕМА', `Бриф: «${brief}»`, 'system');
+  log('СИСТЕМА', key ? `Мозок: Claude (${MODEL}).` : 'Демо-режим — без API ключа.', 'system');
+
+  clearInterval(tick);
+  tick = setInterval(() => {
+    secs++;
+    $('clock').textContent =
+      `${String(Math.floor(secs / 60)).padStart(2,'0')}:${String(secs % 60).padStart(2,'0')}`;
+  }, 1000);
+
+  try { await run(key); }
+  catch (e) { log('СИСТЕМА', `Збій: ${e.message}`, 'system'); }
+  finally {
+    running = false;
+    clearInterval(tick);
+    status(false);
+    $('btnStart').disabled = false;
+    $('btnStop').disabled = true;
+    $('btnAgain').disabled = false;
   }
 }
 
-/* ── INIT ──────────────────────────────────────────────────── */
-initCanvas();
-animate();
-log('СИСТЕМА', 'Введіть завдання та натисніть ЗАПУСТИТИ.', 'system');
+function stop() {
+  if (!running) return;
+  running = false;
+  clearInterval(tick);
+  hideAll();
+  status(false);
+  badge('зупинено');
+  banner('ЗУПИНЕНО');
+  $('btnStart').disabled = false;
+  $('btnStop').disabled = true;
+  $('btnAgain').disabled = false;
+  log('СИСТЕМА', 'Симуляцію зупинено.', 'system');
+}
+
+/* ─── ініціалізація ─── */
+function boot() {
+  initCanvas();
+  requestAnimationFrame(loop);
+
+  // прес-сети
+  const wrap = $('presetChips');
+  PRESETS.forEach(p => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'pchip';
+    b.textContent = p.length > 42 ? p.slice(0, 40) + '…' : p;
+    b.title = p;
+    b.addEventListener('click', () => { $('taskInput').value = p; $('taskInput').focus(); });
+    wrap.append(b);
+  });
+
+  // відновлення зі localStorage
+  try {
+    const k = localStorage.getItem('8bit.key');
+    const b = localStorage.getItem('8bit.brief');
+    if (k) $('apiKey').value = k;
+    if (b) $('taskInput').value = b;
+  } catch {}
+
+  $('btnStart').addEventListener('click', start);
+  $('btnStop').addEventListener('click', stop);
+  $('btnAgain').addEventListener('click', () => { if (!running) start(); });
+  $('setupToggle').addEventListener('click', () => $('setupSec').classList.toggle('closed'));
+
+  $('btnCopy').addEventListener('click', async () => {
+    const r = window.__res;
+    if (!r) return;
+    const txt = `Бриф: ${brief}\n\nПОЗИЦІОНУВАННЯ: ${r.pos}\nНАЗВА: ${r.nm}\nСЛОГАН: ${r.sl}\nЛОГОТИП: ${r.concept}`;
+    try { await navigator.clipboard.writeText(txt); log('СИСТЕМА', 'Результат скопійовано.', 'system'); }
+    catch { log('СИСТЕМА', 'Не вдалося скопіювати — виділіть текст вручну.', 'system'); }
+  });
+
+  document.fonts?.ready.then(draw);
+  badge('готово до старту');
+  log('СИСТЕМА', 'Впишіть завдання (або торкніться підказки) та натисніть ЗАПУСТИТИ.', 'system');
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+else boot();

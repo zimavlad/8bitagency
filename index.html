@@ -1,96 +1,112 @@
 <!DOCTYPE html>
 <html lang="uk">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>8BIT AGENCY ★ Креативна Симуляція</title>
-  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#A67C52">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>8BIT AGENCY — креативна агенція</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div class="app">
 
-  <header class="header">
-    <div class="title">★ 8BIT AGENCY ★</div>
-    <div class="status-line">
-      <span class="status-dot" id="statusDot"></span>
-      <span id="statusText">ОФЛАЙН</span>
-      <span class="spacer"></span>
-      <span class="phase-badge" id="phaseBadge">—</span>
-      <span class="spacer"></span>
-      <span id="clockDisplay">00:00</span>
+  <header class="hdr">
+    <div class="hdr-top">
+      <span class="logo">★ 8BIT AGENCY</span>
+      <span class="hdr-right">
+        <span class="dot" id="statusDot"></span>
+        <span id="statusText">ОФЛАЙН</span>
+      </span>
+    </div>
+    <div class="hdr-sub">
+      <span class="chip" id="phaseBadge">готово до старту</span>
+      <span class="clock" id="clock">00:00</span>
     </div>
   </header>
 
-  <main class="main">
-    <!-- ═══ OFFICE VIEWPORT ═══ -->
-    <div class="viewport" id="viewport">
-      <canvas id="office" width="800" height="500"></canvas>
+  <div class="main">
 
-      <!-- Thought bubbles (overlaid on canvas) -->
+    <!-- ══ СЦЕНА ══ -->
+    <div class="stage" id="stage">
+      <canvas id="office"></canvas>
+
       <div class="bubble" id="bubble-max">
-        <div class="bubble-who" style="color:#C62828">МАКС</div>
-        <div class="bubble-text" id="bubbleText-max"></div>
-        <div class="bubble-tail"></div>
+        <div class="bw" style="color:#C62828">МАКС · стратег</div>
+        <div class="bt" id="bt-max"></div><i class="tail"></i>
       </div>
       <div class="bubble" id="bubble-pixel">
-        <div class="bubble-who" style="color:#6A1B9A">ПІКСЕЛЬ</div>
-        <div class="bubble-text" id="bubbleText-pixel"></div>
-        <div class="bubble-tail"></div>
+        <div class="bw" style="color:#6A1B9A">ПІКСЕЛЬ · дизайнер</div>
+        <div class="bt" id="bt-pixel"></div><i class="tail"></i>
       </div>
       <div class="bubble" id="bubble-vera">
-        <div class="bubble-who" style="color:#00695C">ВІРА</div>
-        <div class="bubble-text" id="bubbleText-vera"></div>
-        <div class="bubble-tail"></div>
+        <div class="bw" style="color:#00695C">ВІРА · копірайтер</div>
+        <div class="bt" id="bt-vera"></div><i class="tail"></i>
       </div>
 
-      <!-- Phase overlay -->
-      <div class="phase-overlay" id="phaseOverlay">
-        <div class="phase-title" id="phaseTitle"></div>
-      </div>
+      <div class="banner" id="banner"><span id="bannerText"></span></div>
     </div>
 
-    <!-- ═══ SIDE PANEL ═══ -->
-    <aside class="panel">
-      <!-- Setup -->
-      <div class="panel-section">
-        <div class="section-title">⚙ НАЛАШТУВАННЯ</div>
-        <label class="lbl">ANTHROPIC API KEY</label>
-        <input type="password" class="inp" id="apiKey" placeholder="sk-ant-..." autocomplete="off"/>
-        <div class="hint">Без ключа = демо-режим</div>
+    <!-- ══ ПАНЕЛЬ ══ -->
+    <aside class="panel" id="panel">
 
-        <label class="lbl">ЗАВДАННЯ ДЛЯ АГЕНЦІЇ</label>
-        <textarea class="inp task-input" id="taskInput" rows="4" placeholder="Опишіть задачу, наприклад:&#10;Зробити бренд для кав'ярні в Києві, яка спеціалізується на specialty coffee для молодих професіоналів"></textarea>
+      <section class="sec" id="setupSec">
+        <button class="sec-h" id="setupToggle" type="button">
+          <span>⚙ НАЛАШТУВАННЯ</span><span class="caret">▾</span>
+        </button>
+        <div class="sec-b" id="setupBody">
+          <label class="lbl" for="apiKey">ANTHROPIC API KEY</label>
+          <input id="apiKey" class="inp" type="password" inputmode="text"
+                 autocomplete="off" autocapitalize="off" spellcheck="false"
+                 placeholder="sk-ant-...">
+          <p class="hint">Порожньо = демо-режим. Ключ зберігається лише у цьому браузері.</p>
 
-        <button class="btn btn-go" id="btnStart" onclick="window.Agency.start()">▶ ЗАПУСТИТИ</button>
-        <button class="btn btn-stop" id="btnStop" onclick="window.Agency.stop()" disabled>■ ЗУПИНИТИ</button>
-      </div>
-
-      <!-- Log -->
-      <div class="panel-section log-section">
-        <div class="section-title">📋 АКТИВНІСТЬ</div>
-        <div class="log" id="logFeed"></div>
-      </div>
-
-      <!-- Results -->
-      <div class="panel-section results-section" id="resultsSection" style="display:none">
-        <div class="section-title">🏆 РЕЗУЛЬТАТ</div>
-        <div class="result-block">
-          <div class="result-role" style="color:#C62828">МАКС — СТРАТЕГ</div>
-          <div class="result-content" id="resultStrategy">—</div>
+          <label class="lbl" for="taskInput">ЗАВДАННЯ ДЛЯ АГЕНЦІЇ</label>
+          <textarea id="taskInput" class="inp ta" rows="3"
+                    placeholder="Напр.: бренд спешелті-кавʼярні в Києві для молодих професіоналів"></textarea>
+          <div class="chips" id="presetChips"></div>
         </div>
-        <div class="result-block">
-          <div class="result-role" style="color:#00695C">ВІРА — КОПІРАЙТЕР</div>
-          <div class="result-content" id="resultCopy">—</div>
+      </section>
+
+      <section class="sec sec-actions">
+        <button class="btn go" id="btnStart" type="button">▶ ЗАПУСТИТИ</button>
+        <div class="btn-row">
+          <button class="btn ghost" id="btnStop" type="button" disabled>■ СТОП</button>
+          <button class="btn ghost" id="btnAgain" type="button" disabled>↻ ЩЕ РАЗ</button>
         </div>
-        <div class="result-block">
-          <div class="result-role" style="color:#6A1B9A">ПІКСЕЛЬ — ДИЗАЙНЕР</div>
-          <div class="result-content" id="resultDesign">—</div>
-          <div class="logo-preview" id="logoPreview"></div>
+      </section>
+
+      <section class="sec res" id="resSec" hidden>
+        <div class="sec-h static"><span>🏆 РЕЗУЛЬТАТ</span></div>
+        <div class="sec-b">
+          <div class="rblk">
+            <div class="rrole" style="color:#C62828">МАКС — позиціонування</div>
+            <div class="rtxt" id="resStrategy">—</div>
+          </div>
+          <div class="rblk">
+            <div class="rrole" style="color:#00695C">ВІРА — назва та слоган</div>
+            <div class="rtxt" id="resCopy">—</div>
+          </div>
+          <div class="rblk">
+            <div class="rrole" style="color:#6A1B9A">ПІКСЕЛЬ — логотип</div>
+            <div class="logo-card" id="logoPreview" hidden></div>
+            <div class="rtxt" id="resDesign">—</div>
+          </div>
+          <button class="btn ghost sm" id="btnCopy" type="button">⧉ Скопіювати результат</button>
         </div>
-      </div>
+      </section>
+
+      <section class="sec log-sec">
+        <div class="sec-h static"><span>📋 АКТИВНІСТЬ</span></div>
+        <div class="log" id="log"></div>
+      </section>
+
     </aside>
-  </main>
-
-  <script src="agency.js"></script>
+  </div>
+</div>
+<script src="agency.js"></script>
 </body>
 </html>
