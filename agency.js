@@ -771,25 +771,35 @@ const PRESETS = [
 ];
 
 /* ─── стан ─── */
-let running = false, phase = 0, brief = '', secs = 0, tick = null;
+let running = false, phase = 0, brief = '', secs = 0, tick = null, demoMode = false;
+let runId = 0;                                   // покоління запуску
+/** чи цей запуск ще актуальний (СТОП або новий старт скасовують попередній) */
+const alive = rid => running && rid === runId;
 let thoughts = { max: '', pixel: '', vera: '' };
 let results = null;
 
 /* ─── API ─── */
 async function ask(system, user, key) {
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: MODEL, max_tokens: 400, system,
-      messages: [{ role: 'user', content: user }],
-    }),
-  });
+  let r;
+  try {
+    r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: MODEL, max_tokens: 400, system,
+        messages: [{ role: 'user', content: user }],
+      }),
+    });
+  } catch {
+    throw new Error('немає звʼязку з api.anthropic.com — перевірте мережу');
+  }
+  if (r.status === 401) throw new Error('ключ не прийнято (401) — перевірте API key');
+  if (r.status === 429) throw new Error('ліміт запитів (429) — спробуйте за хвилину');
   if (!r.ok) {
     let m = `HTTP ${r.status}`;
     try { const j = await r.json(); if (j.error?.message) m = j.error.message; } catch {}
@@ -800,16 +810,17 @@ async function ask(system, user, key) {
 }
 
 /* ─── думка з бабликом ─── */
-async function think(id, prompt, key, isFinal) {
+async function think(id, prompt, key, isFinal, rid) {
   const role = ROLES[id];
   hideBubbles(id);
   const el = document.getElementById(`bubble-${id}`);
   const tx = document.getElementById(`bt-${id}`);
-  tx.textContent = '';
+  tx.textContent = 'думає';
   tx.classList.add('wait');
   el.classList.add('on');
   placeBubbles();
 
+  if (!alive(rid)) return '';
   let out;
   if (!key) {
     await sleep(1100 + Math.random() * 700);
@@ -819,15 +830,16 @@ async function think(id, prompt, key, isFinal) {
       out = await ask(SYS[role], prompt, key);
     } catch (e) {
       log('СИСТЕМА', `Помилка API: ${e.message}`, 'system');
+      demoMode = true;
       out = isFinal ? DEMO[role][3] : pick(DEMO[role][phase] || DEMO[role][1]);
       log('СИСТЕМА', 'Перемикаюсь на демо-думку.', 'system');
     }
   }
-  if (!running) return out;
+  if (!alive(rid)) return out;
 
   tx.classList.remove('wait');
   // у баблі показуємо коротку версію (без службових полів)
-  await type(tx, isFinal ? shorten(out) : out);
+  await type(tx, isFinal ? shorten(out) : out, rid);
   thoughts[id] = out;
   log(NAMES[id], isFinal ? shorten(out) : out, role);
   return out;
@@ -846,7 +858,7 @@ const hideAll = () => IDS.forEach(id =>
   document.getElementById(`bubble-${id}`).classList.remove('on'));
 
 /* ─── раунди ─── */
-async function run(key) {
+async function run(key, rid) {
   const R = [
     { n: 1, title: 'РАУНД 1 · АНАЛІЗ',      spot: 'desk'  },
     { n: 2, title: 'РАУНД 2 · ОБГОВОРЕННЯ', spot: 'table' },
@@ -854,7 +866,7 @@ async function run(key) {
   ];
 
   for (const r of R) {
-    if (!running) return;
+    if (!alive(rid)) return;
     phase = r.n;
     banner(r.title);
     badge(r.title.toLowerCase());
@@ -862,10 +874,10 @@ async function run(key) {
 
     IDS.forEach(id => move(id, r.spot));
     await sleep(1900);
-    if (!running) return;
+    if (!alive(rid)) return;
 
     for (const id of IDS) {
-      if (!running) return;
+      if (!alive(rid)) return;
       const role = ROLES[id];
       let prompt;
       if (r.n === 1) {
@@ -877,17 +889,18 @@ async function run(key) {
           ? `Бриф: ${brief}\n\nЩо сказали колеги:\n${others}\n\nТвоя реакція: з чим погоджуєшся, що заперечуєш, що розвиваєш?`
           : `Бриф: ${brief}\n\nПідсумок обговорення:\n${others}\n\n${FINAL[role]}`;
       }
-      const out = await think(id, prompt, key, r.n === 3);
+      const out = await think(id, prompt, key, r.n === 3, rid);
       if (r.n === 3) (results ||= {})[id] = out;
       await sleep(r.n === 3 ? 1500 : 2100);
     }
 
-    if (!running) return;
+    if (!alive(rid)) return;
     await sleep(2300);
     hideAll();
     await sleep(500);
   }
 
+  if (!alive(rid)) return;
   showResults(results || {});
   banner('★ ГОТОВО ★');
   badge('результат готовий');
@@ -926,6 +939,7 @@ function showResults(r) {
   if (svg) { box.replaceChildren(svg); box.hidden = false; }
   else { box.replaceChildren(); box.hidden = true; }
 
+  document.getElementById('demoNote').hidden = !demoMode;
   window.__res = { pos, nm, sl, concept: document.getElementById('resDesign').textContent };
   document.getElementById('btnAgain').disabled = false;
   sec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1002,11 +1016,11 @@ function log(who, msg, role) {
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const pick = a => a[Math.floor(Math.random() * a.length)];
 
-async function type(el, text) {
+async function type(el, text, rid) {
   el.textContent = '';
   const step = text.length > 150 ? 2 : 1;
   for (let i = 0; i < text.length; i += step) {
-    if (!running) { el.textContent = text; return; }
+    if (!alive(rid)) { el.textContent = text; return; }
     el.textContent = text.slice(0, i + step);
     await sleep(16);
   }
@@ -1030,7 +1044,8 @@ async function start() {
     localStorage.setItem('8bit.brief', brief);
   } catch {}
 
-  running = true; phase = 0; secs = 0;
+  running = true; phase = 0; secs = 0; demoMode = !key;
+  const myRun = ++runId;
   thoughts = { max: '', pixel: '', vera: '' };
   results = null;
   hideAll();
@@ -1053,9 +1068,10 @@ async function start() {
       `${String(Math.floor(secs / 60)).padStart(2,'0')}:${String(secs % 60).padStart(2,'0')}`;
   }, 1000);
 
-  try { await run(key); }
-  catch (e) { log('СИСТЕМА', `Збій: ${e.message}`, 'system'); }
+  try { await run(key, myRun); }
+  catch (e) { if (alive(myRun)) log('СИСТЕМА', `Збій: ${e.message}`, 'system'); }
   finally {
+    if (myRun !== runId) return;          // цей запуск уже змінено новішим
     running = false;
     clearInterval(tick);
     status(false);
@@ -1068,6 +1084,7 @@ async function start() {
 function stop() {
   if (!running) return;
   running = false;
+  runId++;                                // скасовує цикл, що вже виконується
   clearInterval(tick);
   hideAll();
   status(false);

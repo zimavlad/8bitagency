@@ -137,6 +137,7 @@ body {
   color: var(--ink);
   overflow-wrap: anywhere;
 }
+.bt.wait { opacity: .5; font-style: italic; }
 .bt.wait::after { content: '▌'; animation: bl .7s steps(1) infinite; }
 
 .tail {
@@ -313,6 +314,16 @@ body {
   margin-bottom: 7px;
 }
 .logo-card svg { width: 92px; height: 92px; display: block; }
+
+.demo-note {
+  font-size: 5.5px;
+  line-height: 1.9;
+  color: var(--wood);
+  background: #FFF6E2;
+  border-left: 3px solid var(--amber);
+  padding: 7px 8px;
+  margin-bottom: 8px;
+}
 
 /* ─── LOG ────────────────────── */
 .log-sec { display: flex; flex-direction: column; min-height: 120px; }
