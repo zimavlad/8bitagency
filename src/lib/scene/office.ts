@@ -614,8 +614,45 @@ export class Office {
 		});
 	}
 
+	/**
+	 * Нічне освітлення як карта світла: кімнату вкриває темрява, а лампи й екрани «вирізають» у ній плями —
+	 * тож світло лягає на стіл, підлогу, стіни й людей поруч, а не лише світиться навколо джерела.
+	 * Межі плям квантуються на кілька кроків, щоб світло було піксельним, як у Stardew.
+	 */
+	private lightCanvas: HTMLCanvasElement | null = null;
 	private nightTint(k: number) {
-		this.poly(this.room(), `rgba(22,16,52,${0.55 * k})`);
+		const lc = (this.lightCanvas ??= document.createElement('canvas'));
+		lc.width = SCENE_W;
+		lc.height = SCENE_H;
+		const l = lc.getContext('2d')!;
+		l.clearRect(0, 0, SCENE_W, SCENE_H);
+		// темрява тільки в межах кімнати
+		l.beginPath();
+		const room = this.room();
+		l.moveTo(room[0].x, room[0].y);
+		for (const p of room.slice(1)) l.lineTo(p.x, p.y);
+		l.closePath();
+		l.fillStyle = `rgba(18,12,44,${0.72 * k})`;
+		l.fill();
+		// світло вирізає темряву: східці 100% → 70% → 40% → 15%, сплюснуті по-ізометричному
+		l.globalCompositeOperation = 'destination-out';
+		const hole = (p: P, rad: number, power: number) => {
+			for (const [f, a] of [[1, 0.15], [0.75, 0.4], [0.5, 0.7], [0.28, 1]] as const) {
+				l.fillStyle = `rgba(0,0,0,${a * power})`;
+				l.beginPath();
+				l.ellipse(p.x, p.y, rad * f, rad * f * 0.6, 0, 0, Math.PI * 2);
+				l.fill();
+			}
+		};
+		hole(at(3.4, 4.4, 0), 110, 1);
+		hole(at(3.4, 4.4, 15), 60, 0.8);
+		hole(at(0.5, 3.4, 10), 80, 0.9);
+		for (const r of ROLES) { const d = DESKS[r]; hole(at(d.gx + 0.8, d.gy + 1.1, DESK_H), 42, 0.55); }
+		hole(at(6.9, 4.4, 20), 34, 0.4);
+		hole(at(0.2, 2.3, 50), 40, 0.25); // місячне світло з вікна
+		l.globalCompositeOperation = 'source-over';
+		this.o.drawImage(lc, 0, 0);
+		// теплий відтінок біля ламп і холодний біля екранів
 		const o = this.o;
 		o.globalCompositeOperation = 'lighter';
 		const glow = (p: P, rad: number, a: number, rgb = '255,170,80') => {
@@ -626,11 +663,11 @@ export class Office {
 			o.fillStyle = g;
 			o.fillRect(p.x - rad, p.y - rad, rad * 2, rad * 2);
 		};
-		glow(at(3.4, 4.4, 15), 70, 0.42);
-		glow(at(3.4, 4.4, 36), 22, 0.5, '255,210,140');
-		glow(at(0.35, 3.25, 34), 52, 0.5);
-		for (const r of ROLES) { const d = DESKS[r]; glow(at(d.gx + 0.7, d.gy + 0.45, DESK_H + 7), 20, 0.35, '120,230,190'); }
-		glow(at(6.8, 4.3, 30), 26, 0.25, '255,190,120');
+		glow(at(3.4, 4.4, 15), 80, 0.3);
+		glow(at(3.4, 4.4, 36), 20, 0.45, '255,210,140');
+		glow(at(0.35, 3.25, 34), 55, 0.35);
+		for (const r of ROLES) { const d = DESKS[r]; glow(at(d.gx + 0.7, d.gy + 0.3, DESK_H + 6), 22, 0.3, '120,230,190'); }
+		glow(at(6.8, 4.3, 30), 22, 0.18, '255,190,120');
 		o.globalCompositeOperation = 'source-over';
 	}
 

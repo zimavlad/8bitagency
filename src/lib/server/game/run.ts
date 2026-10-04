@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-	COMMS_ROUNDS, CONTENT, CORE, EDIT_SLOTS, ELEMENT_OWNER, ELEMENT_TITLE, MAX_CLIENT_ROUNDS, ROLE_NAME, ROLES,
+	COMMS_ROUNDS, CONTENT, DAY_START, STEP_HOURS, CORE, EDIT_SLOTS, ELEMENT_OWNER, ELEMENT_TITLE, MAX_CLIENT_ROUNDS, ROLE_NAME, ROLES,
 	type Brief, type Burnout, type ClientVerdict, type ContentElement, type ElementId, type ElementValue, type LogoSpec,
 	type Role, type RunPhase, type RunResult, type RunState, type Speaker, type Spot, type Staff, type StepKey
 } from '$lib/types';
@@ -34,6 +34,8 @@ export interface RunDeps {
 	dataDir: string;
 	burnout: Burnout;
 	morale: Burnout;
+	/** О котрій бриф почався (ігровий годинник). */
+	clock?: number;
 	/** Грейд і настрій кожного (junior/middle, образа після відмови в підвищенні). */
 	staff?: Record<Role, Staff>;
 	/** Мінімальна тривалість кроку, мс: щоб гравець встигав читати. У тестах 0. */
@@ -131,6 +133,7 @@ export class Run {
 			strategy: null,
 			steps: [],
 			task: null,
+			clock: deps.clock ?? DAY_START,
 			options: [],
 			editAvailable: false,
 			clientRound: 0,
@@ -220,6 +223,8 @@ export class Run {
 		this.state.task = { stage, label: '', done: 0, total, at: Date.now(), pace: this.deps.paceMs ?? 0 };
 	}
 	private step(label: string) {
+		// кожен крок — це ігровий час: повний бриф з усіма колами переходить через ніч у ранок
+		this.state.clock += STEP_HOURS;
 		if (this.state.task) this.state.task = { ...this.state.task, label, at: Date.now() };
 		this.emit();
 	}

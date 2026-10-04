@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { DEADLINE_DAY, PIZZA_COST, PROMO_AFTER, ROLES, START_MONEY, dailyCost as costOf, type Brief, type BriefForm, type GameState, type Ledger, type Perks, type Role, type RunState, type Staff } from '$lib/types';
+import { DAY_START, DEADLINE_DAY, PIZZA_COST, PROMO_AFTER, ROLES, START_MONEY, dailyCost as costOf, type Brief, type BriefForm, type GameState, type Ledger, type Perks, type Role, type RunState, type Staff } from '$lib/types';
 import { log } from '../log';
 import type { ModelClient } from '../model/client';
 import type { ImageModel } from '../model/images';
@@ -36,6 +36,7 @@ export function newGame(): GameState {
 		perks: perksFor(1),
 		team: { strategist: junior(), copywriter: junior(), designer: junior() },
 		ask: null,
+		clock: DAY_START,
 		over: null,
 		investorOk: false,
 		inbox: inboxFor(1, START_REP),
@@ -113,6 +114,7 @@ export class Game {
 			// Сейви до рівнів: брифи без рівня перегенеровуємо.
 			if (s.inbox.some((b) => !b.tier)) s.inbox = inboxFor(s.day, s.reputation);
 			if (!s.perks || s.perks.day !== s.day) s.perks = perksFor(s.day);
+			if (typeof s.clock !== 'number') s.clock = DAY_START;
 			s.team = Object.fromEntries(ROLES.map((r) => [r, s.team?.[r] ?? junior()])) as GameState['team'];
 			return s;
 		} catch {
@@ -177,6 +179,7 @@ export class Game {
 			morale: { ...this.state.morale },
 			staff: structuredClone(this.state.team),
 			paceMs: this.o.paceMs ?? 0,
+			clock: this.state.clock,
 			onChange: (r) => this.notify(r),
 			onFinish: (r) => this.settle(r),
 			onSpend: (p, usd) => this.spend(p, usd)
@@ -239,6 +242,7 @@ export class Game {
 		s.money -= dailyCost(s);
 		for (const r of ROLES) if (s.burnout[r] >= 50) s.hp[r] = clamp(s.hp[r] - 1);
 		s.day += 1;
+		s.clock = DAY_START;
 		s.perks = perksFor(s.day);
 		s.inbox = inboxFor(s.day, s.reputation);
 		if (s.money < 0) s.over = 'bankrupt';

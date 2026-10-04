@@ -180,6 +180,8 @@ export interface GameState {
 	team: Record<Role, Staff>;
 	/** Хто прийшов просити підвищення (лист чекає відповіді). */
 	ask: Role | null;
+	/** Годинник у грі: новий день починається о 9:00, бриф просуває час. */
+	clock: number;
 	/** Чим закінчилась гра, якщо закінчилась. */
 	over: 'bankrupt' | 'investor' | null;
 	/** Інвестор задоволений: тиждень пройдено в плюс. */
@@ -321,6 +323,8 @@ export interface RunState {
 	elements: Partial<Record<ElementId, ElementValue>>;
 	strategy: Strategy | null;
 	steps: StepRecord[];
+	/** Годинник у грі (години, можуть перейти за 24 — це вже ніч і наступний ранок). */
+	clock: number;
 	/** Поточна робота між рішеннями гравця: прогрес по кроках для смужки справа. */
 	task: Task | null;
 	/** Варіанти назви й слогана, з яких обирає гравець. */
@@ -340,6 +344,10 @@ export interface RunState {
 }
 
 /** Платформу клієнт приймає на 3-му колі, комунікацію — на 2-му: два кола «доїбок», потім «так». */
+/** Скільки ігрових годин займає один крок команди: повний бриф з усіма колами — від ранку до наступного ранку. */
+export const STEP_HOURS = 1;
+export const DAY_START = 9;
+
 export const MAX_CLIENT_ROUNDS = 3;
 export const COMMS_ROUNDS = 2;
 export const EDIT_SLOTS = 3;

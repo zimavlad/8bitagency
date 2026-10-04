@@ -24,12 +24,15 @@
 	let screen = $state<'title' | 'game'>('title');
 	let menu = $state(false);
 	let menuPaused = false;
-	/** Час у грі: справжній годинник плюс зсув (вихідний перемотує на ранок). */
-	const realHour = () => new Date().getHours() + new Date().getMinutes() / 60;
-	let shift = $state(0);
+	/**
+	 * Час у грі: ігровий годинник із сервера (бриф просуває його кроками, нова гра й новий день — 9:00).
+	 * Небо в вікні плавно доганяє годинник. ?h= у адресі фіксує годину для перевірок, вихідний перемотує сам.
+	 */
 	let fixedHour = $state<number | null>(null);
-	let tick = $state(realHour());
-	const hour = $derived(((fixedHour ?? tick) + shift + 24) % 24);
+	let override = $state<number | null>(null);
+	let shown = $state(9);
+	const target = $derived(fixedHour ?? override ?? (live.run ? live.run.clock : live.game?.clock ?? 9));
+	const hour = $derived(((shown % 24) + 24) % 24);
 	let mail = $state<'investor' | null>(null);
 	let tour = $state(false);
 	let briefOpen = $state(false);
@@ -58,10 +61,12 @@
 	/** Скільки тримати вердикт, поки клієнт договорює репліки над головою. */
 	const talk = $derived(wide ? (run?.verdicts.at(-1)?.lines.length ?? 0) * 2600 + 500 : 700);
 
-	/** Перемотати ігровий час на годину h (решта дня йде від неї). */
-	function setHour(h: number) {
-		shift = h - (fixedHour ?? tick);
+	/** Перемотати ігровий час на годину h (для анімації вихідного). */
+	function setHour(h: number | null) {
+		override = h;
+		if (h !== null) shown = h;
 	}
+	const hhmm = $derived(`${String(Math.floor(hour)).padStart(2, '0')}:${String(Math.floor((hour % 1) * 4) * 15).padStart(2, '0')}`);
 
 	/** Вихідний: усі виходять у двері, за вікном вечір і ніч, повертаються зранку — інше світло. */
 	async function dayOff() {
@@ -72,7 +77,8 @@
 		const ok = await live.gameAction({ action: 'rest' });
 		if (ok) live.say('Офіс порожній. Ніч…');
 		await new Promise((r) => setTimeout(r, 2200));
-		setHour(8.5);
+		setHour(null);
+		shown = 9;
 		await new Promise((r) => setTimeout(r, 900));
 		away = false;
 		if (ok) live.say('Ранок. Повернулись відпочилими: стрес −35, мораль +10');
@@ -101,7 +107,8 @@
 		menuPaused = false;
 		screen = 'game';
 		tab = 'inbox';
-		shift = 0;
+		override = null;
+		shown = 9;
 		investorSeen = false;
 		mail = 'investor';
 	}
@@ -124,8 +131,14 @@
 	onMount(() => {
 		const q = new URLSearchParams(location.search);
 		const fh = q.get('h');
-		if (fh !== null) fixedHour = Number(fh);
-		else clock = setInterval(() => (tick = realHour()), 60_000);
+		if (fh !== null) fixedHour = shown = Number(fh);
+		else shown = target;
+		// небо плавно доганяє ігровий годинник; новий ранок — без «прокрутки назад» через ніч
+		clock = setInterval(() => {
+			const t = target;
+			if (t < shown - 1) shown = t;
+			else if (Math.abs(t - shown) > 0.01) shown += Math.sign(t - shown) * Math.min(Math.abs(t - shown), 0.08);
+		}, 100);
 		const beat = setInterval(() => (now = Date.now()), 1000);
 		addEventListener('beforeunload', () => clearInterval(beat));
 		if (q.has('play')) screen = 'game';
@@ -162,7 +175,7 @@
 		<button class="brand" onclick={openMenu} title="Меню (Esc)">8bitagency</button>
 		{#if live.demo}<span class="demo" title="Без ключа Claude відповідає підставна модель">демо</span>{/if}
 		<div class="hud">
-			<span class="kpi" title="День"><span class="faint dw">день</span> <span class="num">{g.day}</span></span>
+			<span class="kpi" title="День і час у грі"><span class="faint dw">день</span> <span class="num">{g.day}</span> <span class="num faint">{hhmm}</span></span>
 			<span class="kpi" title="Гроші" data-tour="money"><Icon name="coin" size={16} /><Num value={g.money} width={6} suffix=" ₴" /></span>
 			<span class="kpi" title="Репутація; рівень агенції"><Icon name="star" size={16} /><Num value={g.reputation} width={3} /><span class="faint lvl">рів. {tierOf(g.reputation)}</span></span>
 			<span class="kpi bal" title="Орієнтовний залишок на рахунках API"><span class="faint">Claude</span> <span class="num">${Math.max(0, g.ledger.claude.usd - g.ledger.claude.spent).toFixed(2)}</span> <span class="faint">Gemini</span> <span class="num">${Math.max(0, g.ledger.gemini.usd - g.ledger.gemini.spent).toFixed(2)}</span></span>
