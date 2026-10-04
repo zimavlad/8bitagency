@@ -29,7 +29,7 @@
 			<Avatar who={r} size={52} />
 			<div class="mb">
 				<div class="top"><span class="name">{g.team[r].grade}-{ROLE_NAME[r].toLowerCase()}</span><span class="faint doing">{g.team[r].sulk ? 'ображений(а)' : a.doing}</span></div>
-				<p class="faint small">Прийнятих проєктів: {g.team[r].done}{g.team[r].grade === 'junior' ? ' з 5 до розмови про middle' : ''}</p>
+				<p class="faint small">Проєктів: {g.team[r].done}{g.team[r].grade === 'junior' ? '/5 до розмови «я вже middle»' : ''}</p>
 				<Bar label="Здоровʼя" value={a.hp} kind="hp" />
 				<Bar label="Стрес" value={a.burnout} kind="stress" />
 				<Bar label="Мораль" value={a.morale} kind="morale" />

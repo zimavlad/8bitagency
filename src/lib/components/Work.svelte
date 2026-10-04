@@ -55,7 +55,7 @@
 		</div>
 	</header>
 	<p class="muted quote">«{run.brief.text}»</p>
-	<p class="faint tiny">Рівень {run.brief.tier}: {TIER_NAME[run.brief.tier]} · передплата 20% уже на рахунку, 80% — коли клієнт прийме все</p>
+	<p class="faint tiny">Рівень {run.brief.tier}: {TIER_NAME[run.brief.tier]} · 20% уже на рахунку, 80% — коли клієнт скаже «беру»</p>
 
 	<ol class="stages" aria-label="Етапи брифу">
 		{#each STAGES as st, i}
@@ -69,7 +69,7 @@
 			<div class="segs">{#each Array(task.total) as _, i}<i><b style:width="{i < task.done ? 100 : i === task.done ? part * 100 : 0}%"></b></i>{/each}</div>
 		</div>
 	{/if}
-	{#if run.steps.length}<button class="btn sm ghost hist" onclick={() => (history = true)}><Icon name="eye" size={14} />Що було на попередніх кроках</button>{/if}
+	{#if run.steps.length}<button class="btn sm ghost hist" onclick={() => (history = true)}><Icon name="eye" size={14} />Що було</button>{/if}
 
 	<div class="status panel" class:gold={waiting} aria-live="polite">
 		{#if run.paused}<Icon name="pause" size={16} />{:else if busy}<span class="spin" aria-hidden="true"></span>{/if}

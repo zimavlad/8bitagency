@@ -386,7 +386,7 @@ export class Run {
 
 		// 1. стратегиня читає сама
 		this.work('platform', 4);
-		this.step('Стратегиня читає бриф і шукає інсайт');
+		this.step('Стратегиня шукає, чого насправді боїться клієнт');
 		this.phase('read', 'Стратегиня читає бриф', { strategist: 'desk', copywriter: 'desk', designer: 'desk' });
 		this.agent('copywriter', 'idle', 'чекає на стратегиню');
 		this.agent('designer', 'idle', 'чекає на стратегиню');
@@ -402,7 +402,7 @@ export class Run {
 
 		// 2. радиться з колегами
 		await this.gate();
-		this.step('Стратегиня радиться з копірайтером і дизайнером');
+		this.step('Нарада біля столу. Хтось уже доїдає піцу');
 		this.phase('huddle', 'Стратегиня радиться з колегами', { strategist: 'table', copywriter: 'table', designer: 'table' });
 		this.agent('strategist', 'idle', 'розповідає напрям');
 		this.say('strategist', this.read.direction, 'thought');
@@ -423,7 +423,7 @@ export class Run {
 
 		// 3. позиціонування
 		await this.gate();
-		this.step('Стратегиня формулює позиціонування');
+		this.step('Стратегиня втискає суть в одне речення');
 		this.phase('position', 'Стратегиня формулює позиціонування', { strategist: 'board', copywriter: 'desk', designer: 'desk' });
 		this.agent('strategist', 'thinking', 'пише позиціонування');
 		const p = normPositioning(await this.ask('strategist', 'core', prompt.positioning(notes), SCHEMA.positioning, () => fake.positioning(b)));
@@ -436,7 +436,7 @@ export class Run {
 
 		// 4. назва: 3 варіанти, обирає гравець
 		await this.gate();
-		this.step('Копірайтер шукає три назви зі слоганом');
+		this.step('Копірайтер викреслює двадцяту назву');
 		this.phase('naming', 'Копірайтер шукає назву', { strategist: 'coffee' });
 		this.agent('copywriter', 'thinking', 'шукає назву');
 		const g2 = await this.maybeGpt('copywriter', 'naming');
@@ -447,7 +447,7 @@ export class Run {
 		this.agent('copywriter', 'idle', 'чекає твого вибору');
 		this.tick();
 		this.idle();
-		this.phase('pick_name', 'Обери назву й слоган — із цим піде дизайнер', { copywriter: 'table', strategist: 'table' });
+		this.phase('pick_name', 'Твій хід: обери назву', { copywriter: 'table', strategist: 'table' });
 		const pick = (await this.wait(['pick_name'])) as { action: 'pick'; index: number };
 		const chosen = this.state.options[pick.index];
 		this.setEl('name', chosen.name, [], { why: chosen.why, rejected: this.state.options.filter((_, i) => i !== pick.index).map((o) => ({ text: o.name, reason: o.slogan })) });
@@ -459,7 +459,7 @@ export class Run {
 		// 5. знак
 		await this.gate();
 		this.work('platform', 1);
-		this.step('Дизайнер малює знак під обрану назву');
+		this.step('Дизайнер мовчки малює знак');
 		this.phase('logo', 'Дизайнер малює знак', { designer: 'desk', copywriter: 'desk' });
 		this.agent('designer', 'thinking', 'малює знак');
 		const lg = await this.drawLogo('core', prompt.logo(this.pos, chosen.name, chosen.slogan));
@@ -475,11 +475,11 @@ export class Run {
 
 		// 8. канали
 		await this.gate();
-		this.phase('content', 'Команда робить комунікацію під затверджену платформу', { strategist: 'desk', copywriter: 'desk', designer: 'desk' });
+		this.phase('content', 'Команда робить рекламу під затверджену платформу', { strategist: 'desk', copywriter: 'desk', designer: 'desk' });
 		this.work('comms', CONTENT.length + 1);
-		this.step('Команда пише тексти для Threads, Reels, банера й ролика');
+		this.step('Пишуть пости, рілси й сценарій ролика');
 		await Promise.all(CONTENT.map((id) => this.contentStep(id).then(() => this.tick())));
-		this.step('Дизайнер малює банер і обкладинку ролика');
+		this.step('Дизайнер малює банер і обкладинку');
 		await this.images();
 		this.tick();
 		this.contentAccepted = await this.stage('content');
@@ -533,7 +533,7 @@ export class Run {
 		this.state.editAvailable = true;
 		for (;;) {
 			this.idle();
-			this.phase(playerPhase, this.state.editAvailable ? 'Твоє слово: глянь зведення, покажи клієнту або дай правки' : 'Правки враховано. Показуємо клієнту?', { strategist: 'table', copywriter: 'table', designer: 'table' });
+			this.phase(playerPhase, this.state.editAvailable ? 'Твій хід: зведення чекає' : 'Правки внесли. Несемо клієнту?', { strategist: 'table', copywriter: 'table', designer: 'table' });
 			for (const r of ROLES) this.agent(r, 'idle', 'чекає твого рішення');
 			const d = await this.wait([playerPhase]);
 			if (d.action !== 'edit') break;
@@ -549,7 +549,7 @@ export class Run {
 		for (let round = 1; round <= rounds; round++) {
 			this.state.clientRound = round;
 			this.work(stage === 'core' ? 'platform' : 'comms', 1);
-			this.step(`${name} уважно дивиться${round > 1 ? ' переробку' : ''}`);
+			this.step(round > 1 ? `${name} шукає, що б ще поміняти` : `${name} гортає презентацію з телефона`);
 			this.phase(stage === 'core' ? 'client_core' : 'client_content', `${name} дивиться роботу${round > 1 ? ` (коло ${round})` : ''}`, { strategist: 'table', copywriter: 'table', designer: 'table' });
 			for (const r of ROLES) this.agent(r, 'idle', 'нервово чекає');
 			await this.gate();
@@ -596,7 +596,7 @@ export class Run {
 		this.phase(stage === 'core' ? 'rework_core' : 'rework_content', who === 'клієнт' ? 'Переробляємо під клієнта' : 'Команда враховує твої правки', { strategist: 'desk', copywriter: 'desk', designer: 'desk' });
 		if (stage === 'core') {
 			this.work('platform', 3);
-			this.step('Стратегиня переглядає позиціонування');
+			this.step(who === 'клієнт' ? 'Стратегиня рятує суть від правок' : 'Стратегиня звіряє суть з твоїми правками');
 			await this.gate();
 			this.agent('strategist', 'thinking', 'переглядає позиціонування');
 			const rp = normReposition(await this.ask('strategist', 'rework', prompt.reposition(who, notes, this.pos), SCHEMA.reposition, () => fake.reposition(who === 'клієнт')), this.pos);
@@ -608,7 +608,7 @@ export class Run {
 			this.say('strategist', rp.thought, 'thought', undefined, [rp.changed ? `Змінила: ${rp.why}` : 'Позиціонування лишила']);
 			this.agent('strategist', 'done', rp.changed ? 'оновила позиціонування' : 'лишила позиціонування');
 			this.tick();
-			this.step('Копірайтер переглядає назву й слоган');
+			this.step(who === 'клієнт' ? 'Копірайтер вписує в слоган побажання кума' : 'Копірайтер підкручує слоган');
 
 			await this.gate();
 			const name = this.state.elements.name?.text ?? '', slogan = this.state.elements.slogan?.text ?? '';
@@ -621,7 +621,7 @@ export class Run {
 			this.say('copywriter', rn.thought, 'thought', undefined, [rn.changed ? `${rn.name} — «${rn.slogan}»: ${rn.why}` : 'Назву й слоган лишив']);
 			this.agent('copywriter', 'done', rn.changed ? 'оновив назву' : 'лишив назву');
 			this.tick();
-			this.step('Дизайнер переглядає знак');
+			this.step(who === 'клієнт' ? 'Дизайнер робить логотип більшим. Зітхає' : 'Дизайнер підправляє знак');
 
 			await this.gate();
 			this.agent('designer', 'thinking', 'переглядає знак');
@@ -634,7 +634,7 @@ export class Run {
 			this.tick();
 		} else {
 			this.work('comms', CONTENT.length + 1);
-			this.step(who === 'клієнт' ? 'Команда вліплює все, що попросив клієнт' : 'Команда враховує твої правки до каналів');
+			this.step(who === 'клієнт' ? 'Вліплюють QR-код, «АКЦІЮ» і телефон' : 'Враховують твої правки');
 			await Promise.all(CONTENT.map(async (id) => {
 				const r = ELEMENT_OWNER[id];
 				const cur = this.state.elements[id];

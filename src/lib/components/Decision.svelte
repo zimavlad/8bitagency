@@ -59,7 +59,7 @@
 {#if visible}
 	{#if kind === 'pick'}
 		<Modal title="Обери назву й слоган" onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
-			<p class="muted">Копірайтер приніс три варіанти. Під обраний дизайнер малюватиме знак. Решта лишаться в історії етапу.</p>
+			<p class="muted">Копірайтер приніс три. Під обрану назву дизайнер малюватиме знак, решта підуть в архів.</p>
 			{#each run.options as o, i}
 				<button class="opt paper" disabled={live.busy} onclick={() => live.act({ action: 'pick', index: i })}>
 					<span class="on">{o.name}</span>
@@ -122,7 +122,7 @@
 					<button class="btn primary" disabled={live.busy} onclick={() => live.act({ action: 'submit' })}><Icon name="send" size={16} />Показати клієнту</button>
 				</div>
 			{:else}
-				<p class="muted">До трьох правок одразу. Порожнє поле — нічого не міняти. Команда перегляне все узгоджено: зміниться позиціонування — підтягнуться назва і знак.</p>
+				<p class="muted">До трьох правок. Порожнє поле — не чіпаємо. Зміниш суть — команда підтягне назву й знак.</p>
 				{#each notes as _, i}
 					<textarea rows="2" maxlength="280" placeholder="Правка {i + 1}" bind:value={notes[i]}></textarea>
 				{/each}
@@ -178,7 +178,7 @@
 				{/each}
 			</section>
 			{#if r.notes.length}<ul class="notes">{#each r.notes as n}<li><span class="dot bad"></span>{n}</li>{/each}</ul>{/if}
-			<p class="faint small">Наступний день: оренда й зарплати списуються щоранку.</p>
+			<p class="faint small">Завтра зранку — оренда й зарплати.</p>
 			<div class="actions"><button class="btn primary" onclick={onDone}><Icon name="inbox" size={16} />До брифів</button></div>
 		</Modal>
 	{/if}
