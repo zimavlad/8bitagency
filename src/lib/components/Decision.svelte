@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Live } from '$lib/live.svelte';
-	import { CONTENT, EDIT_SLOTS, ELEMENT_TITLE, MAX_CLIENT_ROUNDS, ROLE_NAME, ROLES, type ClientVerdict } from '$lib/types';
+	import { CONTENT, EDIT_SLOTS, ELEMENT_TITLE, ROLE_NAME, ROLES, type ClientVerdict } from '$lib/types';
 	import Avatar from './Avatar.svelte';
 	import Bar from './Bar.svelte';
 	import Icon from './Icon.svelte';
@@ -48,7 +48,6 @@
 
 	const s = $derived(run.strategy);
 	const e = $derived(run.elements);
-	const roundsLeft = $derived(v ? MAX_CLIENT_ROUNDS - v.round : 0);
 	const fmt = (n: number) => n.toLocaleString('uk-UA');
 	const sign = (n: number) => (n > 0 ? `+${n}` : `${n}`);
 
@@ -70,7 +69,7 @@
 			{/each}
 		</Modal>
 	{:else if kind === 'review'}
-		<Modal title={phase === 'player_core' ? 'Зведення перед клієнтом' : 'Канали перед клієнтом'} wide onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
+		<Modal title={phase === 'player_core' ? 'Бренд-платформа перед клієнтом' : 'Комунікація перед клієнтом'} wide onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
 			{#if !editing}
 				{#if phase === 'player_core'}
 					{#if s}
@@ -134,9 +133,9 @@
 			{/if}
 		</Modal>
 	{:else if kind === 'verdict' && v}
-		<Modal title={v.verdict === 'ok' ? `${name} приймає` : v.verdict === 'reject' ? `${name} відмовляється` : `${name} хоче правок`} onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
+		<Modal title={v.verdict === 'ok' ? `${name} у захваті` : `${name} хоче правок`} onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
 			{#snippet head()}<Avatar who="client" client={run.brief.client} size={48} />{/snippet}
-			<p class="faint small">{v.stage === 'core' ? 'Основа бренду' : 'Канали'} · коло {v.round} з {MAX_CLIENT_ROUNDS}</p>
+			<p class="faint small">{v.stage === 'core' ? 'Бренд-платформа' : 'Комунікація'} · коло {v.round}</p>
 			<Bar label="Настрій" value={v.mood} kind={v.mood >= 60 ? 'hp' : 'stress'} />
 			<section class="sum paper">
 				{#each v.lines as l}<p class="quote">«{l}»</p>{/each}
@@ -150,21 +149,21 @@
 			{/if}
 			<div class="actions">
 				{#if v.verdict === 'rework'}
-					<button class="btn danger" disabled={live.busy} onclick={() => confirm(v.stage === 'core' ? 'Кинути проєкт? Клієнт нічого не заплатить.' : 'Кинути проєкт? Отримаєш лише 60% за основу.') && live.act({ action: 'giveup' })}><Icon name="x" size={16} />Кинути проєкт</button>
-					<button class="btn human" disabled={live.busy} onclick={() => live.act({ action: 'retry' })}><Icon name="reset" size={16} />Ще коло{roundsLeft === 1 ? ' (останнє)' : ''}</button>
+					<button class="btn danger" disabled={live.busy} onclick={() => confirm('Кинути проєкт? Лишиться тільки передплата 20%, решту клієнт не заплатить.') && live.act({ action: 'giveup' })}><Icon name="x" size={16} />Кинути проєкт</button>
+					<button class="btn human" disabled={live.busy} onclick={() => live.act({ action: 'retry' })}><Icon name="reset" size={16} />Ще коло з його правками</button>
 				{:else if v.verdict === 'ok' && v.stage === 'core'}
-					<button class="btn primary" disabled={live.busy} onclick={() => live.act({ action: 'continue' })}><Icon name="check" size={16} />Далі: канали</button>
+					<button class="btn primary" disabled={live.busy} onclick={() => live.act({ action: 'continue' })}><Icon name="check" size={16} />Далі: комунікація</button>
 				{:else}
-					<button class="btn primary" disabled={live.busy} onclick={() => live.act({ action: 'continue' })}><Icon name="coin" size={16} />До розрахунку</button>
+					<button class="btn primary" disabled={live.busy} onclick={() => live.act({ action: 'continue' })}><Icon name="coin" size={16} />Отримати оплату</button>
 				{/if}
 			</div>
 		</Modal>
 	{:else if kind === 'result' && run.result}
 		{@const r = run.result}
-		<Modal title={r.verdict === 'ok' ? 'Клієнт заплатив' : r.verdict === 'reject' ? (r.paid ? 'Канали не прийняли' : 'Клієнт пішов') : 'Проєкт кинуто'} onClose={onDone}>
+		<Modal title={r.verdict === 'ok' ? 'Клієнт заплатив усе' : 'Проєкт кинуто'} onClose={onDone}>
 			<section class="sum paper">
 				<h3>Оплата</h3>
-				<p class="small">Чек {fmt(run.brief.fee)} ₴, передплата {fmt(run.brief.prepay)} ₴</p>
+				<p class="small">Чек {fmt(run.brief.fee)} ₴</p>
 				{#each r.pay as p}<div class="row"><span>{p.label}</span><span class="num">+{fmt(p.amount)} ₴</span></div>{/each}
 				<div class="row total"><span>Разом</span><span class="num">+{fmt(r.paid)} ₴</span></div>
 			</section>

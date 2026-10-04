@@ -1,9 +1,9 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-	CONTENT, CORE, CORE_SHARE, EDIT_SLOTS, ELEMENT_OWNER, ELEMENT_TITLE, MAX_CLIENT_ROUNDS, ROLE_NAME, ROLES,
+	COMMS_ROUNDS, CONTENT, CORE, EDIT_SLOTS, ELEMENT_OWNER, ELEMENT_TITLE, MAX_CLIENT_ROUNDS, ROLE_NAME, ROLES,
 	type Brief, type Burnout, type ClientVerdict, type ContentElement, type ElementId, type ElementValue, type LogoSpec,
-	type Role, type RunPhase, type RunResult, type RunState, type Speaker, type Spot, type StepKey
+	type Role, type RunPhase, type RunResult, type RunState, type Speaker, type Spot, type Staff, type StepKey
 } from '$lib/types';
 import { errFields, log } from '../log';
 import { isAbortError, type CallPurpose, type ModelClient } from '../model/client';
@@ -34,6 +34,10 @@ export interface RunDeps {
 	dataDir: string;
 	burnout: Burnout;
 	morale: Burnout;
+	/** Грейд і настрій кожного (junior/middle, образа після відмови в підвищенні). */
+	staff?: Record<Role, Staff>;
+	/** Мінімальна тривалість кроку, мс: щоб гравець встигав читати. У тестах 0. */
+	paceMs?: number;
 	onChange?: (run: Run) => void;
 	onFinish?: (run: Run) => void;
 	onSpend?: (provider: 'claude' | 'gemini', usd: number) => void;
@@ -126,6 +130,7 @@ export class Run {
 			elements: {},
 			strategy: null,
 			steps: [],
+			task: null,
 			options: [],
 			editAvailable: false,
 			clientRound: 0,
@@ -195,12 +200,35 @@ export class Run {
 		}
 	}
 
-	/** Дії керівника для команди під час брифу (кава, піца, похвала). Гроші за піцу знімає гра. */
-	perk(kind: 'coffee' | 'pizza' | 'praise', role?: Role) {
-		if (kind === 'coffee') for (const r of ROLES) { this.burnoutDelta[r] -= 6; this.state.agents[r].burnout = this.burnoutOf(r); }
-		if (kind === 'pizza') this.cheer(8);
-		if (kind === 'praise' && role) this.cheer(6, [role]);
+	/** Зміни від керівника під час брифу (кава, піца, похвала): дельти стресу й моралі. */
+	adjust(stress: Partial<Record<Role, number>>, morale: Partial<Record<Role, number>>) {
+		for (const r of ROLES) {
+			this.burnoutDelta[r] += stress[r] ?? 0;
+			this.moraleDelta[r] += morale[r] ?? 0;
+			this.state.agents[r].burnout = this.burnoutOf(r);
+			this.state.agents[r].morale = this.moraleOf(r);
+		}
 		this.emit();
+	}
+
+	private sys(r: Role) {
+		return systemFor(r, this.burnoutOf(r), this.moraleOf(r), this.deps.staff?.[r]);
+	}
+
+	/** Прогрес роботи між рішеннями гравця: скільки кроків і який зараз. */
+	private work(stage: 'platform' | 'comms', total: number) {
+		this.state.task = { stage, label: '', done: 0, total, at: Date.now(), pace: this.deps.paceMs ?? 0 };
+	}
+	private step(label: string) {
+		if (this.state.task) this.state.task = { ...this.state.task, label, at: Date.now() };
+		this.emit();
+	}
+	private tick() {
+		if (this.state.task) this.state.task = { ...this.state.task, done: Math.min(this.state.task.total, this.state.task.done + 1), at: Date.now() };
+		this.emit();
+	}
+	private idle() {
+		this.state.task = null;
 	}
 
 	/** Запис етапу: що сталося, щоб гравець міг повернутись і переглянути. */
@@ -252,6 +280,11 @@ export class Run {
 			fake: o.fake
 		});
 		this.alive();
+		const left = (this.deps.paceMs ?? 0) - (Date.now() - started);
+		if (left > 0) {
+			await new Promise((res) => setTimeout(res, left));
+			this.alive();
+		}
 		const usd = costUsd(r.model, r.usage);
 		this.state.calls++;
 		this.state.costUsd += usd;
@@ -266,7 +299,7 @@ export class Run {
 	private ask(role: Role, purpose: CallPurpose, user: string, schema: Record<string, unknown>, fakeFn: () => unknown): Promise<Record<string, unknown>> {
 		const job = this.locks[role].catch(() => undefined).then(async () => {
 			const messages: Msg[] = [...this.history[role], { role: 'user', content: user + guide(schema) }];
-			const r = await this.call({ purpose, who: role, model: this.deps.models.agent, system: systemFor(role, this.burnoutOf(role), this.moraleOf(role)), messages, schema, fake: fakeFn });
+			const r = await this.call({ purpose, who: role, model: this.deps.models.agent, system: this.sys(role), messages, schema, fake: fakeFn });
 			this.history[role] = [...messages, { role: 'assistant', content: r.content }];
 			this.tire(role, 3);
 			return parseJson(r.text);
@@ -352,6 +385,8 @@ export class Run {
 		this.note(`Бриф від ${b.client.name}, ${b.client.business}. Гонорар ${b.fee.toLocaleString('uk-UA')} ₴.`);
 
 		// 1. стратегиня читає сама
+		this.work('platform', 4);
+		this.step('Стратегиня читає бриф і шукає інсайт');
 		this.phase('read', 'Стратегиня читає бриф', { strategist: 'desk', copywriter: 'desk', designer: 'desk' });
 		this.agent('copywriter', 'idle', 'чекає на стратегиню');
 		this.agent('designer', 'idle', 'чекає на стратегиню');
@@ -363,9 +398,11 @@ export class Run {
 		this.state.strategy = { problem: this.read.problem, insight: this.read.insight, advantage: this.read.advantage, direction: this.read.direction };
 		this.record('strategy', readText(this.read).split('\n'));
 		if (this.read.gptTake) this.note(`Стратегиня про Джіпітенка: ${this.read.gptTake}`);
+		this.tick();
 
 		// 2. радиться з колегами
 		await this.gate();
+		this.step('Стратегиня радиться з копірайтером і дизайнером');
 		this.phase('huddle', 'Стратегиня радиться з колегами', { strategist: 'table', copywriter: 'table', designer: 'table' });
 		this.agent('strategist', 'idle', 'розповідає напрям');
 		this.say('strategist', this.read.direction, 'thought');
@@ -373,7 +410,7 @@ export class Run {
 			await this.gate();
 			this.agent(r, 'thinking', 'слухає стратегиню');
 			const h = normHuddle(await this.once({
-				purpose: 'review', who: r, model: this.deps.models.review, system: systemFor(r, this.burnoutOf(r)),
+				purpose: 'review', who: r, model: this.deps.models.review, system: this.sys(r),
 				user: prompt.huddle(r, b, this.read!), schema: SCHEMA.huddle, fake: () => fake.huddle(r)
 			}));
 			this.tire(r, 2);
@@ -382,9 +419,11 @@ export class Run {
 			return { role: r as Role, text: `${h.ok ? 'ок' : 'сумнів'} — ${h.note}` };
 		}));
 		this.record('strategy', notes.map((n) => `${ROLE_NAME[n.role]}: ${n.text}`));
+		this.tick();
 
 		// 3. позиціонування
 		await this.gate();
+		this.step('Стратегиня формулює позиціонування');
 		this.phase('position', 'Стратегиня формулює позиціонування', { strategist: 'board', copywriter: 'desk', designer: 'desk' });
 		this.agent('strategist', 'thinking', 'пише позиціонування');
 		const p = normPositioning(await this.ask('strategist', 'core', prompt.positioning(notes), SCHEMA.positioning, () => fake.positioning(b)));
@@ -393,9 +432,11 @@ export class Run {
 		this.record('strategy', [`Позиціонування: ${p.positioning}`, ...p.rejected.map((r) => `Відкинула: ${r.text} — ${r.reason}`)]);
 		this.say('strategist', p.thought, 'thought', undefined, [p.positioning, ...p.rejected.map((r) => `відкинула: ${r.text} — ${r.reason}`)]);
 		this.agent('strategist', 'done', 'позиціонування готове');
+		this.tick();
 
 		// 4. назва: 3 варіанти, обирає гравець
 		await this.gate();
+		this.step('Копірайтер шукає три назви зі слоганом');
 		this.phase('naming', 'Копірайтер шукає назву', { strategist: 'coffee' });
 		this.agent('copywriter', 'thinking', 'шукає назву');
 		const g2 = await this.maybeGpt('copywriter', 'naming');
@@ -404,6 +445,8 @@ export class Run {
 		this.say('copywriter', nm.thought, 'thought', undefined, nm.options.map((o) => `${o.name} — «${o.slogan}» (${o.why})`));
 		if (nm.gptTake) this.note(`Копірайтер про Джіпітенка: ${nm.gptTake}`);
 		this.agent('copywriter', 'idle', 'чекає твого вибору');
+		this.tick();
+		this.idle();
 		this.phase('pick_name', 'Обери назву й слоган — із цим піде дизайнер', { copywriter: 'table', strategist: 'table' });
 		const pick = (await this.wait(['pick_name'])) as { action: 'pick'; index: number };
 		const chosen = this.state.options[pick.index];
@@ -415,6 +458,8 @@ export class Run {
 
 		// 5. знак
 		await this.gate();
+		this.work('platform', 1);
+		this.step('Дизайнер малює знак під обрану назву');
 		this.phase('logo', 'Дизайнер малює знак', { designer: 'desk', copywriter: 'desk' });
 		this.agent('designer', 'thinking', 'малює знак');
 		const lg = await this.drawLogo('core', prompt.logo(this.pos, chosen.name, chosen.slogan));
@@ -422,6 +467,7 @@ export class Run {
 		this.record('logo', [lg.concept], lg.logo);
 		this.say('designer', lg.thought, 'thought', undefined, [lg.concept]);
 		this.agent('designer', 'done', 'знак готовий');
+		this.tick();
 
 		// 6–7. гравець і клієнт по основі
 		this.coreAccepted = await this.stage('core');
@@ -429,9 +475,13 @@ export class Run {
 
 		// 8. канали
 		await this.gate();
-		this.phase('content', 'Команда робить ідеї для каналів', { strategist: 'desk', copywriter: 'desk', designer: 'desk' });
-		await Promise.all(CONTENT.map((id) => this.contentStep(id)));
+		this.phase('content', 'Команда робить комунікацію під затверджену платформу', { strategist: 'desk', copywriter: 'desk', designer: 'desk' });
+		this.work('comms', CONTENT.length + 1);
+		this.step('Команда пише тексти для Threads, Reels, банера й ролика');
+		await Promise.all(CONTENT.map((id) => this.contentStep(id).then(() => this.tick())));
+		this.step('Дизайнер малює банер і обкладинку ролика');
 		await this.images();
+		this.tick();
 		this.contentAccepted = await this.stage('content');
 		this.finish(this.contentAccepted ? 'ok' : 'reject');
 	}
@@ -467,17 +517,22 @@ export class Run {
 		if (e) this.setEl(id, e.text, e.details, { reworks: e.reworks + 1 });
 	}
 
-	/** Етап «гравець → клієнт» для основи або каналів, з колами переробки. */
+	/**
+	 * Етап «гравець → клієнт». Платформа: два кола правок клієнта, на третьому він у захваті.
+	 * Комунікація: одне коло «а додайте QR і АКЦІЮ», на другому — «беру». Гравець може кинути проєкт.
+	 */
 	private async stage(stage: 'core' | 'content'): Promise<boolean> {
 		const ids: ElementId[] = stage === 'core' ? CORE : CONTENT;
 		const playerPhase: RunPhase = stage === 'core' ? 'player_core' : 'player_content';
 		const decisionPhase: RunPhase = stage === 'core' ? 'client_decision_core' : 'client_decision_content';
 		const you: StepKey = stage === 'core' ? 'you_core' : 'you_content';
 		const them: StepKey = stage === 'core' ? 'client_core' : 'client_content';
+		const rounds = stage === 'core' ? MAX_CLIENT_ROUNDS : COMMS_ROUNDS;
 		const name = this.state.brief.client.name;
 
 		this.state.editAvailable = true;
 		for (;;) {
+			this.idle();
 			this.phase(playerPhase, this.state.editAvailable ? 'Твоє слово: глянь зведення, покажи клієнту або дай правки' : 'Правки враховано. Показуємо клієнту?', { strategist: 'table', copywriter: 'table', designer: 'table' });
 			for (const r of ROLES) this.agent(r, 'idle', 'чекає твого рішення');
 			const d = await this.wait([playerPhase]);
@@ -491,34 +546,36 @@ export class Run {
 		this.record(you, ['Показав клієнту']);
 
 		this.state.clientInOffice = true;
-		for (let round = 1; round <= MAX_CLIENT_ROUNDS; round++) {
+		for (let round = 1; round <= rounds; round++) {
 			this.state.clientRound = round;
+			this.work(stage === 'core' ? 'platform' : 'comms', 1);
+			this.step(`${name} уважно дивиться${round > 1 ? ' переробку' : ''}`);
 			this.phase(stage === 'core' ? 'client_core' : 'client_content', `${name} дивиться роботу${round > 1 ? ` (коло ${round})` : ''}`, { strategist: 'table', copywriter: 'table', designer: 'table' });
 			for (const r of ROLES) this.agent(r, 'idle', 'нервово чекає');
 			await this.gate();
-			const last = round === MAX_CLIENT_ROUNDS;
 			const items = ids.map((id) => this.state.elements[id]).filter((e): e is ElementValue => !!e);
 			const c = normClient(await this.once({
 				purpose: 'client', who: 'client', model: this.deps.models.client, system: clientCard(this.state.brief.client, this.state.brief.text),
-				user: prompt.client(items, round, last, stage === 'content' ? `Основу (${this.state.elements.name?.text}, «${this.state.elements.slogan?.text}») ти вже затвердив.` : undefined),
+				user: prompt.client(items, stage, round, stage === 'content' ? `Бренд-платформу (${this.state.elements.name?.text}, «${this.state.elements.slogan?.text}») ти вже затвердив.` : undefined),
 				schema: SCHEMA.client, fake: () => fake.client(round, stage)
-			}), last);
+			}), stage, round);
+			this.tick();
+			this.idle();
 			const v: ClientVerdict = { stage, round, ...c };
 			for (const line of c.lines) this.say('client', line, 'client');
 			this.state.verdicts = [...this.state.verdicts, v];
 			this.record(them, [`Коло ${round}: ${c.lines.join(' / ')}`, `Підсумок: ${c.reaction}`, ...c.demands.map((x) => `Вимога: ${x}`)]);
 			if (c.verdict === 'ok') this.cheer(stage === 'core' ? 6 : 8);
-			else if (c.verdict === 'reject') this.cheer(-14);
 			else this.cheer(-5);
 
-			const word = c.verdict === 'ok' ? `${name} приймає` : c.verdict === 'reject' ? `${name} відмовляється` : `${name} хоче правок`;
+			const word = c.verdict === 'ok' ? `${name} у захваті` : `${name} хоче правок`;
 			this.note(word, [c.reaction, ...c.demands]);
 			this.phase(decisionPhase, c.verdict === 'rework' ? `${word}. Ще коло чи кидаємо проєкт?` : word);
-			for (const r of ROLES) this.agent(r, 'idle', c.verdict === 'ok' ? 'видихає' : c.verdict === 'reject' ? 'засмучений(а)' : 'зітхає');
+			for (const r of ROLES) this.agent(r, 'idle', c.verdict === 'ok' ? 'видихає' : 'зітхає');
 			const d = await this.wait([decisionPhase]);
-			if (c.verdict !== 'rework') {
+			if (c.verdict === 'ok') {
 				this.state.clientInOffice = false;
-				return c.verdict === 'ok';
+				return true;
 			}
 			if (d.action === 'giveup') {
 				this.note('Ти кинув проєкт.');
@@ -538,6 +595,8 @@ export class Run {
 	private async rework(stage: 'core' | 'content', who: 'керівник агенції' | 'клієнт', notes: string[]) {
 		this.phase(stage === 'core' ? 'rework_core' : 'rework_content', who === 'клієнт' ? 'Переробляємо під клієнта' : 'Команда враховує твої правки', { strategist: 'desk', copywriter: 'desk', designer: 'desk' });
 		if (stage === 'core') {
+			this.work('platform', 3);
+			this.step('Стратегиня переглядає позиціонування');
 			await this.gate();
 			this.agent('strategist', 'thinking', 'переглядає позиціонування');
 			const rp = normReposition(await this.ask('strategist', 'rework', prompt.reposition(who, notes, this.pos), SCHEMA.reposition, () => fake.reposition(who === 'клієнт')), this.pos);
@@ -548,6 +607,8 @@ export class Run {
 			}
 			this.say('strategist', rp.thought, 'thought', undefined, [rp.changed ? `Змінила: ${rp.why}` : 'Позиціонування лишила']);
 			this.agent('strategist', 'done', rp.changed ? 'оновила позиціонування' : 'лишила позиціонування');
+			this.tick();
+			this.step('Копірайтер переглядає назву й слоган');
 
 			await this.gate();
 			const name = this.state.elements.name?.text ?? '', slogan = this.state.elements.slogan?.text ?? '';
@@ -559,6 +620,8 @@ export class Run {
 			}
 			this.say('copywriter', rn.thought, 'thought', undefined, [rn.changed ? `${rn.name} — «${rn.slogan}»: ${rn.why}` : 'Назву й слоган лишив']);
 			this.agent('copywriter', 'done', rn.changed ? 'оновив назву' : 'лишив назву');
+			this.tick();
+			this.step('Дизайнер переглядає знак');
 
 			await this.gate();
 			this.agent('designer', 'thinking', 'переглядає знак');
@@ -568,7 +631,10 @@ export class Run {
 			this.bump('logo');
 			this.say('designer', lg.thought, 'thought', undefined, [lg.concept]);
 			this.agent('designer', 'done', 'оновив знак');
+			this.tick();
 		} else {
+			this.work('comms', CONTENT.length + 1);
+			this.step(who === 'клієнт' ? 'Команда вліплює все, що попросив клієнт' : 'Команда враховує твої правки до каналів');
 			await Promise.all(CONTENT.map(async (id) => {
 				const r = ELEMENT_OWNER[id];
 				const cur = this.state.elements[id];
@@ -580,8 +646,11 @@ export class Run {
 				this.bump(id);
 				this.say(r, out.thought);
 				this.agent(r, 'done', 'переробив');
+				this.tick();
 			}));
+			this.step('Дизайнер перемальовує банер і обкладинку');
 			await this.images();
+			this.tick();
 		}
 	}
 
@@ -610,17 +679,18 @@ export class Run {
 		const logoPng = e.logo?.logo ? rasterLogo(e.logo.logo, 256) : null;
 		const refs = logoPng ? [{ mime: 'image/png', data: logoPng }] : [];
 		const STYLE = 'Pixel art in the cozy style of Stardew Valley: chunky visible pixels, warm saturated palette, dark coloured outlines (not black), soft dithering, no photorealism, no 3D-render gradients.';
-		const brand = `Brand name: «${e.name?.text ?? ''}». Slogan (Ukrainian, keep exactly): «${e.slogan?.text ?? ''}».`;
 		const mark = logoPng ? 'Place the provided pixel logo (first image) as the brand mark, keep its shapes and colours exactly.' : '';
 		const colours = `Use the brand colours ${e.logo?.logo?.palette.a ?? ''} and ${e.logo?.logo?.palette.b ?? ''}. All text must be crisp pixel text, spelled exactly, nothing else written.`;
+		// Чим менше тексту просимо намалювати, тим менше Gemini його калічить: на обкладинці — лише назва ролика.
+		const extras = (e.instagram?.details ?? []).slice(1).join('; ');
 		const jobs: { id: 'instagram' | 'youtube'; prompt: string; aspect: '1:1' | '16:9' }[] = [
 			{
 				id: 'instagram', aspect: '1:1',
-				prompt: `${STYLE}\nA square Instagram ad banner. ${brand}\nHeadline in big pixel font (Ukrainian, keep exactly): «${e.instagram?.text ?? ''}».\nScene: ${e.instagram?.details[0] ?? ''}.\n${mark} Put it in a corner.\n${colours}`
+				prompt: `${STYLE}\nA square Instagram ad banner for the brand «${e.name?.text ?? ''}».\nText on the banner, spelled exactly in Ukrainian, nothing else written: the headline «${e.instagram?.text ?? ''}» in big pixel letters${extras ? `, plus these client-requested elements drawn as they are: ${extras}` : ''}.\nScene: ${e.instagram?.details[0] ?? ''}.\n${mark} Put it in a corner.\n${colours}`
 			},
 			{
 				id: 'youtube', aspect: '16:9',
-				prompt: `${STYLE}\nA YouTube video thumbnail (cover) for a premium brand film, one single scene, cinematic composition, readable at small size.\nVideo title in big pixel font (Ukrainian, keep exactly): «${e.youtube?.text ?? ''}». ${brand}\nScene on the cover: ${e.youtube?.details[0] ?? ''}.\n${mark} Small, in a corner.\n${colours}`
+				prompt: `${STYLE}\nA YouTube video thumbnail (cover) for a premium brand film, one single cinematic scene, readable at small size.\nExactly ONE line of text on the whole image: «${e.youtube?.text ?? ''}» (Ukrainian, spelled exactly, big pixel letters). No other words, no slogan, no captions, no extra quotes.\nScene: ${e.youtube?.details[0] ?? ''}.\n${mark} Small, in a corner, without any text in it.\nUse the brand colours ${e.logo?.logo?.palette.a ?? ''} and ${e.logo?.logo?.palette.b ?? ''}.`
 			}
 		];
 		await Promise.all(jobs.map(async (j) => {
@@ -661,11 +731,11 @@ export class Run {
 		const elements = Object.values(this.state.elements).filter((e): e is ElementValue => !!e);
 		const { quality, notes, performanceHits } = qualityOf(elements);
 		const fee = this.state.brief.fee;
-		const coreFee = Math.round((fee * CORE_SHARE) / 100) * 100;
-		const pay: RunResult['pay'] = [];
-		if (this.state.brief.prepay) pay.push({ label: 'Передплата', amount: this.state.brief.prepay });
-		pay.push({ label: this.coreAccepted ? 'Основу прийнято (60% чеку)' : 'Основу не прийнято', amount: this.coreAccepted ? coreFee : 0 });
-		if (this.coreAccepted) pay.push({ label: this.contentAccepted ? 'Канали прийнято (40% чеку)' : 'Канали не прийнято', amount: this.contentAccepted ? fee - coreFee : 0 });
+		const prepay = this.state.brief.prepay;
+		const pay: RunResult['pay'] = [
+			{ label: 'Передплата 20% (прийшла на старті)', amount: prepay },
+			{ label: this.contentAccepted ? 'Клієнт прийняв усе: решта 80%' : 'Решта 80% — лише якщо клієнт прийме все', amount: this.contentAccepted ? fee - prepay : 0 }
+		];
 		const paid = pay.reduce((n, p) => n + p.amount, 0);
 		if (verdict === 'reject') for (const r of ROLES) this.tire(r, 8);
 		if (verdict === 'dropped' && !free) this.cheer(-6);
@@ -688,7 +758,7 @@ export class Run {
 			this.state.agents[r].spot = 'coffee';
 			this.state.agents[r].doing = verdict === 'ok' ? 'святкує з кавою' : 'пʼє каву мовчки';
 		}
-		const word = verdict === 'ok' ? 'Клієнт заплатив' : verdict === 'reject' ? (this.coreAccepted ? 'Канали не прийняли' : 'Клієнт пішов') : 'Проєкт кинуто';
+		const word = verdict === 'ok' ? 'Клієнт заплатив усе' : 'Проєкт кинуто';
 		this.phase('done', `${word}: +${paid.toLocaleString('uk-UA')} ₴, репутація ${repDelta >= 0 ? '+' : ''}${repDelta}`);
 		log('info', 'run_done', { run: this.id, verdict, paid, repDelta, quality, calls: this.state.calls, usd: Number(this.state.costUsd.toFixed(4)), images_usd: this.state.imagesUsd });
 		this.deps.onFinish?.(this);

@@ -82,17 +82,17 @@ export interface Brief {
 	id: string;
 	client: Client;
 	text: string;
-	/** Чек у гривнях: 60% за прийняту основу, 40% за прийняті канали. */
+	/** Чек у гривнях: 20% передплата на старті, 80% — коли клієнт прийме все. */
 	fee: number;
-	/** Передплата: на першому рівні її нема ніколи. */
+	/** Передплата в гривнях (20% чеку), приходить, щойно береш бриф. */
 	prepay: number;
 	/** Рівень клієнта: 1 — дрібний бізнес, 2 — середній, 3 — великий. */
 	tier: number;
 	custom?: boolean;
 }
 
-/** Частка чеку за основу; решта — за канали. */
-export const CORE_SHARE = 0.6;
+/** Передплата — частка чеку на старті; решта — коли клієнт прийме і платформу, і комунікацію. */
+export const PREPAY_SHARE = 0.2;
 
 export const TIER_NAME: Record<number, string> = { 1: 'дрібний бізнес', 2: 'середній бізнес', 3: 'великі гроші' };
 
@@ -101,8 +101,33 @@ export function tierOf(reputation: number): number {
 	return reputation >= 70 ? 3 : reputation >= 40 ? 2 : 1;
 }
 
-/** Щоденні витрати (оренда, зарплати) за рівнем. */
-export const DAILY_COST: Record<number, number> = { 1: 1500, 2: 4000, 3: 9000 };
+/** Оренда за день за рівнем агенції. */
+export const RENT: Record<number, number> = { 1: 600, 2: 1600, 3: 3600 };
+/** Зарплата джуна за день за рівнем; мідл отримує вдвічі більше. */
+export const SALARY: Record<number, number> = { 1: 300, 2: 800, 3: 1800 };
+
+export type Grade = 'junior' | 'middle';
+export const GRADE_NAME: Record<Grade, string> = { junior: 'junior', middle: 'middle' };
+/** Скільки прийнятих проєктів — і людина приходить просити підвищення. */
+export const PROMO_AFTER = 5;
+
+export interface Staff {
+	grade: Grade;
+	/** Прийняті клієнтом проєкти. */
+	done: number;
+	/** Образився після відмови в підвищенні: працює абияк до вихідного. */
+	sulk: boolean;
+}
+
+/** Щоденні витрати: оренда + зарплати з урахуванням грейдів. */
+export function dailyCost(reputation: number, team: Record<Role, Staff>): number {
+	const t = tierOf(reputation);
+	return RENT[t] + ROLES.reduce((n, r) => n + SALARY[t] * (team[r].grade === 'middle' ? 2 : 1), 0);
+}
+
+/** Інвестор дав тиждень: на ранок цього дня гроші мають бути більші за стартові. */
+export const DEADLINE_DAY = 8;
+export const START_MONEY = 12000;
 
 export interface Burnout {
 	strategist: number;
@@ -113,7 +138,6 @@ export interface Burnout {
 /** Що можна зробити для команди раз на день. */
 export interface Perks {
 	day: number;
-	coffee: boolean;
 	pizza: boolean;
 	praised: Role[];
 }
@@ -153,6 +177,13 @@ export interface GameState {
 	/** Здоровʼя: поки завжди 100 — на наступних рівнях тривоги й обстріли. */
 	hp: Burnout;
 	perks: Perks;
+	team: Record<Role, Staff>;
+	/** Хто прийшов просити підвищення (лист чекає відповіді). */
+	ask: Role | null;
+	/** Чим закінчилась гра, якщо закінчилась. */
+	over: 'bankrupt' | 'investor' | null;
+	/** Інвестор задоволений: тиждень пройдено в плюс. */
+	investorOk: boolean;
 	inbox: Brief[];
 	history: HistoryEntry[];
 	activeRun: string | null;
@@ -260,6 +291,16 @@ export interface Strategy {
 	direction: string;
 }
 
+export interface Task {
+	stage: 'platform' | 'comms';
+	label: string;
+	done: number;
+	total: number;
+	/** Коли почався поточний крок (мс) і скільки він приблизно триває. */
+	at: number;
+	pace: number;
+}
+
 export type StepKey = 'strategy' | 'name' | 'logo' | 'you_core' | 'client_core' | 'content' | 'you_content' | 'client_content' | 'done';
 
 /** Що сталося на етапі — щоб можна було повернутись і переглянути. */
@@ -280,6 +321,8 @@ export interface RunState {
 	elements: Partial<Record<ElementId, ElementValue>>;
 	strategy: Strategy | null;
 	steps: StepRecord[];
+	/** Поточна робота між рішеннями гравця: прогрес по кроках для смужки справа. */
+	task: Task | null;
 	/** Варіанти назви й слогана, з яких обирає гравець. */
 	options: NamingOption[];
 	/** Чи ще можна дати раунд правок на поточному етапі. */
@@ -296,5 +339,7 @@ export interface RunState {
 	imagesUsd: number;
 }
 
+/** Платформу клієнт приймає на 3-му колі, комунікацію — на 2-му: два кола «доїбок», потім «так». */
 export const MAX_CLIENT_ROUNDS = 3;
+export const COMMS_ROUNDS = 2;
 export const EDIT_SLOTS = 3;

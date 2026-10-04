@@ -141,13 +141,13 @@ export const SCHEMA = {
 	instagram: obj({ thought: THOUGHT, headline: S('заголовок на банері, до 6 слів'), visual: S('що на картинці, до 16 слів') }),
 	reels: obj({ thought: THOUGHT, hooks: list(S('ідея Reels одним рядком до 12 слів'), 'рівно 3') }),
 	youtube: obj({ thought: THOUGHT, title: S('назва ролика до 5 слів'), cover: S('що на обкладинці ролика, одне речення до 14 слів'), scenes: list(S('сцена до 10 слів'), 'рівно 3') }),
-	gpt: obj({ answer: S('порада до 300 знаків'), source: S('назва файлу з бази або «загальні знання»') }),
+	gpt: obj({ answer: S('порада до 200 знаків, без вступу і без запитань у відповідь'), source: S('назва файлу з бази або «загальні знання»') }),
 	client: obj({
 		lines: list(S('коротка репліка вголос до 60 знаків: жарт-доїбка або похвала про конкретну річ з роботи'), 'рівно 3, від найголовнішого'),
 		reaction: S('підсумок одним-двома реченнями'),
 		verdict: { type: 'string', enum: ['ok', 'rework', 'reject'] },
 		mood: { type: 'integer' },
-		demands: list(S('вимога до 12 слів'), 'до 3, якщо rework')
+		demands: list(S('вимога до 12 слів'), 'до 5, якщо rework')
 	}),
 	persona: obj({
 		name: S('як звертаються до власника чи власниці'),
@@ -195,37 +195,53 @@ export const prompt = {
 		`${who === 'клієнт' ? 'Клієнт' : 'Керівник агенції'} дав правки:\n${notes.map((n, i) => `${i + 1}. ${n}`).join('\n')}\n\n` +
 		`Поточне позиціонування: «${cur.positioning}». Роль: ${cur.role}. Ворог: ${cur.enemy}.\n` +
 		`Вирішуй як стратегиня: якщо правки стосуються суті — зміни позиціонування (changed: true), якщо ні — лиши як є (changed: false).` +
-		(who === 'клієнт' ? ' Клієнт не розуміється на брендингу: врахуй, чого він насправді боїться, але не перетворюй позиціонування на рекламу знижок.' : ''),
+		(who === 'клієнт' ? ' Клієнт платить, тож його вимоги виконуємо, навіть коли вони псують ідею: впиши їх у позиціонування якомога дослівніше (changed: true), лише збережи одне речення.' : ''),
 
 	rename: (who: 'керівник агенції' | 'клієнт', notes: string[], pos: Pos, posChanged: boolean, name: string, slogan: string) =>
 		`${who === 'клієнт' ? 'Клієнт' : 'Керівник агенції'} дав правки:\n${notes.map((n, i) => `${i + 1}. ${n}`).join('\n')}\n\n` +
 		`${posChanged ? 'Стратегиня змінила позиціонування' : 'Позиціонування лишилось'}: «${pos.positioning}». Роль: ${pos.role}. Ворог: ${pos.enemy}.\n` +
-		`Поточні назва «${name}» і слоган «${slogan}». Якщо правки чи нове позиціонування цього вимагають — зміни (changed: true), інакше лиши (changed: false).`,
+		`Поточні назва «${name}» і слоган «${slogan}». Якщо правки чи нове позиціонування цього вимагають — зміни (changed: true), інакше лиши (changed: false).${who === 'клієнт' ? ' Вимоги клієнта виконуй дослівно, навіть якщо слоган стане гіршим — він платить.' : ''}`,
 
 	relogo: (who: 'керівник агенції' | 'клієнт', notes: string[], pos: Pos, name: string) =>
 		`${who === 'клієнт' ? 'Клієнт' : 'Керівник агенції'} дав правки:\n${notes.map((n, i) => `${i + 1}. ${n}`).join('\n')}\n\n` +
-		`Позиціонування: «${pos.positioning}». Назва: «${name}».\nПеремалюй знак з урахуванням правок і назви. Якщо правки не про знак — лиши ту саму форму, можна уточнити кольори. Знак піксельний 32×32: крупна проста форма, від 2 до 6 видимих фігур.`,
+		`Позиціонування: «${pos.positioning}». Назва: «${name}».\nПеремалюй знак з урахуванням правок і назви. Якщо правки не про знак — лиши ту саму форму, можна уточнити кольори.${who === 'клієнт' ? ' Вимоги клієнта до знака (більше, яскравіше, золото тощо) виконуй буквально.' : ''} Знак піксельний 32×32: крупна проста форма, від 2 до 6 видимих фігур.`,
 
 	content: (id: ContentElement, pack: string) => `Клієнт затвердив основу:\n${pack}\n\nТепер ${CONTENT_TASK[id]} Дуже коротко, без пояснень.`,
 
 	recontent: (id: ContentElement, who: 'керівник агенції' | 'клієнт', notes: string[], cur: ElementValue) =>
 		`${who === 'клієнт' ? 'Клієнт' : 'Керівник агенції'} дав правки до каналів:\n${notes.map((n, i) => `${i + 1}. ${n}`).join('\n')}\n\n` +
-		`Твоя поточна версія «${ELEMENT_TITLE[id]}»:\n${[cur.text, ...cur.details].join('\n')}\n\nПерероби з урахуванням правок, що стосуються саме цього каналу; решту лиши. Так само коротко.`,
+		`Твоя поточна версія «${ELEMENT_TITLE[id]}»:\n${[cur.text, ...cur.details].join('\n')}\n\nПерероби з урахуванням правок, що стосуються саме цього каналу; решту лиши. Так само коротко.${who === 'клієнт' ? ' Клієнт платить: його штуки (сайт, QR-код, «АКЦІЯ», телефон, знижка тощо) вписуй дослівно в кожен канал, де їх можна вліпити, навіть якщо це псує креатив.' : ''}`,
 
 	gpt: (role: Role, question: string, chunks: { source: string; text: string }[]) =>
 		`${ROLE_NAME[role]} питає: ${question}\n\n` +
 		(chunks.length ? `Уривки з бази знань:\n${chunks.map((c, i) => `[${i + 1}] (${c.source}) ${c.text}`).join('\n\n')}` : 'Уривків з бази знань нема.'),
 
-	client: (items: ElementValue[], round: number, last: boolean, extra?: string) =>
-		'Спершу скажи 3 короткі репліки вголос (lines): про конкретні речі з того, що бачиш, твоїми словами — жартом або доїбкою, якщо не подобається, похвалою, якщо подобається. Потім підсумок і рішення.\n\n' +
+	client: (items: ElementValue[], stage: 'core' | 'content', round: number, extra?: string) =>
+		'Спершу скажи 3 короткі репліки вголос (lines): про конкретні речі з того, що бачиш, твоїми словами. Потім підсумок і рішення.\n\n' +
 		`Агенція показує${round > 1 ? ` (коло ${round}, після твоїх правок)` : ''}:\n${items.map((e) => `- ${ELEMENT_TITLE[e.id]}: ${e.text}${e.details.length ? ' (' + e.details.slice(0, 4).join('; ') + ')' : ''}`).join('\n')}` +
 		(extra ? `\n\n${extra}` : '') +
-		(last ? '\n\nЦе остання подивка: або "ok", або "reject".' : ''),
+		`\n\n${CLIENT_ROUND[stage][Math.min(round, CLIENT_ROUND[stage].length) - 1]}`,
 
 	persona: (text: string) => `Бриф:\n«${text}»`
 };
 
 export interface Pos { positioning: string; role: string; enemy: string }
+
+/**
+ * Сценарій клієнта. Команда приносить цілісний проєкт, клієнт за два кола перетворює його на свою «ціганщину»
+ * і на третьому щиро радіє. Комунікацію — одне коло з типовими «а додайте», потім «беру».
+ */
+const CLIENT_ROUND: Record<'core' | 'content', string[]> = {
+	core: [
+		'Перше знайомство з роботою. Не погоджуйся одразу: verdict "rework", 3 вимоги по-своєму — що тобі не так і чого бракує, твоїми словами з брифу.',
+		'Агенція врахувала твої правки. Тепер додай своє: що порадив кум чи дружина, що є в конкурента, що любиш ти (більший логотип, золото, «щоб було видно», знижки, «як у Києві»). verdict "rework", 3 вимоги.',
+		'Агенція зробила все, як ти казав. Перечитай вголос конкретні пункти — процитуй назву, слоган, шматок позиціонування — і щиро захоплюйся тим, у що воно перетворилось, навіть якщо це вже абсурд. Ти дуже задоволений: verdict "ok", mood 85–100, demands порожньо.'
+	],
+	content: [
+		'Платформу ти вже затвердив. Тепер реклама — і тут ти точно знаєш, як треба. Вимагай 3–5 типових штук, що пасують твоєму бізнесу: САЙТ, QR-код, велике слово «АКЦІЯ», номер телефону на пів банера, «-20%», «працюємо з 1998 року», фото власника, «доставка безкоштовно», п’ять зірочок відгуків, «ми в Instagram», «найкращі в місті». Жартуй у своїй манері. verdict "rework".',
+		'Агенція все додала. Ти в захваті: нарешті воно «продає». Похвали конкретні додані штуки. verdict "ok", mood 90–100, demands порожньо.'
+	]
+};
 
 const CONTENT_TASK: Record<ContentElement, string> = {
 	threads: 'голос бренду для Threads одним реченням і 2 пости (до 120 знаків).',
@@ -299,15 +315,17 @@ export function normContent(id: ContentElement, j: Record<string, unknown>): { t
 }
 
 export function normGpt(j: Record<string, unknown>) {
-	return { answer: str(j.answer, 350), source: str(j.source, 80) };
+	return { answer: str(j.answer, 240), source: str(j.source, 80) };
 }
 
-export function normClient(j: Record<string, unknown>, last: boolean) {
-	let verdict: 'ok' | 'rework' | 'reject' = j.verdict === 'ok' || j.verdict === 'reject' ? j.verdict : 'rework';
-	const demands = strs(j.demands, 3, 160);
-	if (last && verdict === 'rework') verdict = 'reject';
-	if (verdict === 'rework' && !demands.length) verdict = 'ok';
-	const mood = Math.max(0, Math.min(100, Math.round(Number(j.mood) || 50)));
+/** Вердикт за сценарієм: поки не останнє коло — правки (навіть якщо модель «погодилась»), на останньому — «так». */
+export function normClient(j: Record<string, unknown>, stage: 'core' | 'content', round: number) {
+	const last = round >= (stage === 'core' ? 3 : 2);
+	const verdict: 'ok' | 'rework' = last ? 'ok' : 'rework';
+	let demands = strs(j.demands, 5, 160);
+	if (verdict === 'rework' && !demands.length) demands = stage === 'core' ? ['логотип більший', 'щоб було видно, що ми найкращі'] : ['додайте QR-код', 'велике слово «АКЦІЯ»', 'номер телефону більше'];
+	const raw = Math.round(Number(j.mood) || 50);
+	const mood = Math.max(0, Math.min(100, last ? Math.max(85, raw) : Math.min(70, raw)));
 	const lines = strs(j.lines, 3, 90);
 	return { reaction: str(j.reaction, 300), lines: lines.length ? lines : [str(j.reaction, 90)].filter(Boolean), verdict, mood, demands: verdict === 'rework' ? demands : [] };
 }

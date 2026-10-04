@@ -3,7 +3,6 @@
 	import { Office, type SceneInput } from '$lib/scene/office';
 	import type { Role, Spot } from '$lib/types';
 	import Icon from './Icon.svelte';
-	import Modal from './Modal.svelte';
 
 	/**
 	 * Головне меню (title) і меню паузи (Esc). Поляроїди — кадри з того самого офісу гри,
@@ -11,7 +10,6 @@
 	 */
 	let { mode, canContinue, onContinue, onNew, onTitle }: { mode: 'title' | 'pause'; canContinue: boolean; onContinue: () => void; onNew: () => void; onTitle: () => void } = $props();
 
-	let help = $state(false);
 	let shots = $state<{ src: string; cap: string; rot: number }[]>([]);
 
 	const agents = (spot: Spot | Partial<Record<Role, Spot>>, status = 'idle') => {
@@ -64,7 +62,6 @@
 		<nav>
 			{#if canContinue}<button class="btn primary wide" onclick={onContinue}><Icon name="play" size={16} />Продовжити</button>{/if}
 			<button class="btn wide" class:primary={!canContinue} onclick={() => (canContinue ? confirm('Почати нову гру? Поточна агенція закриється, прогрес зітреться.') && onNew() : onNew())}><Icon name="plus" size={16} />Нова гра</button>
-			<button class="btn wide" onclick={() => (help = true)}><Icon name="eye" size={16} />Як грати</button>
 			<button class="btn wide" disabled title="Звук буде пізніше"><Icon name="bot" size={16} />Звук: скоро</button>
 			{#if mode === 'pause'}<button class="btn ghost wide" onclick={onTitle}><Icon name="back" size={16} />Головне меню</button>{/if}
 		</nav>
@@ -72,19 +69,7 @@
 	</div>
 </div>
 
-{#if help}
-	<Modal title="Як грати" onClose={() => (help = false)}>
-		<ol class="rules">
-			<li>Береш бриф у «Брифах». Передплати нема: клієнт платить 60% чеку за прийняту основу і 40% за канали.</li>
-			<li>Стратегиня читає бриф і радиться з колегами. Копірайтер приносить три назви — ти обираєш одну.</li>
-			<li>Перед клієнтом — зведення: дай до трьох правок або одразу показуй.</li>
-			<li>Клієнт бурчить уголос, а потім виносить вердикт. Ще коло з його правками — або кинь проєкт.</li>
-			<li>Клікай на людей і предмети в офісі: думки, похвала, кава, піца, вихідний.</li>
-			<li>Стрес росте від роботи й правок, мораль падає від незадоволених клієнтів. Відпочинок — через двері.</li>
-			<li>Репутація відкриває більший бізнес і більші чеки. Але й витрати ростуть.</li>
-		</ol>
-	</Modal>
-{/if}
+
 
 <style lang="scss">
 	.menu {
@@ -180,12 +165,6 @@
 	.hint {
 		font-family: var(--pixel);
 		font-size: 12px;
-	}
-	.rules {
-		display: grid;
-		gap: 8px;
-		padding-left: 20px;
-		font-size: 14px;
 	}
 	@media (max-width: 640px) {
 		.wall {

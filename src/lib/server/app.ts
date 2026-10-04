@@ -26,7 +26,9 @@ export function app(): Game {
 			review: env.REVIEW_MODEL ?? 'claude-opus-5-5',
 			client: env.CLIENT_MODEL ?? 'claude-sonnet-5-5',
 			gpt: env.GPT_MODEL ?? 'claude-haiku-4-5'
-		}
+		},
+		// Кожен крок команди триває щонайменше стільки — щоб встигати читати бабли й прогрес.
+		paceMs: Number(env.PACE_MS ?? 6500)
 	});
 	log('info', 'start', { mode: key ? 'claude' : 'demo', images: gkey ? 'gemini' : 'demo', data: env.DATA_DIR ?? './data', admin: !!env.ADMIN_TOKEN });
 	return game;

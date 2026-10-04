@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Live } from '$lib/live.svelte';
-	import { DAILY_COST, ROLE_NAME, ROLES, TIER_NAME, tierOf, type Role } from '$lib/types';
+	import { ROLE_NAME, ROLES, TIER_NAME, dailyCost, tierOf, type Role } from '$lib/types';
 	import { PROFILE } from '$lib/team';
 	import Avatar from './Avatar.svelte';
 	import Bar from './Bar.svelte';
@@ -21,22 +21,15 @@
 </script>
 
 <section class="wrap">
-	<h2>Пульт</h2>
-	<div class="controls">
-		{#if run}
-			<button class="btn" class:human={run.paused} onclick={() => live.act({ action: 'pause', on: !run.paused })}><Icon name={run.paused ? 'play' : 'pause'} size={16} />{run.paused ? 'Продовжити' : 'Пауза'}</button>
-		{/if}
-		<button class="btn" disabled={!!g.activeRun || live.busy || g.bankrupt} onclick={onRest} title={g.activeRun ? 'Посеред брифу ніхто не піде' : ''}><Icon name="door" size={16} />Вихідний</button>
-	</div>
-	<p class="faint small">Рівень {tier}: {TIER_NAME[tier]} · щодня −{DAILY_COST[tier].toLocaleString('uk-UA')} ₴ · клікай на людей і предмети в офісі</p>
-
-	<h2 class="mt">Команда</h2>
+	<h2>Команда</h2>
+	<p class="faint small">Рівень {tier}: {TIER_NAME[tier]} · щодня −{dailyCost(g.reputation, g.team).toLocaleString('uk-UA')} ₴ оренди й зарплат · клікай на людей і предмети в офісі</p>
 	{#each ROLES as r}
 		{@const a = run ? run.agents[r] : { burnout: g.burnout[r], morale: g.morale[r], hp: g.hp[r], doing: 'між брифами' }}
 		<button class="member panel" onclick={() => onOpen(r)}>
 			<Avatar who={r} size={52} />
 			<div class="mb">
-				<div class="top"><span class="name">{ROLE_NAME[r]}</span><span class="faint doing">{a.doing}</span></div>
+				<div class="top"><span class="name">{g.team[r].grade}-{ROLE_NAME[r].toLowerCase()}</span><span class="faint doing">{g.team[r].sulk ? 'ображений(а)' : a.doing}</span></div>
+				<p class="faint small">Прийнятих проєктів: {g.team[r].done}{g.team[r].grade === 'junior' ? ' з 5 до розмови про middle' : ''}</p>
 				<Bar label="Здоровʼя" value={a.hp} kind="hp" />
 				<Bar label="Стрес" value={a.burnout} kind="stress" />
 				<Bar label="Мораль" value={a.morale} kind="morale" />
@@ -47,6 +40,10 @@
 			</div>
 		</button>
 	{/each}
+
+	<div class="controls">
+		<button class="btn" disabled={!!g.activeRun || live.busy || g.bankrupt} onclick={onRest} title={g.activeRun ? 'Посеред брифу ніхто не піде' : ''}><Icon name="door" size={16} />Вихідний для всіх</button>
+	</div>
 
 	<h2 class="mt">Рахунки API</h2>
 	<div class="balances">

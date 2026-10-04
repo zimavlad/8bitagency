@@ -4,7 +4,7 @@
 	import { ROLE_NAME, ROLES, type Role, type RunState, type Speaker, type Speech } from '$lib/types';
 
 	type Target = Role | 'client' | Thing;
-	let { run, hour, sky, bubbles = true, away = false, frozen = false, onPick }: { run: RunState | null; hour: number; sky: Sky; bubbles?: boolean; away?: boolean; frozen?: boolean; onPick?: (what: Target, x: number, y: number) => void } = $props();
+	let { run, hour, sky, bubbles = true, away = false, frozen = false, coffee = 0, onPick }: { run: RunState | null; hour: number; sky: Sky; bubbles?: boolean; away?: boolean; frozen?: boolean; coffee?: number; onPick?: (what: Target, x: number, y: number) => void } = $props();
 
 	let stage: HTMLDivElement;
 	let canvas: HTMLCanvasElement;
@@ -100,7 +100,8 @@
 		sky,
 		reducedMotion: reduced,
 		client: { gender: run?.brief.client.gender ?? 'm', look: run?.brief.client.look ?? 'leather' },
-		away
+		away,
+		coffee
 	});
 
 	$effect(() => {
@@ -121,8 +122,15 @@
 			const items = live
 				.map((s) => ({ s, el: els[s.who], a: office!.anchor(s.who) }))
 				.sort((x, y) => (x.a?.y ?? 0) - (y.a?.y ?? 0));
-			for (const { el, a } of items) {
+			const h = stage.clientHeight;
+			for (const { s, el, a } of items) {
 				if (!el) continue;
+				// Джіпітенко говорить з «екрана» в нижньому лівому куті — там порожня підлога, бабли людей не перекриває.
+				if (s.who === 'gpt') {
+					el.style.opacity = a ? '1' : '0';
+					el.style.transform = `translate(8px, ${h - el.offsetHeight - 8}px)`;
+					continue;
+				}
 				if (!a) {
 					el.style.opacity = '0';
 					continue;
@@ -172,8 +180,8 @@
 	{#if bubbles}
 		{#each live as s (s.who)}
 			<div class="bubble" class:gpt={s.who === 'gpt'} class:client={s.who === 'client'} class:sys={s.kind === 'system'} bind:this={els[s.who]}>
-				<span class="who">{who(s.who)}</span>
-				<span class="text">{s.text}</span>
+				<span class="who">{who(s.who)}{s.who === 'gpt' && s.to ? ` → ${ROLE_NAME[s.to].toLowerCase()}` : ''}</span>
+				<span class="text">{s.who === 'gpt' && s.text.length > 170 ? `${s.text.slice(0, 168)}…` : s.text}</span>
 			</div>
 		{/each}
 	{/if}
@@ -224,6 +232,7 @@
 			transform: rotate(45deg);
 		}
 		&.gpt {
+			max-width: min(300px, 46%);
 			border-color: #1f8f7a;
 			background: #dff7ef;
 			&::after {
@@ -233,7 +242,7 @@
 				color: #1f8f7a;
 			}
 			&::after {
-				border-color: #1f8f7a;
+				display: none;
 			}
 		}
 		&.client {

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Live } from '$lib/live.svelte';
-	import { DAILY_COST, PIZZA_COST, ROLE_NAME, ROLES, tierOf, type Role } from '$lib/types';
+	import { GRADE_NAME, PIZZA_COST, ROLE_NAME, ROLES, dailyCost, type Role } from '$lib/types';
 	import { PROFILE } from '$lib/team';
 	import Avatar from './Avatar.svelte';
 	import Bar from './Bar.svelte';
@@ -8,7 +8,7 @@
 
 	/** Маленьке вікно біля того, на що клікнули в офісі: хто це, як почувається і що можна зробити. */
 	type Target = Role | 'client' | 'coffee' | 'pizza' | 'door';
-	let { live, what, x, y, w, h, onClose, onThoughts, onRest }: { live: Live; what: Target; x: number; y: number; w: number; h: number; onClose: () => void; onThoughts: (who: Role | 'client') => void; onRest: () => void } = $props();
+	let { live, what, x, y, w, h, onClose, onThoughts, onRest, onBrew }: { live: Live; what: Target; x: number; y: number; w: number; h: number; onClose: () => void; onThoughts: (who: Role | 'client') => void; onRest: () => void; onBrew: () => void } = $props();
 
 	const g = $derived(live.game!);
 	const run = $derived(live.run && live.run.phase !== 'done' && live.run.phase !== 'failed' ? live.run : null);
@@ -25,10 +25,11 @@
 
 	async function perk(kind: 'coffee' | 'pizza' | 'praise') {
 		const ok = await live.gameAction({ action: 'perk', kind, role: role ?? undefined });
-		if (ok) live.say(kind === 'coffee' ? 'Кава зварилась: стрес команди −6' : kind === 'pizza' ? `Піца приїхала: мораль команди +8, −${PIZZA_COST} ₴` : `${ROLE_NAME[role!]}: мораль +6`);
-		else if (live.error) live.say(live.error);
+		if (ok && kind === 'coffee') onBrew();
+		if (!ok && live.error) live.say(live.error);
 		onClose();
 	}
+	const tired = $derived(!!stats && stats.burnout > 60);
 </script>
 
 <div class="pop-back" role="presentation" onclick={onClose}></div>
@@ -36,7 +37,7 @@
 	{#if role && stats}
 		<header>
 			<Avatar who={role} size={40} />
-			<div><div class="nm">{ROLE_NAME[role]}</div><div class="faint small">{stats.doing}</div></div>
+			<div><div class="nm">{ROLE_NAME[role]} <span class="grade">{GRADE_NAME[g.team[role].grade]}</span></div><div class="faint small">{g.team[role].sulk ? 'ображений(а): працює абияк до вихідного' : stats.doing}</div></div>
 		</header>
 		<Bar label="Здоровʼя" value={stats.hp} kind="hp" />
 		<Bar label="Стрес" value={stats.burnout} kind="stress" />
@@ -45,7 +46,7 @@
 		<p class="small muted">Любить: {PROFILE[role].likes}.</p>
 		<div class="acts">
 			<button class="btn sm" onclick={() => onThoughts(role)}><Icon name="eye" size={14} />Думки</button>
-			<button class="btn sm human" disabled={praised || live.busy} title={praised ? 'Сьогодні вже хвалив' : ''} onclick={() => perk('praise')}><Icon name="heart" size={14} />Похвалити</button>
+			<button class="btn sm human" disabled={praised || live.busy} title={praised ? 'Сьогодні вже хвалив' : tired ? 'Стрес понад 60%: похвала не допоможе, тільки роздратує' : ''} onclick={() => perk('praise')}><Icon name="heart" size={14} />Похвалити</button>
 		</div>
 	{:else if what === 'client' && live.run}
 		<header>
@@ -57,8 +58,8 @@
 		<div class="acts"><button class="btn sm" onclick={() => onThoughts('client')}><Icon name="eye" size={14} />Що казав</button></div>
 	{:else if what === 'coffee'}
 		<div class="nm">Крапельна кавоварка</div>
-		<p class="small muted">Кава всім: стрес команди −6. Раз на день.</p>
-		<div class="acts"><button class="btn sm primary" disabled={g.perks.coffee || live.busy} onclick={() => perk('coffee')}><Icon name="coffee" size={14} />{g.perks.coffee ? 'Сьогодні вже варили' : 'Зварити каву'}</button></div>
+		<p class="small muted">Кава всім: мораль +1, але й стрес +1. Скільки завгодно — на свій ризик.</p>
+		<div class="acts"><button class="btn sm primary" disabled={live.busy} onclick={() => perk('coffee')}><Icon name="coffee" size={14} />Зварити каву</button></div>
 	{:else if what === 'pizza'}
 		<div class="nm">Коробка з-під піци</div>
 		<p class="small muted">Замовити ще одну на всіх: мораль +8, −{PIZZA_COST} ₴. Раз на день.</p>
@@ -68,7 +69,7 @@
 		{#if g.activeRun && run}
 			<p class="small muted">Посеред брифу ніхто не піде додому. Спершу закінчи проєкт.</p>
 		{:else}
-			<p class="small muted">Вихідний: стрес −35, мораль +10. День минає, оренда й зарплати −{DAILY_COST[tierOf(g.reputation)].toLocaleString('uk-UA')} ₴.</p>
+			<p class="small muted">Вихідний: стрес −35, мораль +10, образи минають. День минає, оренда й зарплати −{dailyCost(g.reputation, g.team).toLocaleString('uk-UA')} ₴.</p>
 			<div class="acts"><button class="btn sm primary" disabled={live.busy || g.bankrupt} onclick={() => { onClose(); onRest(); }}><Icon name="door" size={14} />Відпустити всіх</button></div>
 		{/if}
 	{/if}
@@ -96,6 +97,13 @@
 		font-family: var(--pixel);
 		font-size: 17px;
 		font-weight: 600;
+	}
+	.grade {
+		font-size: 12px;
+		color: var(--human);
+		border: 2px solid var(--human);
+		padding: 0 4px;
+		vertical-align: 2px;
 	}
 	.small {
 		font-size: 13px;

@@ -22,6 +22,8 @@ export interface SceneInput {
 	client: { gender: 'm' | 'f'; look: 'leather' | 'suit' | 'casual' | 'creative' | 'farmer' | 'sport' };
 	/** Вихідний: усі йдуть у двері й зникають. */
 	away: boolean;
+	/** Скільки кави в колбі, 0..1. Пара йде, лише коли кава є. */
+	coffee?: number;
 }
 
 /* ─────────── геометрія ─────────── */
@@ -377,12 +379,16 @@ export class Office {
 	}
 
 	private sunBeam(k: number) {
-		const a = (this.input.sky === 'clouds' ? 0.12 : 0.24) * k;
-		const g = this.o.createLinearGradient(s(0, 2.3).x, s(0, 2.3).y, s(4, 3).x, s(4, 3).y);
+		const a = (this.input.sky === 'clouds' ? 0.16 : 0.32) * k;
+		const g = this.o.createLinearGradient(wL(2.3, 50).x, wL(2.3, 50).y, s(3.1, 3).x, s(3.1, 3).y);
 		g.addColorStop(0, `rgba(255,226,150,${a * 1.4})`);
 		g.addColorStop(1, 'rgba(255,226,150,0)');
-		this.poly([wL(1.15, 66), wL(3.45, 66), s(4.6, 4.4), s(3.4, 1.6)], g as unknown as string);
-		this.poly([s(0, 1.2), s(4.2, 1.9), s(4.2, 4.1), s(0, 3.5)], `rgba(255,214,130,${a})`);
+		// Промінь — від рами вікна (d 1.15…3.45, висота 30…68) до плями на підлозі тієї ж ширини:
+		// низ вікна світить ближче до стіни, верх — далі; сонце трохи збоку, тож пляма зсунута по gy.
+		const d1 = 1.15, d2 = 3.45, h1 = 30, h2 = 68;
+		const near = (d: number) => s(1.35, d + 0.3), far = (d: number) => s(3.1, d + 0.7);
+		this.poly([wL(d1, h2), wL(d2, h2), wL(d2, h1), near(d2), far(d2), far(d1)], g as unknown as string);
+		this.poly([near(d1), near(d2), far(d2), far(d1)], `rgba(255,214,130,${a})`);
 		// пилинки в промені
 		for (let i = 0; i < 9; i++) {
 			const ph = (this.t * 0.05 + i * 0.13) % 1;
@@ -821,19 +827,42 @@ export class Office {
 		for (let i = 0; i < 8; i++) { const p = at(gx + 0.2 + hash(i, 11) * 2, gy + 0.2 + hash(i, 12) * 1.2, h); this.px(p.x, p.y, 3, 1, '#b67c48'); }
 		this.qH(gx + 0.3, gy + 0.3, gx + 0.95, gy + 0.78, h + 0.4, C.paper);
 		for (let i = 0; i < 3; i++) this.qH(gx + 0.38, gy + 0.4 + i * 0.12, gx + 0.85, gy + 0.44 + i * 0.12, h + 0.8, '#b8ad98');
-		// коробка з-під піци: хтось уже поїв
-		this.box(gx + 1.2, gy + 0.55, 0.62, 0.62, h + 3, '#e6cfa0', '#c9a86e', '#b8955c', false);
-		this.qH(gx + 1.2, gy + 0.55, gx + 1.82, gy + 1.17, h + 3, '#ecd8ae');
-		this.qH(gx + 1.32, gy + 0.68, gx + 1.7, gy + 1.04, h + 3.2, '#d8433a');
-		this.qH(gx + 1.36, gy + 0.72, gx + 1.66, gy + 1.0, h + 3.4, '#ecd8ae');
-		this.qH(gx + 1.45, gy + 0.62, gx + 1.58, gy + 0.72, h + 3.3, 'rgba(160,110,50,.45)');
-		this.line([at(gx + 1.2, gy + 0.55, h + 3), at(gx + 1.82, gy + 0.55, h + 3), at(gx + 1.82, gy + 1.17, h + 3), at(gx + 1.2, gy + 1.17, h + 3)], C.ink, 1, true);
+		this.pizza(gx + 1.15, gy + 0.5, h);
 		this.mug(gx + 2.05, gy + 0.42, h);
 		this.mug(gx + 0.55, gy + 1.25, h);
 		// ваза з квітами
 		const v = at(gx + 1.0, gy + 1.25, h);
 		this.px(v.x - 2, v.y - 6, 4, 6, '#7ba7d4'); this.px(v.x - 2, v.y - 6, 1, 6, '#a9c8e8');
 		for (const [fx, fy, col] of [[-3, -10, '#f2a0b8'], [1, -12, '#ffd27a'], [3, -9, '#f6f2ea'], [-1, -14, '#e0546a']] as const) { this.px(v.x + fx, v.y + fy, 2, 2, col); this.px(v.x + fx, v.y + fy + 2, 1, 3, C.leafDk); }
+	}
+
+	/** Відкрита коробка піци на столі: пласке дно, піца з одним з'їденим шматком, кришка відкинута назад. */
+	private pizza(bx: number, by: number, h: number) {
+		const w = 0.66, d = 0.66, t = 2;
+		// кришка стоїть вертикально на задньому краї
+		this.qFace(bx, bx + w, by, h + t, h + t + 15, '#e6cfa0');
+		this.qFace(bx + 0.04, bx + w - 0.04, by, h + t + 1, h + t + 14, '#dcc08c');
+		this.qFace(bx + 0.18, bx + 0.32, by, h + t + 6, h + t + 9, 'rgba(160,110,50,.35)');
+		this.line([at(bx, by, h + t), at(bx, by, h + t + 15), at(bx + w, by, h + t + 15), at(bx + w, by, h + t)], C.ink);
+		// дно-лоток
+		this.qFace(bx, bx + w, by + d, h, h + t, '#c9a86e');
+		this.qSide(bx + w, by, by + d, h, h + t, '#b8955c');
+		this.qH(bx, by, bx + w, by + d, h + t, '#d9bf8a');
+		this.line([at(bx, by + d, h + t), at(bx + w, by + d, h + t), at(bx + w, by, h + t), at(bx + w, by, h), at(bx + w, by + d, h), at(bx, by + d, h), at(bx, by + d, h + t)], C.ink);
+		// піца: коло на площині лотка, скоринка й сир
+		const cx = bx + w / 2, cy = by + d / 2, z = h + t + 0.4;
+		const ring = (r: number, from = 0, to = Math.PI * 2) => {
+			const pts: P[] = [];
+			for (let k = 0; k <= 16; k++) { const a = from + ((to - from) * k) / 16; pts.push(at(cx + Math.cos(a) * r, cy + Math.sin(a) * r, z)); }
+			return pts;
+		};
+		this.poly(ring(0.29), '#d98a3a');
+		this.poly(ring(0.24), '#f2c14e');
+		// пепероні
+		for (const [dx, dy] of [[-0.1, -0.08], [0.09, -0.1], [0.12, 0.06], [-0.04, 0.11], [-0.13, 0.05]] as const) { const p = at(cx + dx, cy + dy, z); this.px(p.x - 1, p.y - 1, 3, 2, '#b8352a'); }
+		// з'їдений шматок: клин лотка поверх піци
+		this.poly([at(cx, cy, z + 0.1), ...ring(0.3, -0.35, 0.55).map((p) => ({ x: p.x, y: p.y - 0.1 }))], '#d9bf8a');
+		this.px(at(cx, cy, z).x, at(cx, cy, z).y - 1, 1, 1, '#d98a3a');
 	}
 
 	private coffeeCorner(gx: number, gy: number) {
@@ -857,12 +886,17 @@ export class Office {
 		// колба
 		const cx = mx + 0.25, cy = my + 0.3;
 		const c0 = at(cx, cy, t1 + 2);
+		const level = Math.max(0, Math.min(1, this.input.coffee ?? 0));
 		this.px(c0.x - 4, c0.y - 9, 8, 9, 'rgba(210,230,240,.55)');
-		this.px(c0.x - 4, c0.y - 5, 8, 5, '#4a2a18');
+		const fill = Math.round(level * 7);
+		if (fill) this.px(c0.x - 4, c0.y - fill, 8, fill, '#4a2a18');
+		if (fill) this.px(c0.x - 4, c0.y - fill, 8, 1, '#7a4a2a');
 		this.px(c0.x - 3, c0.y - 9, 1, 8, 'rgba(255,255,255,.6)');
 		this.px(c0.x + 4, c0.y - 7, 2, 4, '#26262b');
 		this.px(c0.x - 3, c0.y - 10, 6, 1, '#26262b');
-		for (let i = 0; i < 3; i++) {
+		// поки вариться — крапля з фільтра
+		if (level > 0 && level < 1) { const dy = Math.floor((this.t * 6) % 3); this.px(c0.x, c0.y - 9 + dy, 1, 1, '#4a2a18'); }
+		for (let i = 0; i < (level > 0 ? 3 : 0); i++) {
 			const ph = (this.t * 0.5 + i * 0.33) % 1;
 			const p = at(cx, cy, t1 + 12 + ph * 12);
 			this.o.globalAlpha = (1 - ph) * 0.55;
@@ -969,8 +1003,10 @@ export class Office {
 		c.textAlign = 'center';
 		c.textBaseline = 'middle';
 		const fs = Math.max(10, Math.min(13, 4 * this.S));
-		c.font = `500 ${fs}px Onest, system-ui, sans-serif`;
-		const items: [string, P][] = ROLES.map((r) => [ROLE_NAME[r], s(this.pos[r].gx, this.pos[r].gy)]);
+		c.font = `${fs}px Tiny5, Onest, system-ui, sans-serif`;
+		// Хто вже вийшов у двері на вихідний — без підпису (сам спрайт теж не малюється).
+		const gone = (r: Role) => this.input.away && Math.hypot(this.pos[r].gx - SPOTS[r].away.gx, this.pos[r].gy - SPOTS[r].away.gy) < 0.25;
+		const items: [string, P][] = ROLES.filter((r) => !gone(r)).map((r) => [ROLE_NAME[r], s(this.pos[r].gx, this.pos[r].gy)]);
 		if (this.input.clientInOffice || this.pos.client.gx !== CLIENT_DOOR.gx) items.push(['Клієнт', s(this.pos.client.gx, this.pos.client.gy)]);
 		for (const [name, p] of items) {
 			const x = this.TX + p.x * this.S, y = this.TY + (p.y + 7) * this.S;

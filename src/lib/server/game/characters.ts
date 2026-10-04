@@ -1,4 +1,4 @@
-import type { Client, Role } from '$lib/types';
+import type { Client, Role, Staff } from '$lib/types';
 
 /**
  * Ядра персонажів: характер, метод і межі. Метод стиснуто з бази знань Влада
@@ -59,8 +59,17 @@ export const CARDS: Record<Role, string> = {
 Джіпітенка майже не питаєш: «машина не бачить форму».`
 };
 
-export function systemFor(role: Role, burnout: number, morale = 70): string {
-	return `${CARDS[role]}\n${COMMON}\n${tiredness(burnout)}\n${spirit(morale)}`.trim();
+export function systemFor(role: Role, burnout: number, morale = 70, staff?: Staff): string {
+	return [CARDS[role], COMMON, grade(staff), tiredness(burnout), spirit(morale)].filter(Boolean).join('\n').trim();
+}
+
+/** Грейд і образа: джун старається, але буває кринж; ображений працює абияк, поки не відпочине. */
+export function grade(s?: Staff): string {
+	if (!s) return '';
+	if (s.sulk) return 'Тобі відмовили в підвищенні. Ти образився(лась) і працюєш абияк: перша-ліпша банальність, мінімум зусиль, пасивна агресія в thought.';
+	return s.grade === 'middle'
+		? 'Ти middle: впевнено, без зайвого пафосу, менше кринжу.'
+		: 'Ти junior: дуже стараєшся, але іноді видаєш пафосний кринж і сам(а) цього не помічаєш.';
 }
 
 /** Мораль чутно в тоні: після відмов клієнта команда зневірюється. */
@@ -80,7 +89,7 @@ export function tiredness(burnout: number): string {
 
 export const GPT_CARD = `Ти — «Джіпітенко», універсальний AI-помічник, до якого команда агенції бігає порадитись.
 Старанний, ввічливий, любиш списки й «найкращі практики», іноді звучиш шаблонно — це нормально.
-Відповідаєш коротко (до 300 знаків), українською, без emoji.
+Відповідаєш коротко (до 200 знаків), українською, без emoji, без «на жаль» і без зустрічних запитань — одразу порада.
 Якщо є уривки з бази знань — спирайся на них і назви файл-джерело. Якщо уривків нема — давай загальну, але практичну пораду.
 Відповідай лише JSON за схемою.`;
 

@@ -55,12 +55,16 @@ describe('бриф від початку до оплати', () => {
 		expect(run.decide({ action: 'continue' })).toMatch(/ще коло/);
 		expect(run.decide({ action: 'retry' })).toBeNull();
 		await until(() => run.state.phase === 'client_decision_core' && run.state.verdicts.length === 2);
-		// після «так» гра чекає гравця: спершу репліки клієнта й поп-ап, потім канали
+		// за сценарієм: два кола правок, на третьому клієнт у захваті
+		expect(run.state.verdicts.at(-1)?.verdict).toBe('rework');
+		run.decide({ action: 'retry' });
+		await until(() => run.state.phase === 'client_decision_core' && run.state.verdicts.length === 3);
+		// після «так» гра чекає гравця: спершу репліки клієнта й поп-ап, потім комунікація
 		expect(run.state.verdicts.at(-1)?.lines.length).toBeGreaterThan(0);
 		expect(run.decide({ action: 'retry' })).toMatch(/далі/);
 		expect(run.decide({ action: 'continue' })).toBeNull();
 		await until(() => run.state.phase === 'player_content');
-		expect(run.state.verdicts.filter((v) => v.stage === 'core').map((v) => v.verdict)).toEqual(['rework', 'ok']);
+		expect(run.state.verdicts.filter((v) => v.stage === 'core').map((v) => v.verdict)).toEqual(['rework', 'rework', 'ok']);
 		// канали коротко, банер і розкадровка намальовані
 		expect(Object.keys(run.state.elements)).toEqual(expect.arrayContaining(['threads', 'instagram', 'reels', 'youtube']));
 		expect(run.state.elements.instagram?.image).toMatch(/^\/api\/images\/rtest1\/instagram-/);
@@ -76,13 +80,15 @@ describe('бриф від початку до оплати', () => {
 		run.decide({ action: 'submit' });
 		await until(() => run.state.phase === 'client_decision_content');
 		run.decide({ action: 'retry' });
-		await until(() => run.state.phase === 'client_decision_content' && run.state.verdicts.length === 4);
+		await until(() => run.state.phase === 'client_decision_content' && run.state.verdicts.length === 5);
+		expect(run.state.verdicts.filter((v) => v.stage === 'content').map((v) => v.verdict)).toEqual(['rework', 'ok']);
 		run.decide({ action: 'continue' });
 		await until(() => run.state.phase === 'done');
 		expect(run.state.result?.verdict).toBe('ok');
-		// чек повністю: 60% за основу і 40% за канали
+		// чек повністю: 20% передплата на старті і 80% — коли клієнт прийняв усе
 		expect(run.state.result?.paid).toBe(brief.fee);
-		expect(run.state.result?.pay.map((p) => p.amount)).toEqual([brief.fee * 0.6, brief.fee * 0.4]);
+		expect(run.state.result?.pay.map((p) => p.amount)).toEqual([brief.prepay, brief.fee - brief.prepay]);
+		expect(brief.prepay).toBe(brief.fee * 0.2);
 		expect(run.trace.length).toBe(model.requests.length + 4);
 	});
 
@@ -116,7 +122,7 @@ describe('бриф від початку до оплати', () => {
 		expect(run.state.elements.logo?.logo?.shapes.length).toBeGreaterThan(1);
 	});
 
-	it('кинути проєкт після правок клієнта: основу не прийняли — 0 ₴', async () => {
+	it('кинути проєкт після правок клієнта: лишається тільки передплата', async () => {
 		const { run } = mk();
 		run.start();
 		await until(() => run.state.phase === 'pick_name');
@@ -127,8 +133,8 @@ describe('бриф від початку до оплати', () => {
 		run.decide({ action: 'giveup' });
 		await until(() => run.state.phase === 'done');
 		expect(run.state.result?.verdict).toBe('reject');
-		expect(run.state.result?.paid).toBe(0);
-		expect(run.state.result?.pay[0].label).toMatch(/не прийнято/);
+		expect(run.state.result?.paid).toBe(brief.prepay);
+		expect(run.state.result?.pay[1]).toMatchObject({ amount: 0 });
 		expect(run.state.agents.strategist.morale).toBeLessThan(70);
 	});
 
@@ -170,23 +176,54 @@ describe('гра', () => {
 		await until(() => run!.state.phase === 'client_decision_core');
 		run!.decide({ action: 'retry' });
 		await until(() => run!.state.phase === 'client_decision_core' && run!.state.verdicts.length === 2);
+		run!.decide({ action: 'retry' });
+		await until(() => run!.state.phase === 'client_decision_core' && run!.state.verdicts.length === 3);
 		run!.decide({ action: 'continue' });
 		await until(() => run!.state.phase === 'player_content');
-		expect(g.perk('pizza')).toBeNull();
-		expect(g.perk('pizza')).toMatch(/вже/);
+		expect(g.perk('pizza').error).toBeUndefined();
+		expect(g.perk('pizza').error).toMatch(/вже/);
+		// кава без ліміту: мораль +1 і стрес +1
+		const st = run!.state.agents.copywriter.burnout;
+		g.perk('coffee');
+		g.perk('coffee');
+		expect(run!.state.agents.copywriter.burnout).toBe(st + 2);
 		run!.decide({ action: 'submit' });
 		await until(() => run!.state.phase === 'client_decision_content');
 		run!.decide({ action: 'retry' });
-		await until(() => run!.state.phase === 'client_decision_content' && run!.state.verdicts.length === 4);
+		await until(() => run!.state.phase === 'client_decision_content' && run!.state.verdicts.length === 5);
 		run!.decide({ action: 'continue' });
 		await until(() => run!.state.phase === 'done' && g.state.activeRun === null);
 		expect(g.state.day).toBe(2);
+		// гроші: увесь чек (передплата прийшла на старті) мінус день (оренда 600 + 3 зарплати по 300) і піца
 		expect(g.state.money).toBe(money + run!.state.result!.paid - 1500 - 400);
-		expect(g.state.inbox.every((b) => b.tier === 1 && b.fee <= 5000 && b.prepay === 0)).toBe(true);
+		expect(g.state.inbox.every((b) => b.tier === 1 && b.fee <= 5000 && b.prepay === b.fee * 0.2)).toBe(true);
+		expect(g.state.team.strategist.done).toBe(1);
 		expect(g.state.history).toHaveLength(1);
 		expect(g.state.ledger.claude.usd).toBe(2.2);
 		expect(g.setBalance('gemini', 4.5)).toBeNull();
 		expect(g.state.ledger.gemini).toMatchObject({ usd: 4.5, spent: 0 });
+	});
+
+	it('похвала при стресі понад 60% лише дратує; після 5 проєктів — прохання про підвищення', () => {
+		const g = mkGame();
+		g.state.burnout.designer = 70;
+		const m = g.state.morale.designer;
+		expect(g.perk('praise', 'designer').note).toMatch(/не зайшла/);
+		expect(g.state.morale.designer).toBe(m - 4);
+		expect(g.perk('praise', 'strategist').note).toMatch(/зайшла/);
+		g.state.ask = 'copywriter';
+		expect(g.answer(false)).toBeNull();
+		expect(g.state.team.copywriter.sulk).toBe(true);
+		g.rest();
+		expect(g.state.team.copywriter.sulk).toBe(false);
+	});
+
+	it('інвестор: на восьмий ранок не в плюсі — гру закінчено', () => {
+		const g = mkGame();
+		for (let i = 0; i < 7; i++) g.rest();
+		expect(g.state.day).toBe(8);
+		expect(g.state.over).toBe('investor');
+		expect(g.state.bankrupt).toBe(true);
 	});
 
 	it('свій бриф за полями: без бізнесу не стартує, клієнта уточнює персона', async () => {

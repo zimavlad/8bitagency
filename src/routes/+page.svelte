@@ -2,8 +2,11 @@
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { Live } from '$lib/live.svelte';
 	import type { Sky, Thing } from '$lib/scene/office';
-	import { ROLE_NAME, tierOf, type Role } from '$lib/types';
+	import { DEADLINE_DAY, GRADE_NAME, ROLE_NAME, START_MONEY, tierOf, type Role } from '$lib/types';
 	import Decision from '$lib/components/Decision.svelte';
+	import Email from '$lib/components/Email.svelte';
+	import Modal from '$lib/components/Modal.svelte';
+	import Tour from '$lib/components/Tour.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import Inbox from '$lib/components/Inbox.svelte';
 	import Menu from '$lib/components/Menu.svelte';
@@ -21,7 +24,24 @@
 	let screen = $state<'title' | 'game'>('title');
 	let menu = $state(false);
 	let menuPaused = false;
-	let hour = $state(new Date().getHours() + new Date().getMinutes() / 60);
+	/** Час у грі: справжній годинник плюс зсув (вихідний перемотує на ранок). */
+	const realHour = () => new Date().getHours() + new Date().getMinutes() / 60;
+	let shift = $state(0);
+	let fixedHour = $state<number | null>(null);
+	let tick = $state(realHour());
+	const hour = $derived(((fixedHour ?? tick) + shift + 24) % 24);
+	let mail = $state<'investor' | null>(null);
+	let tour = $state(false);
+	let briefOpen = $state(false);
+	let investorSeen = $state(false);
+	/** Кава: момент, коли зварили; колба наповнюється 3 с, потім потроху пустіє за 3 хв. */
+	let brewedAt = $state(0);
+	let now = $state(Date.now());
+	const coffee = $derived.by(() => {
+		if (!brewedAt) return 0;
+		const t = (now - brewedAt) / 1000;
+		return t < 3 ? Math.max(0.05, t / 3) : t < 180 ? 1 - ((t - 3) / 177) * 0.85 : 0;
+	});
 	let sky = $state<Sky>('clear');
 	let wide = $state(true);
 	let away = $state(false);
@@ -38,16 +58,28 @@
 	/** Скільки тримати вердикт, поки клієнт договорює репліки над головою. */
 	const talk = $derived(wide ? (run?.verdicts.at(-1)?.lines.length ?? 0) * 2600 + 500 : 700);
 
-	/** Вихідний: усі виходять у двері, офіс порожніє, наступного ранку повертаються. */
+	/** Перемотати ігровий час на годину h (решта дня йде від неї). */
+	function setHour(h: number) {
+		shift = h - (fixedHour ?? tick);
+	}
+
+	/** Вихідний: усі виходять у двері, за вікном вечір і ніч, повертаються зранку — інше світло. */
 	async function dayOff() {
 		away = true;
 		live.say('Команда пішла на вихідний');
-		await new Promise((r) => setTimeout(r, 2600));
+		await new Promise((r) => setTimeout(r, 2200));
+		setHour(22.5);
 		const ok = await live.gameAction({ action: 'rest' });
-		if (ok) live.say('Офіс порожній. Ранок нового дня…');
-		await new Promise((r) => setTimeout(r, 1800));
+		if (ok) live.say('Офіс порожній. Ніч…');
+		await new Promise((r) => setTimeout(r, 2200));
+		setHour(8.5);
+		await new Promise((r) => setTimeout(r, 900));
 		away = false;
-		if (ok) live.say('Повернулись відпочилими: стрес −35, мораль +10');
+		if (ok) live.say('Ранок. Повернулись відпочилими: стрес −35, мораль +10');
+	}
+
+	function onBrew() {
+		brewedAt = Date.now();
 	}
 
 	function openMenu() {
@@ -69,11 +101,15 @@
 		menuPaused = false;
 		screen = 'game';
 		tab = 'inbox';
+		shift = 0;
+		investorSeen = false;
+		mail = 'investor';
 	}
 
 	function onKey(e: KeyboardEvent) {
-		if (e.key !== 'Escape' || screen === 'title') return;
+		if (e.key !== 'Escape' || screen === 'title' || mail || tour) return;
 		if (pop) pop = null;
+		else if (briefOpen) briefOpen = false;
 		else if (open) open = null;
 		else if (menu) closeMenu();
 		else openMenu();
@@ -88,8 +124,10 @@
 	onMount(() => {
 		const q = new URLSearchParams(location.search);
 		const fh = q.get('h');
-		if (fh !== null) hour = Number(fh);
-		else clock = setInterval(() => (hour = new Date().getHours() + new Date().getMinutes() / 60), 60_000);
+		if (fh !== null) fixedHour = Number(fh);
+		else clock = setInterval(() => (tick = realHour()), 60_000);
+		const beat = setInterval(() => (now = Date.now()), 1000);
+		addEventListener('beforeunload', () => clearInterval(beat));
 		if (q.has('play')) screen = 'game';
 		fetch(`/api/weather${q.get('w') ? `?w=${q.get('w')}` : ''}`).then((r) => r.json()).then((j) => (sky = j.sky)).catch(() => {});
 		const mq = matchMedia('(min-width: 860px)');
@@ -106,7 +144,7 @@
 	const tabs: { id: Tab; label: string; icon: 'inbox' | 'work' | 'team' }[] = [
 		{ id: 'inbox', label: 'Брифи', icon: 'inbox' },
 		{ id: 'work', label: 'Робота', icon: 'work' },
-		{ id: 'team', label: 'Пульт', icon: 'team' }
+		{ id: 'team', label: 'Команда', icon: 'team' }
 	];
 </script>
 
@@ -125,7 +163,7 @@
 		{#if live.demo}<span class="demo" title="Без ключа Claude відповідає підставна модель">демо</span>{/if}
 		<div class="hud">
 			<span class="kpi" title="День"><span class="faint dw">день</span> <span class="num">{g.day}</span></span>
-			<span class="kpi" title="Гроші"><Icon name="coin" size={16} /><Num value={g.money} width={6} suffix=" ₴" /></span>
+			<span class="kpi" title="Гроші" data-tour="money"><Icon name="coin" size={16} /><Num value={g.money} width={6} suffix=" ₴" /></span>
 			<span class="kpi" title="Репутація; рівень агенції"><Icon name="star" size={16} /><Num value={g.reputation} width={3} /><span class="faint lvl">рів. {tierOf(g.reputation)}</span></span>
 			<span class="kpi bal" title="Орієнтовний залишок на рахунках API"><span class="faint">Claude</span> <span class="num">${Math.max(0, g.ledger.claude.usd - g.ledger.claude.spent).toFixed(2)}</span> <span class="faint">Gemini</span> <span class="num">${Math.max(0, g.ledger.gemini.usd - g.ledger.gemini.spent).toFixed(2)}</span></span>
 		</div>
@@ -133,13 +171,17 @@
 	</header>
 
 	<main class="main">
-		<div class="scene" bind:this={sceneEl}>
-			<Scene run={live.run} {hour} {sky} bubbles={wide} {away} frozen={menu || screen === 'title'} onPick={(what, x, y) => (pop = { what, x, y })} />
+		<div class="scene" bind:this={sceneEl} data-tour="scene">
+			<Scene run={live.run} {hour} {sky} bubbles={wide} {away} {coffee} frozen={menu || screen === 'title' || !!mail || tour} onPick={(what, x, y) => (pop = { what, x, y })} />
+			<div class="tools" data-tour="scene-tools">
+				<button class="btn sm" class:human={run?.paused} disabled={!active} onclick={() => live.act({ action: 'pause', on: !run!.paused })} title={active ? '' : 'Пауза — коли команда працює над брифом'}><Icon name={run?.paused ? 'play' : 'pause'} size={14} />{run?.paused ? 'Далі' : 'Пауза'}</button>
+				<button class="btn sm" disabled={!run} onclick={() => (briefOpen = true)}><Icon name="inbox" size={14} />Бриф</button>
+			</div>
 			{#if run?.paused && !menu}<div class="paused px">Пауза</div>{/if}
 			{#if live.toast}<div class="toast px rise">{live.toast}</div>{/if}
 			{#if waiting && minimized}<button class="btn human yourturn" onclick={() => (minimized = false)}><Icon name="play" size={16} />Твій хід</button>{/if}
 			{#if pop && sceneEl}
-				<Popover {live} what={pop.what} x={pop.x} y={pop.y} w={sceneEl.clientWidth} h={sceneEl.clientHeight} onClose={() => (pop = null)} onThoughts={(w) => { pop = null; open = w; }} onRest={dayOff} />
+				<Popover {live} what={pop.what} x={pop.x} y={pop.y} w={sceneEl.clientWidth} h={sceneEl.clientHeight} onClose={() => (pop = null)} onThoughts={(w) => { pop = null; open = w; }} onRest={dayOff} {onBrew} />
 			{/if}
 		</div>
 		{#if !wide}
@@ -156,15 +198,15 @@
 			{#if wide}
 				<nav class="tabs-top">
 					{#each tabs as t}
-						<button class:on={tab === t.id} onclick={() => (tab = t.id)}><Icon name={t.icon} size={16} />{t.label}</button>
+						<button class:on={tab === t.id} data-tour="tab-{t.id}" onclick={() => (tab = t.id)}><Icon name={t.icon} size={16} />{t.label}</button>
 					{/each}
 				</nav>
 			{/if}
 			<div class="content">
 				{#if g.bankrupt}
 					<div class="panel bankrupt">
-						<h2>Агенція збанкрутувала</h2>
-						<p class="muted">Гроші скінчились. Таке буває навіть з чесними агенціями.</p>
+						<h2>{g.over === 'investor' ? 'Інвестор подав до суду' : 'Агенція збанкрутувала'}</h2>
+						<p class="muted">{g.over === 'investor' ? `Тиждень минув, а на рахунку не більше за ${START_MONEY.toLocaleString('uk-UA')} ₴. Інвестор тримав слово.` : 'Гроші скінчились. Таке буває навіть з чесними агенціями.'}</p>
 						<button class="btn primary" onclick={newGame}>Нова гра</button>
 					</div>
 				{/if}
@@ -190,10 +232,46 @@
 	{/if}
 	{#if open}<Thoughts who={open} run={live.run} onClose={() => (open = null)} />{/if}
 
+	{#if briefOpen && live.run}
+		<Modal title="Бриф: {live.run.brief.client.name}" onClose={() => (briefOpen = false)}>
+			<p class="muted">{live.run.brief.client.business}</p>
+			<p class="paper briefbox">«{live.run.brief.text}»</p>
+			<p class="faint small">Чек {live.run.brief.fee.toLocaleString('uk-UA')} ₴ · передплата {live.run.brief.prepay.toLocaleString('uk-UA')} ₴ уже на рахунку · решта — коли клієнт прийме все</p>
+		</Modal>
+	{/if}
+
+	{#if screen === 'game' && !menu}
+		{#if mail === 'investor'}
+			<Email from="investor_shef777@gmail.com" to="director@creative.agnc" subject="В тебе тиждень, Васю" body={[
+				'Васю, добрий день.',
+				`Перекинув на рахунок агенції ${START_MONEY.toLocaleString('uk-UA')} ₴. Це останній внесок. Я дуже, дуже спокійний, просто пишу без емоцій.`,
+				'У тебе тиждень. Якщо за сім днів агенція не вийде в плюс — побачимось у суді. Без образ, це бізнес.',
+				'Брифи бери будь-які, хоч від шаурми. Команду не спали — вони мені ще потрібні живими. Удачі!'
+			]} ps="Останній раз виручаю. Справді останній.">
+				<button class="btn primary" onclick={() => { mail = null; tour = true; }}><Icon name="x" size={14} />Закрити лист</button>
+			</Email>
+		{:else if g.ask && !live.run?.phase?.startsWith('client')}
+			{@const r = g.ask}
+			<Email from="{ROLE_NAME[r].toLowerCase()}@creative.agnc" to="director@creative.agnc" subject="Розмова про зарплату" body={[
+				'Привіт. Я тут подумав(ла) і порахував(ла): п’ять проєктів, клієнти задоволені, ніхто не помер.',
+				`Я вважаю, я тепер ${GRADE_NAME.middle}. Хочу зарплату ×2.`,
+				'Можна не відповідати одразу. Але бажано одразу.'
+			]} ps="Це не ультиматум. Але трошки ультиматум.">
+				<button class="btn danger" onclick={() => live.gameAction({ action: 'answer', yes: false })}>Ні</button>
+				<button class="btn primary" onclick={() => live.gameAction({ action: 'answer', yes: true })}>Ок, ×2</button>
+			</Email>
+		{:else if g.investorOk && g.day === DEADLINE_DAY && !investorSeen}
+			<Email from="investor_shef777@gmail.com" to="director@creative.agnc" subject="Ну добре" body={['Бачу плюс. Не очікував, чесно.', 'Суд скасовується. Працюй далі, але звіти щопонеділка.']}>
+				<button class="btn primary" onclick={() => (investorSeen = true)}>Закрити лист</button>
+			</Email>
+		{/if}
+		{#if tour}<Tour onDone={() => (tour = false)} />{/if}
+	{/if}
+
 	{#if !wide}
 		<nav class="tabs-bottom">
 			{#each tabs as t}
-				<button class:on={tab === t.id} onclick={() => (tab = t.id)}><Icon name={t.icon} size={20} /><span>{t.label}</span></button>
+				<button class:on={tab === t.id} data-tour="tab-{t.id}" onclick={() => (tab = t.id)}><Icon name={t.icon} size={20} /><span>{t.label}</span></button>
 			{/each}
 		</nav>
 	{/if}
@@ -258,6 +336,21 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		z-index: 4;
+	}
+	.tools {
+		position: absolute;
+		left: 10px;
+		top: 10px;
+		display: flex;
+		gap: 6px;
+		z-index: 5;
+	}
+	.briefbox {
+		padding: 10px 12px;
+		font-size: 15px;
+	}
+	.small {
+		font-size: 12.5px;
 	}
 	.yourturn {
 		position: absolute;

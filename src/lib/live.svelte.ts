@@ -103,11 +103,12 @@ export class Live {
 		return !!j;
 	}
 
-	async gameAction(body: { action: 'rest' | 'reset' } | { action: 'balance'; provider: 'claude' | 'gemini'; usd: number } | { action: 'perk'; kind: 'coffee' | 'pizza' | 'praise'; role?: Role }) {
+	async gameAction(body: { action: 'rest' | 'reset' } | { action: 'balance'; provider: 'claude' | 'gemini'; usd: number } | { action: 'perk'; kind: 'coffee' | 'pizza' | 'praise'; role?: Role } | { action: 'answer'; yes: boolean }) {
 		this.busy = true;
-		const j = await this.api<{ game: GameState }>('/api/game', body);
+		const j = await this.api<{ game: GameState; note?: string }>('/api/game', body);
 		this.busy = false;
 		if (j) this.game = j.game;
+		if (j?.note) this.say(j.note);
 		if (body.action === 'reset') {
 			this.es?.close();
 			this.run = null;

@@ -20,7 +20,7 @@
 	const locked = $derived(!!g.activeRun || g.bankrupt);
 </script>
 
-<section class="wrap">
+<section class="wrap" data-tour="inbox">
 	<div class="head">
 		<h2>Вхідні брифи</h2>
 		<span class="faint">день <span class="num">{g.day}</span></span>
@@ -39,7 +39,7 @@
 				<div class="fee"><Num value={b.fee} width={6} suffix=" ₴" /></div>
 			</header>
 			<p>«{b.text}»</p>
-			<p class="terms faint">Передплата {b.prepay} ₴ · чек {b.fee.toLocaleString('uk-UA')} ₴: 60% за основу, 40% за канали · {TIER_NAME[b.tier]}</p>
+			<p class="terms faint">Передплата 20% — {b.prepay.toLocaleString('uk-UA')} ₴ одразу · решта {(b.fee - b.prepay).toLocaleString('uk-UA')} ₴ — коли клієнт прийме все · {TIER_NAME[b.tier]}</p>
 			<button class="btn primary" disabled={locked || live.busy} onclick={() => live.start({ briefId: b.id })}>Взяти бриф</button>
 		</article>
 	{:else}
@@ -62,7 +62,7 @@
 				<button class="btn ghost" onclick={() => (custom = false)}>Скасувати</button>
 				<button class="btn primary" disabled={locked || live.busy || form.business.trim().length < 3} onclick={async () => { if (await live.start({ custom: form })) { custom = false; form = empty(); } }}>Взяти</button>
 			</div>
-			<p class="faint small">Чек за свій бриф на твоєму рівні — {[0, 4000, 15000, 45000][tierOf(g.reputation)].toLocaleString('uk-UA')} ₴, передплата 0. Клієнта-персонажа вигадаємо під твій бізнес.</p>
+			<p class="faint small">Чек за свій бриф на твоєму рівні — {[0, 4000, 15000, 45000][tierOf(g.reputation)].toLocaleString('uk-UA')} ₴, передплата 20% одразу. Клієнта-персонажа вигадаємо під твій бізнес.</p>
 		{/if}
 	</article>
 </section>

@@ -1,4 +1,4 @@
-import { tierOf, type Brief, type BriefForm, type Client } from '$lib/types';
+import { PREPAY_SHARE, tierOf, type Brief, type BriefForm, type Client } from '$lib/types';
 
 /** Брифи, як вони реально приходять: сирі, суперечливі, з «на вчора». */
 /** tier: 1 — дрібний бізнес із чеками до 5 тис., 2 — середній, 3 — великий. Передплати на старті нема ніде. */
@@ -101,6 +101,9 @@ function rng(seed: number): () => number {
 	};
 }
 
+export const prepayOf = (fee: number) => Math.round((fee * PREPAY_SHARE) / 100) * 100;
+export const CUSTOM_FEE: Record<number, number> = { 1: 4000, 2: 15000, 3: 45000 };
+
 /** Три вхідні брифи на день за рівнем агенції; якщо свого рівня мало — додаємо з попереднього. */
 export function inboxFor(day: number, reputation: number, exclude: string[] = []): Brief[] {
 	const r = rng(day * 7919 + 13);
@@ -111,7 +114,7 @@ export function inboxFor(day: number, reputation: number, exclude: string[] = []
 		const open = all.filter((b) => b.tier === t && !picked.includes(b));
 		while (picked.length < 3 && open.length) picked.push(open.splice(Math.floor(r() * open.length), 1)[0]);
 	}
-	return picked.map((b) => ({ id: `b${b.i}`, client: b.client, text: b.text, fee: b.fee, prepay: 0, tier: b.tier }));
+	return picked.map((b) => ({ id: `b${b.i}`, client: b.client, text: b.text, fee: b.fee, prepay: prepayOf(b.fee), tier: b.tier }));
 }
 
 const CUSTOM_ARCHETYPES = [
@@ -140,8 +143,8 @@ export function customBrief(f: BriefForm, day: number, reputation = 0): Brief {
 			look: (['leather', 'suit', 'casual', 'creative', 'farmer', 'sport'] as const)[Math.floor(r() * 6)]
 		},
 		text,
-		fee: [0, 4000, 15000, 45000][tierOf(reputation)],
-		prepay: 0,
+		fee: CUSTOM_FEE[tierOf(reputation)],
+		prepay: prepayOf(CUSTOM_FEE[tierOf(reputation)]),
 		tier: tierOf(reputation),
 		custom: true
 	};
