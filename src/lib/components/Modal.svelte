@@ -20,7 +20,7 @@
 	.back {
 		position: fixed;
 		inset: 0;
-		background: rgba(10, 6, 4, 0.55);
+		background: rgba(8, 9, 12, 0.55);
 		z-index: 30;
 	}
 	.modal {

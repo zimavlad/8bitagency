@@ -140,7 +140,7 @@ export const SCHEMA = {
 	threads: obj({ thought: THOUGHT, voice: S('голос бренду одним реченням до 12 слів'), posts: list(S('пост для Threads до 120 знаків'), 'рівно 2') }),
 	instagram: obj({ thought: THOUGHT, headline: S('заголовок на банері, до 6 слів'), visual: S('що на картинці, до 16 слів') }),
 	reels: obj({ thought: THOUGHT, hooks: list(S('ідея Reels одним рядком до 12 слів'), 'рівно 3') }),
-	youtube: obj({ thought: THOUGHT, title: S('назва ролика до 5 слів'), cover: S('що на обкладинці ролика, одне речення до 14 слів'), scenes: list(S('сцена до 10 слів'), 'рівно 3') }),
+	youtube: obj({ thought: THOUGHT, title: S('назва ролика до 5 слів'), scenes: list(S('сцена до 10 слів: що в кадрі'), 'рівно 4, від першої до останньої') }),
 	gpt: obj({ answer: S('порада до 200 знаків, без вступу і без запитань у відповідь'), source: S('назва файлу з бази або «загальні знання»') }),
 	client: obj({
 		lines: list(S('коротка репліка вголос до 60 знаків: жарт-доїбка або похвала про конкретну річ з роботи'), 'рівно 3, від найголовнішого'),
@@ -183,9 +183,14 @@ export const prompt = {
 		`Колеги відповіли:\n${notes.map((n) => `${ROLE_NAME[n.role]}: ${n.text}`).join('\n')}\n\n` +
 		`Сформулюй позиціонування. 3 кандидати: рівно один keep, два rejected з причиною. Додай роль бренду і ворога.${advice(gpt)}`,
 
+	/** Ще три варіанти, коли керівнику не сподобались попередні. */
+	renaming: (rejected: string[]) =>
+		`Керівник забракував усі варіанти:\n${rejected.map((r) => `- ${r}`).join('\n')}\n\nДай 3 нові, зовсім інші — іншими прийомами, сміливіше й смішніше, але по суті позиціонування. Не повторюй жодного слова з забракованих назв.`,
+
 	naming: (pos: Pos, gpt?: string) =>
 		`Стратегиня визначила позиціонування:\n«${pos.positioning}»\nРоль бренду: ${pos.role}. Ворог: ${pos.enemy}.\n\n` +
-		`Дай 3 різні варіанти «назва + слоган» — різними прийомами. Керівник агенції обере один перед показом клієнту.${advice(gpt)}`,
+			`Дай 3 різні варіанти «назва + слоган» — різними прийомами. Керівник агенції обере один перед показом клієнту.\n` +
+		`Планка: дотепно, з легким гумором і живою інтонацією, як сказав би розумний друг, а не банер. Без пафосу, «найкращий», «якість», «турбота», без канцеляриту й римованих гасел. Перевір кожен: людина посміхнеться і запамʼятає з першого разу? Хотілося б сказати цю назву вголос? Якщо ні — викидай і думай далі.${advice(gpt)}`,
 
 	logo: (pos: Pos, name: string, slogan: string) =>
 		`Позиціонування: «${pos.positioning}». Роль бренду: ${pos.role}. Ворог: ${pos.enemy}.\nОбрана назва: «${name}». Слоган: «${slogan}».\n\nНамалюй знак під цю назву: одна сильна форма, два кольори на контрастному тлі, від 2 до 6 фігур, без тексту. Знак показуємо піксельним 32×32, тож дрібні деталі зникнуть — форма має бути крупна й проста.`,
@@ -216,8 +221,10 @@ export const prompt = {
 		`${ROLE_NAME[role]} питає: ${question}\n\n` +
 		(chunks.length ? `Уривки з бази знань:\n${chunks.map((c, i) => `[${i + 1}] (${c.source}) ${c.text}`).join('\n\n')}` : 'Уривків з бази знань нема.'),
 
-	client: (items: ElementValue[], stage: 'core' | 'content', round: number, extra?: string) =>
+	client: (items: ElementValue[], stage: 'core' | 'content', round: number, extra?: string, asked: string[] = [], hints: string[] = []) =>
 		'Спершу скажи 3 короткі репліки вголос (lines): про конкретні речі з того, що бачиш, твоїми словами. Потім підсумок і рішення.\n\n' +
+		(asked.length ? `Ти вже просив раніше (не повторюйся, вигадай інше):\n${asked.map((a) => `- ${a}`).join('\n')}\n\n` : '') +
+		(hints.length ? `Цього разу тебе чомусь чіпляє (візьми щось звідси, своїми словами): ${hints.join('; ')}.\nЗнижку чи акцію згадуй щонайбільше в одній вимозі за весь проєкт. Кожна вимога — про одну штуку.\n\n` : '') +
 		`Агенція показує${round > 1 ? ` (коло ${round}, після твоїх правок)` : ''}:\n${items.map((e) => `- ${ELEMENT_TITLE[e.id]}: ${e.text}${e.details.length ? ' (' + e.details.slice(0, 4).join('; ') + ')' : ''}`).join('\n')}` +
 		(extra ? `\n\n${extra}` : '') +
 		`\n\n${CLIENT_ROUND[stage][Math.min(round, CLIENT_ROUND[stage].length) - 1]}`,
@@ -247,7 +254,7 @@ const CONTENT_TASK: Record<ContentElement, string> = {
 	threads: 'голос бренду для Threads одним реченням і 2 пости (до 120 знаків).',
 	instagram: 'банер для Instagram: заголовок до 6 слів і що на картинці одним реченням.',
 	reels: '3 ідеї для Reels — по одному рядку до 12 слів.',
-	youtube: 'дорогий іміджевий ролик для YouTube: назва, що на обкладинці (одна сцена, яку видно з першого погляду), і 3 сцени по одному рядку до 10 слів.'
+	youtube: 'дорогий іміджевий ролик для YouTube: назва і розкадровка з 4 сцен, кожна одним рядком до 10 слів — що в кадрі.'
 };
 
 export const GPT_QUESTION = {
@@ -310,7 +317,7 @@ export function normContent(id: ContentElement, j: Record<string, unknown>): { t
 		case 'reels':
 			return { thought, text: 'Три ідеї', details: strs(j.hooks, 3, 140) };
 		case 'youtube':
-			return { thought, text: str(j.title, 80), details: [str(j.cover, 160), ...strs(j.scenes, 3, 120)].filter(Boolean) };
+			return { thought, text: str(j.title, 80), details: strs(j.scenes, 4, 120) };
 	}
 }
 

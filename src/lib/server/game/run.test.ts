@@ -34,6 +34,12 @@ describe('бриф від початку до оплати', () => {
 		expect(model.requests.map((r) => r.purpose).filter((p) => p !== 'gpt')).toEqual(['read', 'review', 'review', 'core', 'core']);
 		expect(run.state.options).toHaveLength(3);
 		expect(run.decide({ action: 'pick', index: 5 })).toMatch(/Нема/);
+		// не подобається — ще варіанти
+		const first = run.state.options.map((o) => o.name).join();
+		expect(run.decide({ action: 'more' })).toBeNull();
+		await until(() => run.state.phase === 'pick_name' && run.state.rerolls === 1);
+		expect(run.state.steps.find((x) => x.key === 'name')?.lines[0]).toMatch(/Забраковано/);
+		void first;
 		expect(run.decide({ action: 'pick', index: 1 })).toBeNull();
 		await until(() => run.state.phase === 'player_core');
 		expect(run.state.elements.name?.text).toBe('Свої');
@@ -54,10 +60,16 @@ describe('бриф від початку до оплати', () => {
 		expect(run.state.verdicts.at(-1)?.verdict).toBe('rework');
 		expect(run.decide({ action: 'continue' })).toMatch(/ще коло/);
 		expect(run.decide({ action: 'retry' })).toBeNull();
+		// після переробки під клієнта — знову зведення гравцю
+		await until(() => run.state.phase === 'player_core');
+		expect(run.state.changed.length).toBeGreaterThan(0);
+		run.decide({ action: 'submit' });
 		await until(() => run.state.phase === 'client_decision_core' && run.state.verdicts.length === 2);
 		// за сценарієм: два кола правок, на третьому клієнт у захваті
 		expect(run.state.verdicts.at(-1)?.verdict).toBe('rework');
 		run.decide({ action: 'retry' });
+		await until(() => run.state.phase === 'player_core');
+		run.decide({ action: 'submit' });
 		await until(() => run.state.phase === 'client_decision_core' && run.state.verdicts.length === 3);
 		// після «так» гра чекає гравця: спершу репліки клієнта й поп-ап, потім комунікація
 		expect(run.state.verdicts.at(-1)?.lines.length).toBeGreaterThan(0);
@@ -69,9 +81,9 @@ describe('бриф від початку до оплати', () => {
 		expect(Object.keys(run.state.elements)).toEqual(expect.arrayContaining(['threads', 'instagram', 'reels', 'youtube']));
 		expect(run.state.elements.instagram?.image).toMatch(/^\/api\/images\/rtest1\/instagram-/);
 		expect(run.state.elements.youtube?.image).toMatch(/youtube-/);
-		expect(images.prompts.find((p) => p.includes('thumbnail'))).toBeTruthy();
+		expect(images.prompts.find((p) => p.includes('storyboard'))).toBeTruthy();
 		// кожен етап можна переглянути: варіанти назви, знак, кола клієнта
-		expect(run.state.steps.find((x) => x.key === 'name')?.lines).toHaveLength(3);
+		expect(run.state.steps.find((x) => x.key === 'name')?.lines).toHaveLength(6);
 		expect(run.state.steps.find((x) => x.key === 'logo')?.logos?.length).toBeGreaterThan(1);
 		expect(run.state.strategy?.insight).toBeTruthy();
 		expect(images.prompts[0]).toContain('Stardew Valley');
@@ -80,6 +92,8 @@ describe('бриф від початку до оплати', () => {
 		run.decide({ action: 'submit' });
 		await until(() => run.state.phase === 'client_decision_content');
 		run.decide({ action: 'retry' });
+		await until(() => run.state.phase === 'player_content');
+		run.decide({ action: 'submit' });
 		await until(() => run.state.phase === 'client_decision_content' && run.state.verdicts.length === 5);
 		expect(run.state.verdicts.filter((v) => v.stage === 'content').map((v) => v.verdict)).toEqual(['rework', 'ok']);
 		run.decide({ action: 'continue' });
@@ -175,8 +189,12 @@ describe('гра', () => {
 		run!.decide({ action: 'submit' });
 		await until(() => run!.state.phase === 'client_decision_core');
 		run!.decide({ action: 'retry' });
+		await until(() => run!.state.phase === 'player_core');
+		run!.decide({ action: 'submit' });
 		await until(() => run!.state.phase === 'client_decision_core' && run!.state.verdicts.length === 2);
 		run!.decide({ action: 'retry' });
+		await until(() => run!.state.phase === 'player_core');
+		run!.decide({ action: 'submit' });
 		await until(() => run!.state.phase === 'client_decision_core' && run!.state.verdicts.length === 3);
 		run!.decide({ action: 'continue' });
 		await until(() => run!.state.phase === 'player_content');
@@ -190,7 +208,10 @@ describe('гра', () => {
 		run!.decide({ action: 'submit' });
 		await until(() => run!.state.phase === 'client_decision_content');
 		run!.decide({ action: 'retry' });
+		await until(() => run!.state.phase === 'player_content');
+		run!.decide({ action: 'submit' });
 		await until(() => run!.state.phase === 'client_decision_content' && run!.state.verdicts.length === 5);
+		expect(g.state.history).toHaveLength(0);
 		run!.decide({ action: 'continue' });
 		await until(() => run!.state.phase === 'done' && g.state.activeRun === null);
 		expect(g.state.day).toBe(2);
@@ -199,6 +220,7 @@ describe('гра', () => {
 		expect(g.state.inbox.every((b) => b.tier === 1 && b.fee <= 5000 && b.prepay === b.fee * 0.2)).toBe(true);
 		expect(g.state.team.strategist.done).toBe(1);
 		expect(g.state.history).toHaveLength(1);
+		expect(g.state.history[0].case?.name).toBeTruthy();
 		expect(g.state.ledger.claude.usd).toBe(2.2);
 		expect(g.setBalance('gemini', 4.5)).toBeNull();
 		expect(g.state.ledger.gemini).toMatchObject({ usd: 4.5, spent: 0 });
@@ -216,6 +238,25 @@ describe('гра', () => {
 		expect(g.state.team.copywriter.sulk).toBe(true);
 		g.rest();
 		expect(g.state.team.copywriter.sulk).toBe(false);
+	});
+
+	it('свій бриф: клієнт — гравець, лисий; правки текстом до 3 кіл, потім «беру»', async () => {
+		const g = mkGame();
+		const { run } = g.start({ custom: { business: 'Креативна агенція 8bit', goals: 'більше клієнтів', wishes: 'з гумором', competitors: 'всі', usp: 'піксель' } });
+		await until(() => run!.state.phase === 'pick_name');
+		expect(run!.state.brief.client.name).toBe('Ти');
+		run!.decide({ action: 'pick', index: 0 });
+		await until(() => run!.state.phase === 'player_core');
+		run!.decide({ action: 'submit' });
+		await until(() => run!.state.phase === 'client_core');
+		expect(run!.decide({ action: 'feedback', notes: [''] })).toMatch(/хоча б одну/);
+		expect(run!.decide({ action: 'feedback', notes: ['більше гумору'] })).toBeNull();
+		await until(() => run!.state.phase === 'player_core');
+		expect(run!.state.speech.some((x) => x.who === 'client' && x.text === 'більше гумору')).toBe(true);
+		run!.decide({ action: 'submit' });
+		await until(() => run!.state.phase === 'client_core');
+		expect(run!.decide({ action: 'continue' })).toBeNull();
+		await until(() => run!.state.phase === 'player_content');
 	});
 
 	it('інвестор: на восьмий ранок не в плюсі — гру закінчено', () => {

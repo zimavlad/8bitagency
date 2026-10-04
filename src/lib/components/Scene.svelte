@@ -179,6 +179,8 @@
 		};
 	});
 
+	/** Клієнт «друкує» репліку на очах: по ~35 знаків на секунду. */
+	const typed = (s: Shown) => s.text.slice(0, Math.max(1, Math.floor((now - s.at) / 28)));
 	const who = (s: Speaker) => (s === 'gpt' ? 'Джіпітенко' : s === 'client' ? run?.brief.client.name ?? 'Клієнт' : ROLE_NAME[s]);
 </script>
 
@@ -197,7 +199,7 @@
 		{#each live as s (s.who)}
 			<div class="bubble" class:gpt={s.who === 'gpt'} class:client={s.who === 'client'} class:sys={s.kind === 'system'} bind:this={els[s.who]}>
 				<span class="who">{who(s.who)}{s.who === 'gpt' && s.to ? ` → ${ROLE_NAME[s.to].toLowerCase()}` : ''}</span>
-				<span class="text">{s.who === 'gpt' && s.text.length > 170 ? `${s.text.slice(0, 168)}…` : s.text}</span>
+				<span class="text">{s.who === 'gpt' && s.text.length > 170 ? `${s.text.slice(0, 168)}…` : s.who === 'client' ? typed(s) : s.text}</span>
 			</div>
 		{/each}
 	{/if}

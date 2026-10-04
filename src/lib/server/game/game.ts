@@ -4,6 +4,7 @@ import { DAY_START, DEADLINE_DAY, PIZZA_COST, PROMO_AFTER, ROLES, START_MONEY, d
 import { log } from '../log';
 import type { ModelClient } from '../model/client';
 import type { ImageModel } from '../model/images';
+import { caseOf } from '$lib/case';
 import { customBrief, inboxFor } from './briefs';
 import { Run, type Models } from './run';
 
@@ -221,7 +222,8 @@ export class Game {
 				name: run.state.elements.name?.text ?? '—',
 				verdict: res.verdict,
 				paid: res.paid,
-				repDelta: res.repDelta
+				repDelta: res.repDelta,
+				case: caseOf(run.state)
 			},
 			...s.history
 		].slice(0, 50);

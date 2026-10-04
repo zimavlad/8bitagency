@@ -39,10 +39,10 @@
 		grid-template-columns: repeat(10, 1fr);
 		gap: 2px;
 		padding: 2px;
-		background: #120a06;
+		background: #0c0d10;
 		i {
 			height: 8px;
-			background: #2b1c12;
+			background: #2a2e36;
 			&.on {
 				background: var(--c);
 			}

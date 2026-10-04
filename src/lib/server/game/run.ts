@@ -52,7 +52,9 @@ export type Decision =
 	| { action: 'edit'; notes: string[] }
 	| { action: 'retry' }
 	| { action: 'giveup' }
-	| { action: 'continue' };
+	| { action: 'continue' }
+	| { action: 'more' }
+	| { action: 'feedback'; notes: string[] };
 
 /** Запис одного виклику моделі — для архіву прогону (бачити, що агенти думали насправді). */
 export interface TraceEntry {
@@ -68,6 +70,20 @@ export interface TraceEntry {
 }
 
 const NOTE_MAX = 280;
+/** У своєму брифі гравець-клієнт може повернути роботу з правками до трьох разів на етап. */
+const SELF_ROUNDS = 3;
+
+/** Типові побажання клієнтів до платформи й реклами: з них щоразу випадково 3 підказки. */
+const HINTS_CORE = [
+	'логотип більший, щоб видно з маршрутки', 'золото або корона в логотипі', 'щоб було «як у Києві»', 'назва англійською для солідності',
+	'фото власника десь поруч', 'кум радить червоний колір', 'дружина каже — надто сумно', 'додати «з 1998 року»', 'щоб мама зрозуміла',
+	'слово «найкращий»', 'як у конкурента, тільки краще', 'більше кольорів, щоб весело', 'герб міста', 'щоб пахло грошима', 'слоган у риму'
+];
+const HINTS_CONTENT = [
+	'САЙТ великими', 'QR-код на пів банера', 'слово «АКЦІЯ»', 'номер телефону більший', '«-20%»', 'фото власника з котом', '«доставка безкоштовно»',
+	'пʼять зірочок відгуків', '«ми в Instagram»', '«найкращі в місті»', 'адреса і схема проїзду', 'Viber, Telegram і WhatsApp іконки',
+	'«працюємо без вихідних»', 'вибух-зірка «ХІТ»', 'мем з котом, щоб молодь', 'ще один логотип, про всяк випадок'
+];
 
 function chance(seed: string): number {
 	let h = 2166136261;
@@ -133,6 +149,8 @@ export class Run {
 			strategy: null,
 			steps: [],
 			task: null,
+			rerolls: 0,
+			changed: [],
 			clock: deps.clock ?? DAY_START,
 			options: [],
 			editAvailable: false,
@@ -212,6 +230,17 @@ export class Run {
 			this.state.agents[r].morale = this.moraleOf(r);
 		}
 		this.emit();
+	}
+
+	/** Випадкові «доїбки» під цей бриф і коло — щоб клієнт не просив щоразу знижку й акцію. */
+	private hints(stage: 'core' | 'content', round: number): string[] {
+		const pool = stage === 'core' ? HINTS_CORE : HINTS_CONTENT;
+		const out: string[] = [];
+		for (let i = 0; out.length < 3 && i < 20; i++) {
+			const h = pool[Math.floor(chance(`${this.id}:${stage}:${round}:${i}`) * pool.length)];
+			if (!out.includes(h)) out.push(h);
+		}
+		return out;
 	}
 
 	private sys(r: Role) {
@@ -346,7 +375,19 @@ export class Run {
 		const w = this.waiter;
 		if (!w || !w.phases.includes(this.state.phase)) return 'Зараз команда не чекає твого рішення.';
 		const p = this.state.phase;
-		if (d.action === 'pick') {
+		if (d.action === 'feedback' || (d.action === 'continue' && (p === 'client_core' || p === 'client_content'))) {
+			if (!this.state.brief.custom || (p !== 'client_core' && p !== 'client_content')) return 'Зараз не твоя черга як клієнта.';
+			if (d.action === 'feedback') {
+				if (this.state.clientRound > SELF_ROUNDS) return 'Три кола правок минуло — тепер тільки «беру».';
+				const notes = d.notes.map((n) => String(n ?? '').trim()).filter(Boolean);
+				if (!notes.length) return 'Напиши хоча б одну правку.';
+				if (notes.length > EDIT_SLOTS || notes.some((n) => n.length > NOTE_MAX)) return `До ${EDIT_SLOTS} правок по ${NOTE_MAX} знаків.`;
+				d = { action: 'feedback', notes };
+			}
+		} else if (d.action === 'more') {
+			if (p !== 'pick_name') return 'Зараз не обирають назву.';
+			if (!this.state.rerolls) return 'Копірайтер більше не може: обери з того, що є.';
+		} else if (d.action === 'pick') {
 			if (p !== 'pick_name') return 'Зараз не обирають назву.';
 			if (!Number.isInteger(d.index) || d.index < 0 || d.index >= this.state.options.length) return 'Нема такого варіанта.';
 		} else if (d.action === 'submit') {
@@ -386,7 +427,11 @@ export class Run {
 
 	private async play() {
 		const b = this.state.brief;
-		if (b.custom) await this.persona();
+		// Свій бриф: клієнт — сам гравець, кумедний лисий тіп; правки пише сам.
+		if (b.custom) {
+			this.state.brief = { ...b, client: { ...b.client, name: 'Ти', gender: 'm', look: 'leather', archetype: 'ти сам собі замовник: лисий, вимогливий і з грошима', voice: '' } };
+			this.emit();
+		}
 		this.note(`Бриф від ${b.client.name}, ${b.client.business}. Гонорар ${b.fee.toLocaleString('uk-UA')} ₴.`);
 
 		// 1. стратегиня читає сама
@@ -452,8 +497,29 @@ export class Run {
 		this.agent('copywriter', 'idle', 'чекає твого вибору');
 		this.tick();
 		this.idle();
-		this.phase('pick_name', 'Твій хід: обери назву', { copywriter: 'table', strategist: 'table' });
-		const pick = (await this.wait(['pick_name'])) as { action: 'pick'; index: number };
+		// Не подобається жоден — «ще варіанти» (двічі на бриф): копірайтер думає заново, всі відкинуті йдуть в історію.
+		const tried: string[] = [];
+		this.state.rerolls = 2;
+		let pick: { action: 'pick'; index: number };
+		for (;;) {
+			this.phase('pick_name', 'Твій хід: обери назву', { copywriter: 'table', strategist: 'table' });
+			const d = await this.wait(['pick_name']);
+			if (d.action === 'pick') { pick = d; break; }
+			this.state.rerolls--;
+			tried.push(...this.state.options.map((o) => `${o.name} — «${o.slogan}»`));
+			this.record('name', this.state.options.map((o) => `Забраковано: ${o.name} — «${o.slogan}»`));
+			this.work('platform', 1);
+			this.step('Копірайтер зітхає і думає заново');
+			this.phase('naming', 'Копірайтер шукає нові назви', { copywriter: 'desk' });
+			this.agent('copywriter', 'thinking', 'шукає нові назви');
+			const again = normNaming(await this.ask('copywriter', 'core', prompt.renaming(tried), SCHEMA.naming, () => fake.naming(false)));
+			this.state.options = again.options;
+			this.say('copywriter', again.thought, 'thought', undefined, again.options.map((o) => `${o.name} — «${o.slogan}» (${o.why})`));
+			this.agent('copywriter', 'idle', 'чекає твого вибору');
+			this.tick();
+			this.idle();
+		}
+		this.state.rerolls = 0;
 		const chosen = this.state.options[pick.index];
 		this.setEl('name', chosen.name, [], { why: chosen.why, rejected: this.state.options.filter((_, i) => i !== pick.index).map((o) => ({ text: o.name, reason: o.slogan })) });
 		this.setEl('slogan', chosen.slogan, [], { why: chosen.why });
@@ -520,6 +586,7 @@ export class Run {
 	private bump(id: ElementId) {
 		const e = this.state.elements[id];
 		if (e) this.setEl(id, e.text, e.details, { reworks: e.reworks + 1 });
+		if (!this.state.changed.includes(id)) this.state.changed = [...this.state.changed, id];
 	}
 
 	/**
@@ -551,8 +618,38 @@ export class Run {
 		this.record(you, ['Показав клієнту']);
 
 		this.state.clientInOffice = true;
-		for (let round = 1; round <= rounds; round++) {
+		for (let round = 1; round <= (this.state.brief.custom ? SELF_ROUNDS + 1 : rounds); round++) {
 			this.state.clientRound = round;
+			if (this.state.brief.custom) {
+				// Гравець сам дивиться роботу й вирішує: «беру» або правки текстом (лисий проговорює їх у баблі).
+				this.idle();
+				const cp: RunPhase = stage === 'core' ? 'client_core' : 'client_content';
+				this.phase(cp, round > SELF_ROUNDS ? 'Ти — клієнт: правок більше не буде, лише «беру»' : 'Ти — клієнт: бери або повертай з правками', { strategist: 'table', copywriter: 'table', designer: 'table' });
+				for (const r of ROLES) this.agent(r, 'idle', 'нервово чекає');
+				const d = await this.wait([cp]);
+				if (d.action !== 'feedback') {
+					const v: ClientVerdict = { stage, round, reaction: 'Беру.', lines: ['Беру. Не ідеально, але беру.'], demands: [], verdict: 'ok', mood: 90 };
+					this.state.verdicts = [...this.state.verdicts, v];
+					this.say('client', v.lines[0], 'client');
+					this.record(them, [`Коло ${round}: беру`]);
+					this.cheer(stage === 'core' ? 6 : 8);
+					this.state.clientInOffice = false;
+					return true;
+				}
+				const v: ClientVerdict = { stage, round, reaction: '', lines: d.notes, demands: d.notes, verdict: 'rework', mood: 50 };
+				this.state.verdicts = [...this.state.verdicts, v];
+				for (const n of d.notes) this.say('client', n, 'client');
+				this.record(them, d.notes.map((n) => `Коло ${round}, твоя правка: ${n}`));
+				this.cheer(-3);
+				await this.rework(stage, 'клієнт', d.notes);
+				for (const r of ROLES) this.tire(r, 3);
+				this.idle();
+				this.state.clientInOffice = false;
+				this.phase(playerPhase, 'Переробили під твої правки. Глянь і неси собі ж', { strategist: 'table', copywriter: 'table', designer: 'table' });
+				await this.wait([playerPhase]);
+				this.state.clientInOffice = true;
+				continue;
+			}
 			this.work(stage === 'core' ? 'platform' : 'comms', 1);
 			this.step(round > 1 ? `${name} шукає, що б ще поміняти` : `${name} гортає презентацію з телефона`);
 			this.phase(stage === 'core' ? 'client_core' : 'client_content', `${name} дивиться роботу${round > 1 ? ` (коло ${round})` : ''}`, { strategist: 'table', copywriter: 'table', designer: 'table' });
@@ -561,7 +658,7 @@ export class Run {
 			const items = ids.map((id) => this.state.elements[id]).filter((e): e is ElementValue => !!e);
 			const c = normClient(await this.once({
 				purpose: 'client', who: 'client', model: this.deps.models.client, system: clientCard(this.state.brief.client, this.state.brief.text),
-				user: prompt.client(items, stage, round, stage === 'content' ? `Бренд-платформу (${this.state.elements.name?.text}, «${this.state.elements.slogan?.text}») ти вже затвердив.` : undefined),
+				user: prompt.client(items, stage, round, stage === 'content' ? `Бренд-платформу (${this.state.elements.name?.text}, «${this.state.elements.slogan?.text}») ти вже затвердив.` : undefined, this.state.verdicts.flatMap((v) => v.demands), this.hints(stage, round)),
 				schema: SCHEMA.client, fake: () => fake.client(round, stage)
 			}), stage, round);
 			this.tick();
@@ -591,6 +688,13 @@ export class Run {
 			}
 			await this.rework(stage, 'клієнт', c.demands);
 			for (const r of ROLES) this.tire(r, 3);
+			// Після переробки — знову зведення: гравець бачить, яким став проєкт, і несе клієнту.
+			this.idle();
+			this.state.clientInOffice = false;
+			this.phase(playerPhase, `Переробили під правки клієнта. Глянь, що вийшло, і неси назад`, { strategist: 'table', copywriter: 'table', designer: 'table' });
+			for (const r of ROLES) this.agent(r, 'idle', 'чекає твого рішення');
+			await this.wait([playerPhase]);
+			this.state.clientInOffice = true;
 		}
 		this.state.clientInOffice = false;
 		return false;
@@ -598,6 +702,7 @@ export class Run {
 
 	/** Узгоджена переробка: позиціонування → назва й слоган → знак (або канали). */
 	private async rework(stage: 'core' | 'content', who: 'керівник агенції' | 'клієнт', notes: string[]) {
+		this.state.changed = [];
 		this.phase(stage === 'core' ? 'rework_core' : 'rework_content', who === 'клієнт' ? 'Переробляємо під клієнта' : 'Команда враховує твої правки', { strategist: 'desk', copywriter: 'desk', designer: 'desk' });
 		if (stage === 'core') {
 			this.work('platform', 3);
@@ -695,7 +800,7 @@ export class Run {
 			},
 			{
 				id: 'youtube', aspect: '16:9',
-				prompt: `${STYLE}\nA YouTube video thumbnail (cover) for a premium brand film, one single cinematic scene, readable at small size.\nExactly ONE line of text on the whole image: «${e.youtube?.text ?? ''}» (Ukrainian, spelled exactly, big pixel letters). No other words, no slogan, no captions, no extra quotes.\nScene: ${e.youtube?.details[0] ?? ''}.\n${mark} Small, in a corner, without any text in it.\nUse the brand colours ${e.logo?.logo?.palette.a ?? ''} and ${e.logo?.logo?.palette.b ?? ''}.`
+				prompt: `${STYLE}\nA simple storyboard sheet for a brand video: a 2×2 grid of four pixel-art frames with thin dark borders on a light paper background.\nThe ONLY text allowed: one big digit in the top-left corner of each frame — 1, 2, 3, 4. No words, no captions, no titles anywhere.\nFrames:\n${(e.youtube?.details ?? []).slice(0, 4).map((x, i) => `${i + 1}. ${x}`).join('\n')}\n${mark ? 'In frame 4 show the provided logo small.' : ''}\nUse the brand colours ${e.logo?.logo?.palette.a ?? ''} and ${e.logo?.logo?.palette.b ?? ''}.`
 			}
 		];
 		await Promise.all(jobs.map(async (j) => {

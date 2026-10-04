@@ -4,8 +4,8 @@ type KB = Record<'strategist' | 'copywriter' | 'designer', number>;
 type Init = { game: GameState; demo: boolean; imagesDemo: boolean; kb: KB };
 export type Act =
 	| { action: 'pick'; index: number }
-	| { action: 'submit' | 'retry' | 'giveup' | 'drop' | 'continue' }
-	| { action: 'edit'; notes: string[] }
+	| { action: 'submit' | 'retry' | 'giveup' | 'drop' | 'continue' | 'more' }
+	| { action: 'edit' | 'feedback'; notes: string[] }
 	| { action: 'pause'; on: boolean };
 
 /** Стан гри на клієнті: гра з сервера, активний бриф — живим потоком SSE. */
@@ -58,6 +58,8 @@ export class Live {
 	}
 
 	connect(id: string) {
+		// на сервері (SSR) потоку подій нема — підключаємось уже в браузері
+		if (typeof EventSource === 'undefined') return;
 		this.es?.close();
 		this.es = new EventSource(`/api/runs/${id}/events`);
 		this.es.onmessage = (e) => {
@@ -87,7 +89,7 @@ export class Live {
 
 	/** Ключ поточного рішення: фаза + кількість вердиктів + чи ще можна правки. */
 	static key(r: RunState | null) {
-		return r ? `${r.phase}:${r.verdicts.length}:${r.editAvailable}` : '';
+		return r ? `${r.phase}:${r.verdicts.length}:${r.editAvailable}:${r.rerolls}:${r.changed.length}` : '';
 	}
 
 	async act(body: Act) {

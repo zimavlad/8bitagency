@@ -3,6 +3,7 @@
 	import { TIER_NAME, tierOf } from '$lib/types';
 	import Avatar from './Avatar.svelte';
 	import Icon from './Icon.svelte';
+	import Modal from './Modal.svelte';
 	import Num from './Num.svelte';
 
 	let { live }: { live: Live } = $props();
@@ -21,9 +22,9 @@
 </script>
 
 <section class="wrap" data-tour="inbox">
-	<div class="head">
+	<div class="head sticky">
 		<h2>Вхідні брифи</h2>
-		<span class="faint">день <span class="num">{g.day}</span></span>
+		<button class="btn human sm" disabled={locked} onclick={() => (custom = true)}><Icon name="plus" size={14} />Свій бриф</button>
 	</div>
 	{#if locked && g.activeRun}
 		<p class="muted">Команда зайнята брифом. Нові підождуть.</p>
@@ -46,10 +47,12 @@
 		<p class="muted">На сьогодні брифів нема. Дай команді вихідний.</p>
 	{/each}
 
-	<article class="brief panel own">
-		{#if !custom}
-			<button class="btn human" disabled={locked} onclick={() => (custom = true)}><Icon name="plus" size={16} />Свій бриф</button>
-		{:else}
+
+</section>
+
+{#if custom}
+	<Modal title="Свій бриф" onClose={() => (custom = false)}>
+		<div class="form">
 			{#each FIELDS as f}
 				<label class="label" for="f-{f.key}">{f.label}</label>
 				{#if f.key === 'business'}
@@ -58,14 +61,14 @@
 					<textarea id="f-{f.key}" rows="2" maxlength="400" placeholder={f.hint} bind:value={form[f.key]}></textarea>
 				{/if}
 			{/each}
+			<p class="faint small">Чек на твоєму рівні — {[0, 4000, 15000, 45000][tierOf(g.reputation)].toLocaleString('uk-UA')} ₴, 20% одразу. Клієнта-персонажа вигадаємо під твій бізнес.</p>
 			<div class="row">
 				<button class="btn ghost" onclick={() => (custom = false)}>Скасувати</button>
-				<button class="btn primary" disabled={locked || live.busy || form.business.trim().length < 3} onclick={async () => { if (await live.start({ custom: form })) { custom = false; form = empty(); } }}>Взяти</button>
+				<button class="btn primary" disabled={locked || live.busy || form.business.trim().length < 3} onclick={async () => { if (await live.start({ custom: form })) { custom = false; form = empty(); } }}>Взяти бриф</button>
 			</div>
-			<p class="faint small">Чек за свій бриф на твоєму рівні — {[0, 4000, 15000, 45000][tierOf(g.reputation)].toLocaleString('uk-UA')} ₴, передплата 20% одразу. Клієнта-персонажа вигадаємо під твій бізнес.</p>
-		{/if}
-	</article>
-</section>
+		</div>
+	</Modal>
+{/if}
 
 <style lang="scss">
 	.terms {
@@ -79,7 +82,23 @@
 	.head {
 		display: flex;
 		justify-content: space-between;
-		align-items: baseline;
+		align-items: center;
+	}
+	.sticky {
+		position: sticky;
+		top: 52px;
+		z-index: 3;
+		background: var(--bg);
+		padding: 4px 0 6px;
+	}
+	@media (max-width: 859px) {
+		.sticky {
+			top: var(--top-h);
+		}
+	}
+	.form {
+		display: grid;
+		gap: 6px;
 	}
 	h2 {
 		font-size: 18px;
@@ -123,14 +142,5 @@
 	}
 	.small {
 		font-size: 12px;
-	}
-	.own {
-		justify-items: start;
-		> :global(*) {
-			width: 100%;
-		}
-		> .btn {
-			width: auto;
-		}
 	}
 </style>

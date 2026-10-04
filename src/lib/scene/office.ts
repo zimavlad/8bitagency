@@ -77,7 +77,7 @@ const C = {
 const DESKS: Record<Role, { gx: number; gy: number }> = { strategist: { gx: 0.75, gy: 0.3 }, copywriter: { gx: 3.15, gy: 0.3 }, designer: { gx: 5.55, gy: 0.3 } };
 const DESK_W = 1.55, DESK_D = 0.9, DESK_H = 16;
 /** Крісло біля вікна: туди іноді йдуть з ноутом. */
-const ARMCHAIR = { gx: 0.6, gy: 4.0 };
+const ARMCHAIR = { gx: 0.62, gy: 4.02 };
 const SPOTS: Record<Role, Record<Spot, { gx: number; gy: number }>> = {
 	strategist: { desk: { gx: 1.45, gy: 1.55 }, table: { gx: 1.7, gy: 4.2 }, board: { gx: 2.72, gy: 0.62 }, coffee: { gx: 5.75, gy: 4.25 }, away: { gx: 0.3, gy: 5.1 }, armchair: ARMCHAIR },
 	copywriter: { desk: { gx: 3.85, gy: 1.55 }, table: { gx: 3.4, gy: 2.95 }, board: { gx: 2.72, gy: 0.62 }, coffee: { gx: 5.85, gy: 5.45 }, away: { gx: 0.3, gy: 5.1 }, armchair: ARMCHAIR },
@@ -444,19 +444,19 @@ export class Office {
 
 	private sunBeam(k: number) {
 		const a = (this.input.sky === 'clouds' ? 0.16 : 0.32) * k;
-		const g = this.o.createLinearGradient(wL(2.3, 50).x, wL(2.3, 50).y, s(3.1, 3).x, s(3.1, 3).y);
+		const g = this.o.createLinearGradient(wR(2.3, 50).x, wR(2.3, 50).y, s(3, 3.1).x, s(3, 3.1).y);
 		g.addColorStop(0, `rgba(255,226,150,${a * 1.4})`);
 		g.addColorStop(1, 'rgba(255,226,150,0)');
 		// Промінь — від рами вікна (d 1.15…3.45, висота 30…68) до плями на підлозі тієї ж ширини:
 		// низ вікна світить ближче до стіни, верх — далі; сонце трохи збоку, тож пляма зсунута по gy.
-		const d1 = 1.15, d2 = 3.45, h1 = 30, h2 = 68;
-		const near = (d: number) => s(1.35, d + 0.3), far = (d: number) => s(3.1, d + 0.7);
-		this.poly([wL(d1, h2), wL(d2, h2), wL(d2, h1), near(d2), far(d2), far(d1)], g as unknown as string);
+		const d1 = 1.0, d2 = 3.6, h1 = 30, h2 = 68;
+		const near = (d: number) => s(d + 0.3, 1.35), far = (d: number) => s(d + 0.7, 3.1);
+		this.poly([wR(d2, h2), wR(d1, h2), wR(d1, h1), near(d1), far(d1), far(d2)], g as unknown as string);
 		this.poly([near(d1), near(d2), far(d2), far(d1)], `rgba(255,214,130,${a})`);
 		// пилинки в промені
 		for (let i = 0; i < 9; i++) {
 			const ph = (this.t * 0.05 + i * 0.13) % 1;
-			const p = s(0.6 + ph * 3.2 + Math.sin(this.t + i) * 0.1, 1.6 + (i % 4) * 0.5);
+			const p = s(1.6 + (i % 4) * 0.5, 0.6 + ph * 3.2 + Math.sin(this.t + i) * 0.1);
 			this.px(p.x, p.y - 20 - i * 3 + Math.sin(this.t * 0.8 + i) * 2, 1, 1, `rgba(255,245,200,${0.7 * k})`);
 		}
 	}
@@ -471,62 +471,63 @@ export class Office {
 		const far = night ? '#2a3352' : '#a3b6c9', farTop = night ? '#323c60' : '#b9c9d8';
 		const near = night ? '#1a2036' : '#6f8499', nearTop = night ? '#232a44' : '#8297ab', nearSide = night ? '#141a2c' : '#5d7186';
 		// серпанок над горизонтом
-		if (!night) this.qL(d1, d2, h1 + 10, h1 + 16, 'rgba(255,240,220,.25)');
+		if (!night) this.qR(d1, d2, h1 + 10, h1 + 16, 'rgba(255,240,220,.25)');
 		// дальній план
 		let d = d1, i = 0;
 		while (d < d2) {
 			const w = 0.1 + hash(i, 41) * 0.14, top = h1 + 11 + Math.floor(hash(i, 42) * 11);
-			this.qL(d, d + w, h1, top, far);
-			this.qL(d, d + w, top - 1, top, farTop);
+			this.qR(d, d + w, h1, top, far);
+			this.qR(d, d + w, top - 1, top, farTop);
 			d += w + 0.01; i++;
 		}
 		// телевежа на горизонті
 		const tw = d1 + (d2 - d1) * 0.72;
-		this.qL(tw, tw + 0.02, h1, h1 + 30, night ? '#3a4466' : '#8a9db2');
-		this.qL(tw - 0.04, tw + 0.06, h1 + 20, h1 + 22, night ? '#3a4466' : '#8a9db2');
-		if (night && Math.sin(this.t * 3) > 0) { const p = wL(tw + 0.01, h1 + 31); this.px(p.x, p.y, 1, 1, '#ff5a4a'); }
+		this.qR(tw, tw + 0.02, h1, h1 + 30, night ? '#3a4466' : '#8a9db2');
+		this.qR(tw - 0.04, tw + 0.06, h1 + 20, h1 + 22, night ? '#3a4466' : '#8a9db2');
+		if (night && Math.sin(this.t * 3) > 0) { const p = wR(tw + 0.01, h1 + 31); this.px(p.x, p.y, 1, 1, '#ff5a4a'); }
 		// ближній план: дахи нижче за горизонт, вікна рядами
 		d = d1; i = 0;
 		while (d < d2) {
 			const w = 0.18 + hash(i, 51) * 0.2, top = h1 + 3 + Math.floor(hash(i, 52) * 9);
-			this.qL(d, d + w, h1, top, near);
-			this.qL(d, d + 0.03, h1, top, nearSide);
-			this.qL(d, d + w, top - 1, top, nearTop);
+			this.qR(d, d + w, h1, top, near);
+			this.qR(d, d + 0.03, h1, top, nearSide);
+			this.qR(d, d + w, top - 1, top, nearTop);
 			for (let y = h1 + 2; y < top - 2; y += 3)
 				for (let x = d + 0.05; x < d + w - 0.03; x += 0.07) {
 					const lit = hash(Math.round(x * 100), y + i * 7) > (night ? 0.45 : 0.7);
-					const p = wL(x, y);
+					const p = wR(x, y);
 					this.px(p.x, p.y - 1, 1, 1, night ? (lit ? '#ffd27a' : '#2a3150') : lit ? '#c8d8e6' : '#5a6e82');
 				}
 			// антена на даху
-			if (hash(i, 53) > 0.6) { const p = wL(d + w / 2, top); this.px(p.x, p.y - 3, 1, 3, nearSide); }
+			if (hash(i, 53) > 0.6) { const p = wR(d + w / 2, top); this.px(p.x, p.y - 3, 1, 3, nearSide); }
 			d += w + 0.02; i++;
 		}
 	}
 
 	private windowView() {
-		const d1 = 1.15, d2 = 3.45, h1 = 30, h2 = 68;
+		// вікно на правій стіні над столами: вид на місто з високого поверху
+		const d1 = 1.0, d2 = 3.6, h1 = 30, h2 = 68;
 		const o = this.o;
-		this.qL(d1 - 0.2, d2 + 0.2, h1 - 4, h2 + 4, C.woodDk);
-		this.qL(d1 - 0.14, d2 + 0.14, h1 - 3, h2 + 3, C.wood);
+		this.qR(d1 - 0.2, d2 + 0.2, h1 - 4, h2 + 4, C.woodDk);
+		this.qR(d1 - 0.14, d2 + 0.14, h1 - 3, h2 + 3, C.wood);
 		o.save();
 		o.beginPath();
-		const w = [wL(d1, h1), wL(d2, h1), wL(d2, h2), wL(d1, h2)];
+		const w = [wR(d1, h1), wR(d2, h1), wR(d2, h2), wR(d1, h2)];
 		o.moveTo(w[0].x, w[0].y); for (const p of w.slice(1)) o.lineTo(p.x, p.y); o.closePath(); o.clip();
 
 		const [top, bottom] = this.skyColors();
-		this.qL(d1, d2, h1, h2, top);
-		this.qL(d1, d2, h1, h1 + 14, bottom);
+		this.qR(d1, d2, h1, h2, top);
+		this.qR(d1, d2, h1, h1 + 14, bottom);
 		const sky = this.input.sky, n = this.night(), t = this.t;
 		if (n > 0.5 && (sky === 'clear' || sky === 'clouds')) {
 			for (let i = 0; i < 14; i++) {
-				const p = wL(d1 + ((i * 0.37) % 1) * (d2 - d1), h1 + 18 + ((i * 7.3) % 18));
+				const p = wR(d1 + ((i * 0.37) % 1) * (d2 - d1), h1 + 18 + ((i * 7.3) % 18));
 				if ((Math.sin(t * 2 + i) + 1) / 2 > 0.25) this.px(p.x, p.y, 1, 1, '#fff6d0');
 			}
-			const m = wL(d2 - 0.55, h2 - 9);
+			const m = wR(d2 - 0.55, h2 - 9);
 			this.px(m.x - 3, m.y - 3, 6, 6, '#f4ecc8'); this.px(m.x - 1, m.y - 3, 4, 4, top);
 		} else if (n < 0.5 && sky === 'clear') {
-			const sp = wL(d2 - 0.5, h2 - 10);
+			const sp = wR(d2 - 0.5, h2 - 10);
 			this.px(sp.x - 3, sp.y - 3, 6, 6, '#ffe39a'); this.px(sp.x - 2, sp.y - 2, 4, 4, '#fff3c4');
 		}
 		this.cityView(d1, d2, h1, n);
@@ -535,41 +536,41 @@ export class Office {
 		for (let i = 0; i < clouds; i++) {
 			const dd = d1 + ((t * 0.035 * (1 + i * 0.25) + i * 0.31) % 1) * (d2 - d1);
 			const hh = h1 + 22 + ((i * 9) % 14);
-			this.qL(dd, dd + 0.55, hh, hh + 4, cc);
-			this.qL(dd + 0.15, dd + 0.45, hh + 4, hh + 7, cc);
+			this.qR(dd, dd + 0.55, hh, hh + 4, cc);
+			this.qR(dd + 0.15, dd + 0.45, hh + 4, hh + 7, cc);
 		}
 		if (sky === 'rain' || sky === 'storm') {
 			for (let i = 0; i < 30; i++) {
-				const p = wL(d1 + ((i * 0.173) % 1) * (d2 - d1), h2 - ((t * 70 + i * 13) % (h2 - h1)));
+				const p = wR(d1 + ((i * 0.173) % 1) * (d2 - d1), h2 - ((t * 70 + i * 13) % (h2 - h1)));
 				this.px(p.x, p.y, 1, 3, 'rgba(190,215,240,.85)');
 			}
-			if (sky === 'storm' && Math.sin(t * 0.9) > 0.985) this.qL(d1, d2, h1, h2, 'rgba(255,255,255,.6)');
+			if (sky === 'storm' && Math.sin(t * 0.9) > 0.985) this.qR(d1, d2, h1, h2, 'rgba(255,255,255,.6)');
 		}
-		if (sky === 'snow') for (let i = 0; i < 24; i++) { const p = wL(d1 + ((i * 0.211) % 1) * (d2 - d1), h2 - ((t * 10 + i * 11) % (h2 - h1))); this.px(p.x, p.y, 1, 1, '#ffffff'); }
-		if (sky === 'fog') this.qL(d1, d2, h1, h2, 'rgba(230,230,235,.55)');
+		if (sky === 'snow') for (let i = 0; i < 24; i++) { const p = wR(d1 + ((i * 0.211) % 1) * (d2 - d1), h2 - ((t * 10 + i * 11) % (h2 - h1))); this.px(p.x, p.y, 1, 1, '#ffffff'); }
+		if (sky === 'fog') this.qR(d1, d2, h1, h2, 'rgba(230,230,235,.55)');
 		// відблиск на склі
-		this.poly([wL(d1 + 0.2, h2), wL(d1 + 0.45, h2), wL(d1 + 0.15, h1 + 8), wL(d1 + 0.05, h1 + 8)], 'rgba(255,255,255,.18)');
+		this.poly([wR(d1 + 0.2, h2), wR(d1 + 0.45, h2), wR(d1 + 0.15, h1 + 8), wR(d1 + 0.05, h1 + 8)], 'rgba(255,255,255,.18)');
 		o.restore();
 		// рама й імпости
-		this.qL(d1, d2, 48.5, 50, C.woodLt);
-		this.qL(2.25, 2.35, h1, h2, C.woodLt);
-		this.line([wL(d1, h1), wL(d2, h1), wL(d2, h2), wL(d1, h2)], C.ink, 1, true);
+		this.qR(d1, d2, 48.5, 50, C.woodLt);
+		this.qR(2.25, 2.35, h1, h2, C.woodLt);
+		this.line([wR(d1, h1), wR(d2, h1), wR(d2, h2), wR(d1, h2)], C.ink, 1, true);
 		// підвіконня з вазончиками
-		this.qL(d1 - 0.35, d2 + 0.35, h1 - 7, h1 - 3, C.woodLt);
-		this.qL(d1 - 0.35, d2 + 0.35, h1 - 8, h1 - 7, C.woodDkr);
+		this.qR(d1 - 0.35, d2 + 0.35, h1 - 7, h1 - 3, C.woodLt);
+		this.qR(d1 - 0.35, d2 + 0.35, h1 - 8, h1 - 7, C.woodDkr);
 		for (const [dd, col] of [[1.55, C.leaf], [2.95, C.leafLt]] as const) {
-			const p = wL(dd, h1 - 3);
+			const p = wR(dd, h1 - 3);
 			this.px(p.x - 3, p.y - 4, 6, 4, C.pot); this.px(p.x - 3, p.y - 4, 6, 1, C.potLt);
 			this.px(p.x - 3, p.y - 8, 2, 4, col); this.px(p.x, p.y - 10, 2, 6, C.leafDk); this.px(p.x + 2, p.y - 8, 2, 4, col);
 		}
 		// штори зі складками
 		for (const [a, b] of [[d1 - 0.42, d1 + 0.1], [d2 - 0.1, d2 + 0.42]]) {
-			this.qL(a, b, h1 - 3, h2 + 9, '#e89aac');
-			for (let k = a + 0.07; k < b; k += 0.13) this.qL(k, k + 0.05, h1 - 3, h2 + 9, '#c97488');
-			this.line([wL(a, h1 - 3), wL(b, h1 - 3)], '#a85a6e');
+			this.qR(a, b, h1 - 3, h2 + 9, '#e89aac');
+			for (let k = a + 0.07; k < b; k += 0.13) this.qR(k, k + 0.05, h1 - 3, h2 + 9, '#c97488');
+			this.line([wR(a, h1 - 3), wR(b, h1 - 3)], '#a85a6e');
 		}
-		this.qL(d1 - 0.6, d2 + 0.6, h2 + 9, h2 + 11, C.woodDkr);
-		for (const dd of [d1 - 0.6, d2 + 0.6]) { const p = wL(dd, h2 + 10); this.px(p.x - 1, p.y - 2, 3, 3, C.brass); }
+		this.qR(d1 - 0.6, d2 + 0.6, h2 + 9, h2 + 11, C.woodDkr);
+		for (const dd of [d1 - 0.6, d2 + 0.6]) { const p = wR(dd, h2 + 10); this.px(p.x - 1, p.y - 2, 3, 3, C.brass); }
 	}
 
 	private skyColors(): [string, string] {
@@ -649,7 +650,7 @@ export class Office {
 		hole(at(0.5, 3.4, 10), 80, 0.9);
 		for (const r of ROLES) { const d = DESKS[r]; hole(at(d.gx + 0.8, d.gy + 1.1, DESK_H), 42, 0.55); }
 		hole(at(6.9, 4.4, 20), 34, 0.4);
-		hole(at(0.2, 2.3, 50), 40, 0.25); // місячне світло з вікна
+		hole(at(2.3, 0.4, 50), 40, 0.25); // місячне світло з вікна
 		l.globalCompositeOperation = 'source-over';
 		this.o.drawImage(lc, 0, 0);
 		// теплий відтінок біля ламп і холодний біля екранів
@@ -693,38 +694,48 @@ export class Office {
 
 	/* ─────────── настінне ─────────── */
 	private decor() {
-		// двері
+		// двері: відчиняються всередину, коли хтось проходить
 		this.qL(4.5, 5.75, 0, 52, C.doorDk);
+		if (this.doorOpen()) {
+			this.qL(4.6, 5.65, 0, 49, '#1c140e');
+			this.qL(4.6, 5.65, 0, 6, 'rgba(255,220,150,.25)');
+			this.qFace(0, 0.85, 4.6, 0, 49, C.door);
+			this.qFace(0.08, 0.77, 4.6, 6, 24, C.doorDk);
+			this.qFace(0.08, 0.77, 4.6, 28, 44, C.doorDk);
+			this.line([at(0, 4.6, 0), at(0.85, 4.6, 0), at(0.85, 4.6, 49), at(0, 4.6, 49)], C.ink, 1, true);
+			this.line([wL(4.5, 0), wL(4.5, 52), wL(5.75, 52), wL(5.75, 0)], C.ink);
+		} else {
 		this.qL(4.6, 5.65, 0, 49, C.door);
 		this.qL(4.75, 5.08, 28, 44, C.doorDk); this.qL(5.18, 5.5, 28, 44, C.doorDk);
 		this.qL(4.75, 5.08, 6, 24, C.doorDk); this.qL(5.18, 5.5, 6, 24, C.doorDk);
 		this.qL(4.79, 5.04, 29, 43, C.doorLt); this.qL(5.22, 5.46, 29, 43, C.doorLt);
 		const kn = wL(5.55, 24); this.px(kn.x - 1, kn.y - 1, 2, 2, C.brass);
 		this.line([wL(4.5, 0), wL(4.5, 52), wL(5.75, 52), wL(5.75, 0)], C.ink);
+		}
 		// коркова дошка з чотирма слотами пакета (папірці на шпильках)
-		const b1 = 0.9, b2 = 4.0, bh1 = 33, bh2 = 70;
-		this.qR(b1 - 0.16, b2 + 0.16, bh1 - 3, bh2 + 3, C.woodDk);
-		this.qR(b1, b2, bh1, bh2, C.cork);
-		for (let i = 0; i < 40; i++) { const p = wR(b1 + hash(i, 1) * (b2 - b1), bh1 + hash(i, 2) * (bh2 - bh1)); this.px(p.x, p.y, 1, 1, C.corkDk); }
-		this.line([wR(b1 - 0.16, bh1 - 3), wR(b2 + 0.16, bh1 - 3), wR(b2 + 0.16, bh2 + 3), wR(b1 - 0.16, bh2 + 3)], C.ink, 1, true);
+		const b1 = 0.9, b2 = 3.1, bh1 = 36, bh2 = 68;
+		this.qL(b1 - 0.16, b2 + 0.16, bh1 - 3, bh2 + 3, C.woodDk);
+		this.qL(b1, b2, bh1, bh2, C.cork);
+		for (let i = 0; i < 40; i++) { const p = wL(b1 + hash(i, 1) * (b2 - b1), bh1 + hash(i, 2) * (bh2 - bh1)); this.px(p.x, p.y, 1, 1, C.corkDk); }
+		this.line([wL(b1 - 0.16, bh1 - 3), wL(b2 + 0.16, bh1 - 3), wL(b2 + 0.16, bh2 + 3), wL(b1 - 0.16, bh2 + 3)], C.ink, 1, true);
 		const slots: [keyof SceneInput['board'], number, number, number, number, string][] = [
-			['positioning', b1 + 0.15, b1 + 1.45, bh2 - 17, bh2 - 3, '#ffe9a8'],
-			['name', b1 + 1.65, b2 - 0.15, bh2 - 17, bh2 - 3, '#cfe6ff'],
-			['slogan', b1 + 0.15, b1 + 1.45, bh1 + 3, bh1 + 16, '#ffd0d8'],
-			['logo', b1 + 1.65, b2 - 0.15, bh1 + 3, bh1 + 16, '#d8f2c8']
+			['positioning', b1 + 0.12, b1 + 1.02, bh2 - 15, bh2 - 3, '#ffe9a8'],
+			['name', b1 + 1.18, b2 - 0.12, bh2 - 15, bh2 - 3, '#cfe6ff'],
+			['slogan', b1 + 0.12, b1 + 1.02, bh1 + 3, bh1 + 14, '#ffd0d8'],
+			['logo', b1 + 1.18, b2 - 0.12, bh1 + 3, bh1 + 14, '#d8f2c8']
 		];
 		for (const [k, d1, d2, h1, h2, col] of slots) {
 			if (this.input.board[k]) {
-				this.qR(d1 + 0.05, d2 + 0.05, h1 - 1, h2 - 1, 'rgba(60,30,10,.25)');
-				this.qR(d1, d2, h1, h2, col);
+				this.qL(d1 + 0.05, d2 + 0.05, h1 - 1, h2 - 1, 'rgba(60,30,10,.25)');
+				this.qL(d1, d2, h1, h2, col);
 				if (k === 'logo' && this.input.logo) {
 					const pa = this.input.logo.palette;
-					this.qR(d1 + 0.4, d2 - 0.4, h1 + 2, h2 - 3, pa.a);
-					this.qR(d1 + 0.6, d2 - 0.6, h1 + 4, h2 - 5, pa.b);
-				} else for (let i = 0; i < 3; i++) this.qR(d1 + 0.12, d2 - 0.2 - (i % 2) * 0.35, h2 - 5 - i * 3, h2 - 4 - i * 3, 'rgba(70,50,40,.55)');
-				const pin = wR((d1 + d2) / 2, h2 - 1); this.px(pin.x - 1, pin.y - 1, 2, 2, '#d8433a');
+					this.qL(d1 + 0.3, d2 - 0.3, h1 + 2, h2 - 3, pa.a);
+					this.qL(d1 + 0.42, d2 - 0.42, h1 + 4, h2 - 5, pa.b);
+				} else for (let i = 0; i < 3; i++) this.qL(d1 + 0.12, d2 - 0.2 - (i % 2) * 0.35, h2 - 5 - i * 3, h2 - 4 - i * 3, 'rgba(70,50,40,.55)');
+				const pin = wL((d1 + d2) / 2, h2 - 1); this.px(pin.x - 1, pin.y - 1, 2, 2, '#d8433a');
 			} else {
-				for (let i = 0; i < 10; i++) { const u = i / 10; this.px(wR(d1 + u * (d2 - d1), h1).x, wR(d1 + u * (d2 - d1), h1).y, 1, 1, 'rgba(255,255,255,.45)'); this.px(wR(d1 + u * (d2 - d1), h2).x, wR(d1 + u * (d2 - d1), h2).y, 1, 1, 'rgba(255,255,255,.45)'); }
+				for (let i = 0; i < 10; i++) { const u = i / 10; this.px(wL(d1 + u * (d2 - d1), h1).x, wL(d1 + u * (d2 - d1), h1).y, 1, 1, 'rgba(255,255,255,.45)'); this.px(wL(d1 + u * (d2 - d1), h2).x, wL(d1 + u * (d2 - d1), h2).y, 1, 1, 'rgba(255,255,255,.45)'); }
 			}
 		}
 		this.shelf(5.0, 7.45, 32, 3);
@@ -737,9 +748,7 @@ export class Office {
 		const hr = (this.input.hour % 12) / 12 * Math.PI * 2, mn = (this.input.hour % 1) * Math.PI * 2;
 		this.line([cc, { x: cc.x + Math.sin(mn) * 3.5, y: cc.y - Math.cos(mn) * 3.5 }], '#3a2a20');
 		this.line([cc, { x: cc.x + Math.sin(hr) * 2.2, y: cc.y - Math.cos(hr) * 2.2 }], '#c8463a');
-		// картинка над кріслом
-		this.qL(3.75, 4.35, 44, 60, C.woodDkr); this.qL(3.8, 4.3, 45, 59, '#9fd0e8');
-		this.poly([wL(3.8, 45), wL(4.3, 45), wL(4.3, 50), wL(4.05, 54), wL(3.8, 49)], '#6fae5e');
+		this.patron(3.4, 4.3, 38, 68);
 	}
 
 	/** Прапор України: повішений за два кути, провисає й хвилюється, не рівний прямокутник. */
@@ -749,9 +758,11 @@ export class Office {
 			const u = i / steps, u2 = (i + 1) / steps;
 			const dd = d1 + u * (d2 - d1), dd2 = d1 + u2 * (d2 - d1);
 			const sag = Math.sin(u * Math.PI) * 2.5;
-			const wave = Math.sin(u * Math.PI * 3 + t * 1.6) * 1.2;
+			// висить нерухомо: провисає між кріпленнями, складки статичні
+			const wave = Math.sin(u * Math.PI * 3) * 0.6;
 			const y0 = top - sag + wave;
-			const shade = Math.cos(u * Math.PI * 3 + t * 1.6);
+			const shade = Math.cos(u * Math.PI * 3);
+			void t;
 			const blue = shade > 0.35 ? '#2a6ccc' : shade < -0.35 ? '#003f8a' : '#0057b7';
 			const yel = shade > 0.35 ? '#ffe34d' : shade < -0.35 ? '#e0b800' : '#ffd700';
 			this.qR(dd, dd2 + 0.004, y0 - band, y0, blue);
@@ -762,6 +773,38 @@ export class Office {
 	}
 
 	/** Абстрактний плакат на скотчі. */
+	/** Постер з Патроном: піксельний джек-рассел у жилеті сапера на жовто-блакитному. */
+	private patron(d1: number, d2: number, h1: number, h2: number) {
+		this.qL(d1 + 0.03, d2 + 0.03, h1 - 1, h2 - 1, 'rgba(60,30,10,.25)');
+		this.qL(d1, d2, h1, h2, '#2f6fbf');
+		this.qL(d1, d2, h1, h1 + 11, '#ffd23a');
+		this.qL(d1 + 0.04, d2 - 0.04, h1 + 1, h2 - 1, 'rgba(255,255,255,.05)');
+		const u = (k: number) => d1 + (d2 - d1) * k;
+		// тіло, жилет, лапи, хвіст
+		this.qL(u(0.25), u(0.72), h1 + 12, h1 + 19, '#f4efe6');
+		this.qL(u(0.36), u(0.62), h1 + 13, h1 + 19, '#d9663a');
+		this.qL(u(0.4), u(0.45), h1 + 15, h1 + 17, '#ffd23a');
+		for (const k of [0.28, 0.38, 0.6, 0.68]) this.qL(u(k), u(k + 0.05), h1 + 9, h1 + 12, '#f4efe6');
+		this.qL(u(0.7), u(0.76), h1 + 19, h1 + 23, '#f4efe6');
+		// голова з рудими вухами й плямою
+		this.qL(u(0.12), u(0.34), h1 + 18, h1 + 26, '#f4efe6');
+		this.qL(u(0.22), u(0.34), h1 + 21, h1 + 26, '#b8743c');
+		this.qL(u(0.12), u(0.18), h1 + 25, h1 + 29, '#b8743c');
+		this.qL(u(0.28), u(0.34), h1 + 25, h1 + 29, '#b8743c');
+		const eye = wL(u(0.18), h1 + 23); this.px(eye.x, eye.y, 1, 1, '#1a1a1a');
+		const nose = wL(u(0.12), h1 + 20); this.px(nose.x, nose.y, 1, 1, '#1a1a1a');
+		// зірочка-нагорода
+		const st = wL(u(0.78), h2 - 8); this.px(st.x - 1, st.y, 3, 1, '#ffd23a'); this.px(st.x, st.y - 1, 1, 3, '#ffd23a');
+		this.line([wL(d1, h1), wL(d2, h1), wL(d2, h2), wL(d1, h2)], C.ink, 1, true);
+		for (const dd of [d1 - 0.03, d2 - 0.1]) this.qL(dd, dd + 0.13, h2 - 2, h2 + 1.5, 'rgba(240,226,180,.85)');
+	}
+
+	/** Двері відчинені, коли хтось біля них ходить (виходять на вихідний, клієнт заходить). */
+	private doorOpen(): boolean {
+		const near = (q: { gx: number; gy: number; tx: number; ty: number }) => Math.hypot(q.gx - 0.3, q.gy - 5.1) < 1.3 && (Math.abs(q.tx - q.gx) > 0.01 || Math.abs(q.ty - q.gy) > 0.01);
+		return Object.values(this.pos).some(near);
+	}
+
 	private poster(d1: number, d2: number, h1: number, h2: number) {
 		this.qR(d1 + 0.03, d2 + 0.03, h1 - 1, h2 - 1, 'rgba(60,30,10,.2)');
 		this.qR(d1, d2, h1, h2, '#f6efe0');
@@ -1123,7 +1166,7 @@ export class Office {
 		const near = (q: { gx: number; gy: number }) => Math.hypot(c.gx - q.gx, c.gy - q.gy) < 0.05;
 		const atDesk = !!role && !moving && near(SPOTS[role].desk);
 		const inArm = !!role && !moving && near(ARMCHAIR);
-		const sit = atDesk ? 3 : inArm ? 6 : 0;
+		const sit = atDesk ? 3 : inArm ? 9 : 0;
 		const x = Math.round(p.x - SPRITE_W / 2), y = Math.round(p.y - SPRITE_H) + bob + sit;
 		if (!sit) this.poly([{ x: p.x, y: p.y - 3 }, { x: p.x + 8, y: p.y }, { x: p.x, y: p.y + 3 }, { x: p.x - 8, y: p.y }], 'rgba(60,30,15,.28)');
 		const cs = k === 'client' ? clientSprite(this.input.client.gender, this.input.client.look) : null;

@@ -35,7 +35,9 @@
 		return () => clearInterval(t);
 	});
 	const task = $derived(run.task);
-	const part = $derived(task && task.pace ? Math.min(0.95, (now - task.at) / task.pace) : 0);
+	// рівна смужка: зроблені кроки + частка поточного (наближається до кінця кроку, але не перестрибує)
+	const part = $derived(task && task.pace ? 1 - Math.exp(-(now - task.at) / task.pace) : 0);
+	const fill = $derived(task ? Math.min(100, ((task.done + Math.min(0.92, part)) / task.total) * 100) : 0);
 	const coreIds = $derived(CORE.filter((id) => run.elements[id]));
 	const contentIds = $derived(CONTENT.filter((id) => run.elements[id]));
 	const busy = $derived(run.phase !== 'done' && run.phase !== 'failed' && !waiting);
@@ -66,7 +68,7 @@
 	{#if task && !waiting}
 		<div class="task panel" aria-live="polite">
 			<div class="tl"><span>{task.label || run.status}</span><span class="faint px">крок {Math.min(task.done + 1, task.total)} з {task.total}</span></div>
-			<div class="segs">{#each Array(task.total) as _, i}<i><b style:width="{i < task.done ? 100 : i === task.done ? part * 100 : 0}%"></b></i>{/each}</div>
+			<div class="track"><b style:width="{fill}%"></b>{#each Array(Math.max(0, task.total - 1)) as _, i}<i style:left="{((i + 1) / task.total) * 100}%"></i>{/each}</div>
 		</div>
 	{/if}
 	{#if run.steps.length}<button class="btn sm ghost hist" onclick={() => (history = true)}><Icon name="eye" size={14} />Що було</button>{/if}
@@ -81,11 +83,11 @@
 
 	{#if coreIds.length}
 		<h3>Бренд-платформа</h3>
-		{#each coreIds as id (id)}<ElementCard el={run.elements[id]!} />{/each}
+		{#each coreIds as id (id)}<ElementCard el={run.elements[id]!} brand={run.elements.name?.text ?? ''} />{/each}
 	{/if}
 	{#if contentIds.length}
 		<h3>Комунікація</h3>
-		{#each contentIds as id (id)}<ElementCard el={run.elements[id]!} />{/each}
+		{#each contentIds as id (id)}<ElementCard el={run.elements[id]!} brand={run.elements.name?.text ?? ''} />{/each}
 	{/if}
 
 	{#if !run.result}
@@ -163,7 +165,7 @@
 			padding: 4px 6px 5px;
 			text-align: center;
 			border: 2px solid var(--line);
-			background: #1f150f;
+			background: #17191e;
 			color: var(--text-3);
 			&.done {
 				color: var(--text-2);
@@ -190,18 +192,11 @@
 			font-size: 13px;
 		}
 	}
-	.segs {
-		display: grid;
-		grid-auto-flow: column;
-		grid-auto-columns: 1fr;
-		gap: 3px;
-		padding: 2px;
-		background: #120a06;
-		i {
-			height: 10px;
-			background: #2b1c12;
-			position: relative;
-		}
+	.track {
+		position: relative;
+		height: 14px;
+		background: #2a2e36;
+		border: 2px solid #0c0d10;
 		b {
 			position: absolute;
 			left: 0;
@@ -209,6 +204,13 @@
 			bottom: 0;
 			background: var(--accent);
 			transition: width 250ms linear;
+		}
+		i {
+			position: absolute;
+			top: 0;
+			bottom: 0;
+			width: 2px;
+			background: #0c0d10;
 		}
 	}
 	.hist {

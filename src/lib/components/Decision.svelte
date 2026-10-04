@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { Live } from '$lib/live.svelte';
 	import { CONTENT, EDIT_SLOTS, ELEMENT_TITLE, ROLE_NAME, ROLES, type ClientVerdict } from '$lib/types';
+	import { caseOf } from '$lib/case';
 	import Avatar from './Avatar.svelte';
+	import CaseBoard from './CaseBoard.svelte';
+	import PhoneMock from './PhoneMock.svelte';
 	import Bar from './Bar.svelte';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
@@ -39,7 +42,7 @@
 
 	const sent = $derived(live.sent === key);
 	const kind = $derived(
-		phase === 'pick_name' ? 'pick' : phase === 'player_core' || phase === 'player_content' ? 'review' : phase === 'client_decision_core' || phase === 'client_decision_content' ? 'verdict' : phase === 'done' && run.result ? 'result' : null
+		phase === 'pick_name' ? 'pick' : phase === 'player_core' || phase === 'player_content' ? 'review' : run.brief.custom && (phase === 'client_core' || phase === 'client_content') ? 'self' : phase === 'client_decision_core' || phase === 'client_decision_content' ? 'verdict' : phase === 'done' && run.result ? 'result' : null
 	);
 	const visible = $derived(!!kind && !sent && !minimized && (kind !== 'verdict' || ready));
 	$effect(() => {
@@ -49,6 +52,7 @@
 	const s = $derived(run.strategy);
 	const e = $derived(run.elements);
 	const fmt = (n: number) => n.toLocaleString('uk-UA');
+	const isNew = (id: string) => (run.changed as string[]).includes(id);
 	const sign = (n: number) => (n > 0 ? `+${n}` : `${n}`);
 
 	async function sendEdits() {
@@ -67,52 +71,18 @@
 					<span class="ow">{o.why}</span>
 				</button>
 			{/each}
+			<div class="actions">
+				{#if run.rerolls > 0}
+					<button class="btn" disabled={live.busy} onclick={() => live.act({ action: 'more' })}><Icon name="reset" size={16} />Усе не те — ще три ({run.rerolls})</button>
+				{:else}
+					<span class="faint small">Нових варіантів більше не буде: копірайтер видихся.</span>
+				{/if}
+			</div>
 		</Modal>
 	{:else if kind === 'review'}
-		<Modal title={phase === 'player_core' ? 'Бренд-платформа перед клієнтом' : 'Комунікація перед клієнтом'} wide onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
+		<Modal title={(run.verdicts.some((x) => x.stage === (phase === 'player_core' ? 'core' : 'content')) ? 'Після правок клієнта: ' : '') + (phase === 'player_core' ? 'бренд-платформа' : 'комунікація')} wide onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
 			{#if !editing}
-				{#if phase === 'player_core'}
-					{#if s}
-						<section class="sum paper">
-							<h3>Стратегія</h3>
-							<dl>
-								<dt>Проблема</dt><dd>{s.problem}</dd>
-								<dt>Інсайт</dt><dd>{s.insight}</dd>
-								<dt>Перевага</dt><dd>{s.advantage}</dd>
-								<dt>Напрям</dt><dd>{s.direction}</dd>
-							</dl>
-						</section>
-					{/if}
-					{#if e.positioning}
-						<section class="sum paper">
-							<h3>Позиціонування</h3>
-							<p class="big">{e.positioning.text}</p>
-							<p class="small">{e.positioning.details.join(' · ')}</p>
-							{#if e.positioning.why}<p class="why">Чому так: {e.positioning.why}</p>{/if}
-						</section>
-					{/if}
-					<section class="sum paper brandrow">
-						{#if e.logo?.logo}<PixelLogo logo={e.logo.logo} size={104} />{/if}
-						<div>
-							<h3>{e.name?.text ?? '—'}</h3>
-							<p class="big">«{e.slogan?.text ?? '—'}»</p>
-							{#if e.name?.why}<p class="why">Назва й слоган: {e.name.why}</p>{/if}
-							{#if e.logo}<p class="why">Знак: {e.logo.text}</p>{/if}
-						</div>
-					</section>
-				{:else}
-					{#each CONTENT as id}
-						{@const c = e[id]}
-						{#if c}
-							<section class="sum paper">
-								<h3>{ELEMENT_TITLE[id]}</h3>
-								{#if c.image}<img src={c.image} alt={ELEMENT_TITLE[id]} />{/if}
-								<p class="big">{c.text}</p>
-								{#if c.details.length}<ul>{#each c.details as d}<li>{d}</li>{/each}</ul>{/if}
-							</section>
-						{/if}
-					{/each}
-				{/if}
+				{@render summary(phase === 'player_core' || phase === 'client_core')}
 				<div class="actions">
 					{#if run.editAvailable}
 						<button class="btn human" disabled={live.busy} onclick={() => (editing = true)}><Icon name="edit" size={16} />Дати правки</button>
@@ -132,8 +102,25 @@
 				</div>
 			{/if}
 		</Modal>
+	{:else if kind === 'self'}
+		<Modal title={phase === 'client_core' ? 'Ти — клієнт: бренд-платформа' : 'Ти — клієнт: комунікація'} wide onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
+			{#snippet head()}<Avatar who="client" client={run.brief.client} size={48} />{/snippet}
+			{@render summary(phase === 'client_core')}
+			{#if run.clientRound <= 3}
+				<p class="muted">Коло {run.clientRound} з 3. Напиши до трьох правок — лисий скаже їх команді. Або бери як є.</p>
+				{#each notes as _, i}
+					<textarea rows="2" maxlength="280" placeholder="Що не так {i + 1}" bind:value={notes[i]}></textarea>
+				{/each}
+			{:else}
+				<p class="muted">Три кола правок минуло. Тепер тільки «беру».</p>
+			{/if}
+			<div class="actions">
+				{#if run.clientRound <= 3}<button class="btn human" disabled={live.busy || !notes.some((n) => n.trim())} onclick={() => live.act({ action: 'feedback', notes })}><Icon name="reset" size={16} />Повернути з правками</button>{/if}
+				<button class="btn primary" disabled={live.busy} onclick={() => live.act({ action: 'continue' })}><Icon name="check" size={16} />Беру</button>
+			</div>
+		</Modal>
 	{:else if kind === 'verdict' && v}
-		<Modal title={v.verdict === 'ok' ? `${name} у захваті` : `${name} хоче правок`} onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
+		<Modal wide={v.verdict === 'ok' && v.stage === 'content'} title={v.verdict === 'ok' ? `${name} у захваті` : `${name} хоче правок`} onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
 			{#snippet head()}<Avatar who="client" client={run.brief.client} size={48} />{/snippet}
 			<p class="faint small">{v.stage === 'core' ? 'Бренд-платформа' : 'Комунікація'} · коло {v.round}</p>
 			<Bar label="Настрій" value={v.mood} kind={v.mood >= 60 ? 'hp' : 'stress'} />
@@ -141,6 +128,10 @@
 				{#each v.lines as l}<p class="quote">«{l}»</p>{/each}
 				<p class="why">{v.reaction}</p>
 			</section>
+			{#if v.verdict === 'ok' && v.stage === 'content'}
+				<h3 class="cbh">Кейс-борд</h3>
+				<CaseBoard c={caseOf(run)} />
+			{/if}
 			{#if v.demands.length}
 				<section class="sum paper">
 					<h3>Що хоче змінити</h3>
@@ -160,7 +151,7 @@
 		</Modal>
 	{:else if kind === 'result' && run.result}
 		{@const r = run.result}
-		<Modal title={r.verdict === 'ok' ? 'Клієнт заплатив усе' : 'Проєкт кинуто'} onClose={onDone}>
+		<Modal wide={r.verdict === 'ok'} title={r.verdict === 'ok' ? 'Клієнт заплатив усе' : 'Проєкт кинуто'} onClose={onDone}>
 			<section class="sum paper">
 				<h3>Оплата</h3>
 				<p class="small">Чек {fmt(run.brief.fee)} ₴</p>
@@ -178,13 +169,102 @@
 				{/each}
 			</section>
 			{#if r.notes.length}<ul class="notes">{#each r.notes as n}<li><span class="dot bad"></span>{n}</li>{/each}</ul>{/if}
-			<p class="faint small">Завтра зранку — оренда й зарплати.</p>
+			{#if r.verdict === 'ok'}<CaseBoard c={caseOf(run)} />{/if}
 			<div class="actions"><button class="btn primary" onclick={onDone}><Icon name="inbox" size={16} />До брифів</button></div>
 		</Modal>
 	{/if}
 {/if}
 
+
+{#snippet summary(core: boolean)}
+				{#if core}
+					{#if s}
+						<section class="sum paper">
+							<h3>Стратегія</h3>
+							<dl>
+								<dt>Проблема</dt><dd>{s.problem}</dd>
+								<dt>Інсайт</dt><dd>{s.insight}</dd>
+								<dt>Перевага</dt><dd>{s.advantage}</dd>
+								<dt>Напрям</dt><dd>{s.direction}</dd>
+							</dl>
+						</section>
+					{/if}
+					{#if e.positioning}
+						<section class="sum paper">
+							<h3>Позиціонування {#if isNew('positioning')}<span class="new">нове</span>{/if}</h3>
+							<p class="big">{e.positioning.text}</p>
+							<p class="small">{e.positioning.details.join(' · ')}</p>
+							{#if e.positioning.why}<p class="why">Чому так: {e.positioning.why}</p>{/if}
+						</section>
+					{/if}
+					<section class="sum paper brandrow">
+						{#if e.logo?.logo}<PixelLogo logo={e.logo.logo} size={104} />{/if}
+						<div>
+							<h3>{e.name?.text ?? '—'} {#if isNew('name') || isNew('slogan') || isNew('logo')}<span class="new">нове</span>{/if}</h3>
+							<p class="big">«{e.slogan?.text ?? '—'}»</p>
+							{#if e.name?.why}<p class="why">Назва й слоган: {e.name.why}</p>{/if}
+							{#if e.logo}<p class="why">Знак: {e.logo.text}</p>{/if}
+						</div>
+					</section>
+				{:else}
+					{#each CONTENT as id}
+						{@const c = e[id]}
+						{#if c}
+							<section class="sum paper">
+								<h3>{ELEMENT_TITLE[id]} {#if isNew(id)}<span class="new">нове</span>{/if}</h3>
+								{#if id === 'instagram'}
+									<div class="phonewrap"><PhoneMock image={c.image} brand={e.name?.text ?? ''} caption={c.text} logo={e.logo?.logo} /></div>
+									{#if c.details.length}<p class="small">{c.details.join(' · ')}</p>{/if}
+								{:else if id === 'youtube'}
+									{#if c.image}<img src={c.image} alt="Розкадровка" />{/if}
+									<p class="big">{c.text}</p>
+									<ol class="scenes">{#each c.details as d, i}<li><span class="n px">{i + 1}</span>{d}</li>{/each}</ol>
+								{:else}
+									{#if c.image}<img src={c.image} alt={ELEMENT_TITLE[id]} />{/if}
+									<p class="big">{c.text}</p>
+									{#if c.details.length}<ul>{#each c.details as d}<li>{d}</li>{/each}</ul>{/if}
+								{/if}
+							</section>
+						{/if}
+					{/each}
+				{/if}
+{/snippet}
+
 <style lang="scss">
+	.new {
+		font-size: 11px;
+		padding: 0 5px;
+		background: var(--human);
+		color: var(--human-ink);
+		vertical-align: 2px;
+		font-family: var(--pixel);
+	}
+	.cbh {
+		font-size: 15px;
+	}
+	.phonewrap {
+		display: grid;
+		justify-items: center;
+	}
+	.scenes {
+		list-style: none;
+		display: grid;
+		gap: 3px;
+		font-size: 14px;
+		li {
+			display: flex;
+			gap: 6px;
+		}
+		.n {
+			flex: 0 0 18px;
+			height: 18px;
+			display: grid;
+			place-items: center;
+			background: #3a2414;
+			color: var(--paper);
+			font-size: 12px;
+		}
+	}
 	.opt {
 		display: grid;
 		gap: 2px;

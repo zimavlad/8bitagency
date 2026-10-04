@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { ELEMENT_OWNER, ELEMENT_TITLE, ROLE_NAME, type ElementValue } from '$lib/types';
+	import PhoneMock from './PhoneMock.svelte';
 	import PixelLogo from './PixelLogo.svelte';
 
-	let { el }: { el: ElementValue } = $props();
+	let { el, brand = '' }: { el: ElementValue; brand?: string } = $props();
 	let showRejected = $state(false);
 </script>
 
@@ -12,14 +13,16 @@
 		<span class="faint owner">{ROLE_NAME[ELEMENT_OWNER[el.id]]}</span>
 		{#if el.reworks}<span class="tag">перероблено ×{el.reworks}</span>{/if}
 	</header>
-	{#if el.image}
+	{#if el.id === 'instagram'}
+		<div class="pm"><PhoneMock image={el.image} {brand} caption={el.text} width={190} /></div>
+	{:else if el.image}
 		<a href={el.image} target="_blank" rel="noopener"><img src={el.image} alt={ELEMENT_TITLE[el.id]} loading="lazy" /></a>
 	{/if}
 	{#if el.logo}<PixelLogo logo={el.logo} size={88} />{/if}
 	<p class="main">{el.text}</p>
 	{#if el.why && el.id !== 'slogan'}<p class="why">Чому: {el.why}</p>{/if}
 	{#if el.details.length}
-		<ul>{#each el.details as d}<li>{d}</li>{/each}</ul>
+		<ul class:num={el.id === 'youtube'}>{#each el.details as d, i}<li>{#if el.id === 'youtube'}<span class="n px">{i + 1}</span>{/if}{d}</li>{/each}</ul>
 	{/if}
 	{#if el.rejected?.length}
 		<button class="link faint" onclick={() => (showRejected = !showRejected)}>{showRejected ? 'сховати' : 'що відкинули'} ({el.rejected.length})</button>
@@ -34,6 +37,23 @@
 		padding: 10px 12px;
 		display: grid;
 		gap: 6px;
+	}
+	.pm {
+		display: grid;
+		justify-items: center;
+	}
+	.num li {
+		display: flex;
+		gap: 6px;
+	}
+	.n {
+		flex: 0 0 18px;
+		height: 18px;
+		display: grid;
+		place-items: center;
+		background: var(--surface-3);
+		color: var(--text);
+		font-size: 12px;
 	}
 	.why {
 		font-size: 13px;
@@ -74,7 +94,7 @@
 	}
 	img {
 		width: 100%;
-		border: 2px solid #120a06;
+		border: 2px solid #0c0d10;
 		image-rendering: pixelated;
 		display: block;
 	}

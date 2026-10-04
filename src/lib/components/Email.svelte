@@ -23,7 +23,7 @@
 	.back {
 		position: fixed;
 		inset: 0;
-		background: rgba(10, 6, 4, 0.7);
+		background: rgba(8, 9, 12, 0.7);
 		z-index: 50;
 	}
 	.mail {

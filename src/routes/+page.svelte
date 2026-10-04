@@ -12,6 +12,7 @@
 	import Menu from '$lib/components/Menu.svelte';
 	import Num from '$lib/components/Num.svelte';
 	import Popover from '$lib/components/Popover.svelte';
+	import Portfolio from '$lib/components/Portfolio.svelte';
 	import Scene from '$lib/components/Scene.svelte';
 	import Team from '$lib/components/Team.svelte';
 	import Thoughts from '$lib/components/Thoughts.svelte';
@@ -165,9 +166,9 @@
 <svelte:head><title>8bitagency — гра про агенцію</title></svelte:head>
 
 {#if screen === 'title'}
-	<Menu mode="title" {canContinue} onContinue={closeMenu} onNew={newGame} onTitle={() => {}} />
+	<Menu mode="title" {canContinue} onContinue={closeMenu} onNew={newGame} onTitle={() => {}} onTour={canContinue ? () => { closeMenu(); tour = true; } : undefined} />
 {:else if menu}
-	<Menu mode="pause" canContinue onContinue={closeMenu} onNew={newGame} onTitle={() => { menu = false; screen = 'title'; }} />
+	<Menu mode="pause" canContinue onContinue={closeMenu} onNew={newGame} onTitle={() => { menu = false; screen = 'title'; }} onTour={() => { closeMenu(); tour = true; }} />
 {/if}
 
 <div class="app">
@@ -232,6 +233,7 @@
 						<p class="muted">Зараз команда без брифу. Візьми щось у вхідних.</p>
 						<button class="btn primary" onclick={() => (tab = 'inbox')}>До брифів</button>
 					{/if}
+					<Portfolio items={g.history} />
 				{:else}
 					<Team {live} onRest={dayOff} onOpen={(r) => (open = r)} />
 				{/if}
@@ -278,7 +280,7 @@
 				<button class="btn primary" onclick={() => (investorSeen = true)}>Закрити лист</button>
 			</Email>
 		{/if}
-		{#if tour}<Tour onDone={() => (tour = false)} />{/if}
+		{#if tour}<Tour onTab={(t) => (tab = t)} onDone={() => { tour = false; tab = 'inbox'; }} />{/if}
 	{/if}
 
 	{#if !wide}
@@ -304,7 +306,7 @@
 		display: flex;
 		align-items: center;
 		gap: 12px;
-		border-bottom: 3px solid #120a06;
+		border-bottom: 3px solid #0c0d10;
 		background: var(--surface-1);
 		position: sticky;
 		top: 0;
@@ -331,7 +333,7 @@
 		font-size: 28px;
 		color: var(--human);
 		pointer-events: none;
-		background: rgba(18, 12, 9, 0.7);
+		background: rgba(12, 13, 16, 0.7);
 		padding: 4px 16px 6px;
 	}
 	.toast {
@@ -445,7 +447,7 @@
 		height: calc(var(--tabs-h) + env(safe-area-inset-bottom));
 		padding-bottom: env(safe-area-inset-bottom);
 		background: var(--surface-1);
-		border-top: 3px solid #120a06;
+		border-top: 3px solid #0c0d10;
 		z-index: 5;
 		button {
 			display: grid;
@@ -463,14 +465,19 @@
 	.tabs-top {
 		display: flex;
 		gap: 4px;
-		margin-bottom: 12px;
+		margin-bottom: 8px;
+		position: sticky;
+		top: 0;
+		z-index: 4;
+		background: var(--bg);
+		padding: 0 0 6px;
 		button {
 			display: inline-flex;
 			gap: 6px;
 			align-items: center;
 			padding: 6px 12px;
 			border: 2px solid var(--line);
-			background: #1f150f;
+			background: #17191e;
 			color: var(--text-2);
 			font-family: var(--pixel);
 			font-size: 15px;

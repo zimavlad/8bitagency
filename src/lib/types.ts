@@ -144,7 +144,19 @@ export interface Perks {
 
 export const PIZZA_COST = 400;
 
+/** Кейс для борду: що вийшло в підсумку. */
+export interface CaseData {
+	positioning: string;
+	name: string;
+	slogan: string;
+	logo?: LogoSpec;
+	instagram?: { text: string; image?: string };
+	youtube?: { text: string; image?: string; scenes: string[] };
+	threads?: string[];
+}
+
 export interface HistoryEntry {
+	case?: CaseData;
 	day: number;
 	client: string;
 	business: string;
@@ -325,6 +337,10 @@ export interface RunState {
 	steps: StepRecord[];
 	/** Годинник у грі (години, можуть перейти за 24 — це вже ніч і наступний ранок). */
 	clock: number;
+	/** Скільки ще разів можна попросити нові назви. */
+	rerolls: number;
+	/** Що змінилось у останній переробці — позначка «нове» у зведенні. */
+	changed: ElementId[];
 	/** Поточна робота між рішеннями гравця: прогрес по кроках для смужки справа. */
 	task: Task | null;
 	/** Варіанти назви й слогана, з яких обирає гравець. */

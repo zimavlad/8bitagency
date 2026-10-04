@@ -20,7 +20,7 @@
 	canvas {
 		image-rendering: pixelated;
 		display: block;
-		border: 2px solid #120a06;
+		border: 2px solid #0c0d10;
 		flex: 0 0 auto;
 	}
 </style>

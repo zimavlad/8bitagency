@@ -61,17 +61,7 @@
 		{/each}
 	</div>
 
-	<h2 class="mt">Історія</h2>
-	{#each g.history as h}
-		<div class="hist">
-			<span class="dot" class:ok={h.verdict === 'ok'} class:bad={h.verdict !== 'ok'}></span>
-			<span class="hn">{h.name} <span class="faint">· {h.client}</span></span>
-			<span class="num">+{h.paid.toLocaleString('uk-UA')} ₴</span>
-			<span class="num faint">{h.repDelta >= 0 ? '+' : ''}{h.repDelta}</span>
-		</div>
-	{:else}
-		<p class="faint small">Ще жодного брифу.</p>
-	{/each}
+
 </section>
 
 <style lang="scss">
@@ -154,17 +144,6 @@
 		text-decoration: underline;
 		text-underline-offset: 3px;
 	}
-	.hist {
-		display: grid;
-		grid-template-columns: auto 1fr auto auto;
-		gap: 8px;
-		align-items: center;
-		font-size: 13px;
-	}
-	.hn {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
+
+
 </style>

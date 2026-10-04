@@ -8,7 +8,7 @@
 	 * Головне меню (title) і меню паузи (Esc). Поляроїди — кадри з того самого офісу гри,
 	 * намальовані тим самим рендером, тож персонажі ті самі, що в роботі.
 	 */
-	let { mode, canContinue, onContinue, onNew, onTitle }: { mode: 'title' | 'pause'; canContinue: boolean; onContinue: () => void; onNew: () => void; onTitle: () => void } = $props();
+	let { mode, canContinue, onContinue, onNew, onTitle, onTour }: { mode: 'title' | 'pause'; canContinue: boolean; onContinue: () => void; onNew: () => void; onTitle: () => void; onTour?: () => void } = $props();
 
 	let shots = $state<{ src: string; cap: string; rot: number }[]>([]);
 
@@ -62,6 +62,7 @@
 		<nav>
 			{#if canContinue}<button class="btn primary wide" onclick={onContinue}><Icon name="play" size={16} />Продовжити</button>{/if}
 			<button class="btn wide" class:primary={!canContinue} onclick={() => (canContinue ? confirm('Почати нову гру? Поточна агенція закриється, прогрес зітреться.') && onNew() : onNew())}><Icon name="plus" size={16} />Нова гра</button>
+			{#if onTour}<button class="btn wide" onclick={onTour}><Icon name="eye" size={16} />Мануал</button>{/if}
 			<button class="btn wide" disabled title="Звук буде пізніше"><Icon name="bot" size={16} />Звук: скоро</button>
 			{#if mode === 'pause'}<button class="btn ghost wide" onclick={onTitle}><Icon name="back" size={16} />Головне меню</button>{/if}
 		</nav>
@@ -79,10 +80,10 @@
 		display: grid;
 		place-items: center;
 		padding: 16px;
-		background: radial-gradient(circle at 50% 40%, #2a1c14, #120c09 70%);
+		background: radial-gradient(circle at 50% 40%, #262a33, #101215 70%);
 		overflow: hidden;
 		&.pause {
-			background: rgba(10, 6, 4, 0.72);
+			background: rgba(8, 9, 12, 0.72);
 		}
 	}
 	.wall {
