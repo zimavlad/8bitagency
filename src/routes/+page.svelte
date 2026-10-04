@@ -188,8 +188,8 @@
 		<div class="scene" bind:this={sceneEl} data-tour="scene">
 			<Scene run={live.run} {hour} {sky} bubbles={wide} {away} {coffee} frozen={menu || screen === 'title' || !!mail || tour} onPick={(what, x, y) => (pop = { what, x, y })} />
 			<div class="tools" data-tour="scene-tools">
-				<button class="btn sm" class:human={run?.paused} disabled={!active} onclick={() => live.act({ action: 'pause', on: !run!.paused })} title={active ? '' : 'Пауза — коли команда працює над брифом'}><Icon name={run?.paused ? 'play' : 'pause'} size={14} />{run?.paused ? 'Далі' : 'Пауза'}</button>
-				<button class="btn sm" disabled={!run} onclick={() => (briefOpen = true)}><Icon name="inbox" size={14} />Бриф</button>
+				<button class="btn sm" onclick={openMenu} title="Пауза й меню (Esc)"><Icon name="pause" size={14} />Пауза</button>
+				{#if run}<button class="btn sm" onclick={() => (briefOpen = true)}><Icon name="inbox" size={14} />Бриф</button>{/if}
 			</div>
 			{#if run?.paused && !menu}<div class="paused px">Пауза</div>{/if}
 			{#if live.toast}<div class="toast px rise">{live.toast}</div>{/if}
@@ -467,10 +467,12 @@
 		gap: 4px;
 		margin-bottom: 8px;
 		position: sticky;
-		top: 0;
+		/* закриваємо й відступ над вкладками, щоб під ними не просвічувала стрічка */
+		top: -16px;
+		margin-top: -16px;
+		padding: 16px 0 6px;
 		z-index: 4;
 		background: var(--bg);
-		padding: 0 0 6px;
 		button {
 			display: inline-flex;
 			gap: 6px;

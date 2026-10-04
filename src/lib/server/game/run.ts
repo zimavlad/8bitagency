@@ -70,13 +70,28 @@ export interface TraceEntry {
 }
 
 const NOTE_MAX = 280;
+
+/** Для розкадровки — лише що в кадрі: без цитат, цифр, «акцій» і телефонів, щоб Gemini не малював плакат замість кадру. */
+export function sceneOnly(x: string): string {
+	return x
+		.replace(/^[^,.:]{2,20}:\s*/u, '')
+		.replace(/[«"“][^»"”]*[»"”]/g, 'a sign')
+		.replace(/[+]?\d[\d\s()−-]{4,}\d/g, '')
+		.replace(/[−-]?\d+\s?%/g, '')
+		.replace(/(АКЦІЯ|акці[яїю]|знижк\S*|QR-?код|сайт|телефон\S*|номер\S*)/giu, '')
+		.replace(/\s{2,}/g, ' ')
+		.replace(/\s+([,.;:])/g, '$1')
+		.replace(/[,;:]+\./g, '.')
+		.replace(/,\s*,/g, ',')
+		.trim();
+}
 /** У своєму брифі гравець-клієнт може повернути роботу з правками до трьох разів на етап. */
 const SELF_ROUNDS = 3;
 
 /** Типові побажання клієнтів до платформи й реклами: з них щоразу випадково 3 підказки. */
 const HINTS_CORE = [
 	'логотип більший, щоб видно з маршрутки', 'золото або корона в логотипі', 'щоб було «як у Києві»', 'назва англійською для солідності',
-	'фото власника десь поруч', 'кум радить червоний колір', 'дружина каже — надто сумно', 'додати «з 1998 року»', 'щоб мама зрозуміла',
+	'фото власника десь поруч', 'кум радить червоний колір', '{spouse} каже — надто сумно', 'додати «з 1998 року»', 'щоб мама зрозуміла',
 	'слово «найкращий»', 'як у конкурента, тільки краще', 'більше кольорів, щоб весело', 'герб міста', 'щоб пахло грошима', 'слоган у риму'
 ];
 const HINTS_CONTENT = [
@@ -238,7 +253,8 @@ export class Run {
 		const out: string[] = [];
 		for (let i = 0; out.length < 3 && i < 20; i++) {
 			const h = pool[Math.floor(chance(`${this.id}:${stage}:${round}:${i}`) * pool.length)];
-			if (!out.includes(h)) out.push(h);
+			const g = h.replace('{spouse}', this.state.brief.client.gender === 'f' ? 'чоловік' : 'дружина');
+			if (!out.includes(g)) out.push(g);
 		}
 		return out;
 	}
@@ -429,7 +445,7 @@ export class Run {
 		const b = this.state.brief;
 		// Свій бриф: клієнт — сам гравець, кумедний лисий тіп; правки пише сам.
 		if (b.custom) {
-			this.state.brief = { ...b, client: { ...b.client, name: 'Ти', gender: 'm', look: 'leather', archetype: 'ти сам собі замовник: лисий, вимогливий і з грошима', voice: '' } };
+			this.state.brief = { ...b, client: { ...b.client, name: 'Ти', role: 'замовник', gender: 'm', look: 'leather', archetype: 'ти сам собі замовник: лисий, вимогливий і з грошима', voice: '' } };
 			this.emit();
 		}
 		this.note(`Бриф від ${b.client.name}, ${b.client.business}. Гонорар ${b.fee.toLocaleString('uk-UA')} ₴.`);
@@ -658,7 +674,7 @@ export class Run {
 			const items = ids.map((id) => this.state.elements[id]).filter((e): e is ElementValue => !!e);
 			const c = normClient(await this.once({
 				purpose: 'client', who: 'client', model: this.deps.models.client, system: clientCard(this.state.brief.client, this.state.brief.text),
-				user: prompt.client(items, stage, round, stage === 'content' ? `Бренд-платформу (${this.state.elements.name?.text}, «${this.state.elements.slogan?.text}») ти вже затвердив.` : undefined, this.state.verdicts.flatMap((v) => v.demands), this.hints(stage, round)),
+				user: prompt.client(items, stage, round, stage === 'content' ? `Бренд-платформу (${this.state.elements.name?.text}, «${this.state.elements.slogan?.text}») ти вже затвердив.` : undefined, this.state.verdicts.flatMap((v) => v.demands), round < rounds ? this.hints(stage, round) : [], this.state.brief.client.gender),
 				schema: SCHEMA.client, fake: () => fake.client(round, stage)
 			}), stage, round);
 			this.tick();
@@ -800,7 +816,7 @@ export class Run {
 			},
 			{
 				id: 'youtube', aspect: '16:9',
-				prompt: `${STYLE}\nA simple storyboard sheet for a brand video: a 2×2 grid of four pixel-art frames with thin dark borders on a light paper background.\nThe ONLY text allowed: one big digit in the top-left corner of each frame — 1, 2, 3, 4. No words, no captions, no titles anywhere.\nFrames:\n${(e.youtube?.details ?? []).slice(0, 4).map((x, i) => `${i + 1}. ${x}`).join('\n')}\n${mark ? 'In frame 4 show the provided logo small.' : ''}\nUse the brand colours ${e.logo?.logo?.palette.a ?? ''} and ${e.logo?.logo?.palette.b ?? ''}.`
+				prompt: `${STYLE}\nA simple storyboard sheet for a brand video: a 2×2 grid of four pixel-art frames with thin dark borders on a light paper background.\nThe ONLY text allowed: one big digit in the top-left corner of each frame — 1, 2, 3, 4. No words, no captions, no titles anywhere.\nFrames (describe only the picture; any sign, screen, poster or paper in a frame stays blank, without letters; never write frame titles or labels):\n${(e.youtube?.details ?? []).slice(0, 4).map((x, i) => `${i + 1}. ${sceneOnly(x)}`).join('\n')}\n${mark ? 'In frame 4 show the provided logo small.' : ''}\nUse the brand colours ${e.logo?.logo?.palette.a ?? ''} and ${e.logo?.logo?.palette.b ?? ''}.`
 			}
 		];
 		await Promise.all(jobs.map(async (j) => {

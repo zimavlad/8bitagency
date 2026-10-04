@@ -48,7 +48,7 @@
 	<header class="brief">
 		<Avatar who="client" client={run.brief.client} size={44} />
 		<div class="bw">
-			<div class="client">{run.brief.client.name}</div>
+			<div class="client">{run.brief.client.name}{#if run.brief.client.role}<span class="role">, {run.brief.client.role}</span>{/if}</div>
 			<div class="faint biz">{run.brief.client.business}</div>
 		</div>
 		<div class="fee">
@@ -132,6 +132,12 @@
 		font-family: var(--pixel);
 		font-weight: 600;
 		font-size: 18px;
+	}
+	.role {
+		font-family: var(--font);
+		font-size: 13px;
+		font-weight: 400;
+		color: var(--text-3);
 	}
 	.biz {
 		font-size: 13px;

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { ELEMENT_OWNER, ELEMENT_TITLE, ROLE_NAME, type ElementValue } from '$lib/types';
 	import PhoneMock from './PhoneMock.svelte';
+	import ThreadsMock from './ThreadsMock.svelte';
 	import PixelLogo from './PixelLogo.svelte';
 
 	let { el, brand = '' }: { el: ElementValue; brand?: string } = $props();
@@ -21,7 +22,9 @@
 	{#if el.logo}<PixelLogo logo={el.logo} size={88} />{/if}
 	<p class="main">{el.text}</p>
 	{#if el.why && el.id !== 'slogan'}<p class="why">Чому: {el.why}</p>{/if}
-	{#if el.details.length}
+	{#if el.id === 'threads'}
+		<ThreadsMock posts={el.details} {brand} />
+	{:else if el.details.length}
 		<ul class:num={el.id === 'youtube'}>{#each el.details as d, i}<li>{#if el.id === 'youtube'}<span class="n px">{i + 1}</span>{/if}{d}</li>{/each}</ul>
 	{/if}
 	{#if el.rejected?.length}

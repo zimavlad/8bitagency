@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { CaseData } from '$lib/types';
 	import PhoneMock from './PhoneMock.svelte';
+	import ThreadsMock from './ThreadsMock.svelte';
 	import PixelLogo from './PixelLogo.svelte';
 
 	/** Кейс-борд: знак, назва, слоган, позиціонування і що з цього намалював Gemini. */
@@ -31,7 +32,7 @@
 	{#if c.threads?.length}
 		<section class="th paper">
 			<h4>Threads</h4>
-			{#each c.threads as t, i}<p class:voice={i === 0}>{t}</p>{/each}
+			<ThreadsMock posts={c.threads.slice(1)} brand={c.name} logo={c.logo} />
 		</section>
 	{/if}
 </div>
@@ -103,14 +104,7 @@
 			font-size: 12px;
 		}
 	}
-	.th {
-		p {
-			font-size: 13px;
-		}
-		.voice {
-			color: #6d5236;
-		}
-	}
+
 	.compact {
 		grid-template-columns: 1fr;
 		.ig {

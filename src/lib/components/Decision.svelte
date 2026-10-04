@@ -5,6 +5,7 @@
 	import Avatar from './Avatar.svelte';
 	import CaseBoard from './CaseBoard.svelte';
 	import PhoneMock from './PhoneMock.svelte';
+	import ThreadsMock from './ThreadsMock.svelte';
 	import Bar from './Bar.svelte';
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
@@ -87,8 +88,6 @@
 				<div class="actions">
 					{#if run.editAvailable}
 						<button class="btn human" disabled={live.busy} onclick={() => (editing = true)}><Icon name="edit" size={16} />Дати правки</button>
-					{:else}
-						<span class="faint small">Правки на цьому етапі вже були.</span>
 					{/if}
 					<button class="btn primary" disabled={live.busy} onclick={() => live.act({ action: 'submit' })}><Icon name="send" size={16} />Показати клієнту</button>
 				</div>
@@ -125,11 +124,25 @@
 		<Modal title={v.verdict === 'ok' ? `${name} у захваті` : `${name} хоче правок`} onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
 			{#snippet head()}<Avatar who="client" client={run.brief.client} size={48} />{/snippet}
 			<p class="faint small">{v.stage === 'core' ? 'Бренд-платформа' : 'Комунікація'} · коло {v.round}</p>
+			<!-- що саме клієнт оцінював -->
+			<section class="shown paper">
+				{#if e.logo?.logo}<PixelLogo logo={e.logo.logo} size={44} />{/if}
+				<div class="st">
+					<b class="px">{e.name?.text ?? '—'}</b> <span>«{e.slogan?.text ?? ''}»</span>
+					{#if v.stage === 'core'}<p class="small">{e.positioning?.text}</p>{:else}<p class="small">Банер, пости Threads, Reels і ролик «{e.youtube?.text ?? ''}»</p>{/if}
+				</div>
+				{#if v.stage === 'content'}
+					{#each [e.instagram?.image, e.youtube?.image].filter(Boolean) as src}<img class="th" {src} alt="" />{/each}
+				{/if}
+			</section>
 			<Bar label="Настрій" value={v.mood} kind={v.mood >= 60 ? 'hp' : 'stress'} />
 			<section class="sum paper">
-				{#each v.lines as l}<p class="quote">«{l}»</p>{/each}
+				{#each v.lines as l}<p class="quote">«{l.replace(/^[«"“]+|[»"”]+$/g, '')}»</p>{/each}
 				<p class="why">{v.reaction}</p>
 			</section>
+			{#if v.verdict === 'ok' && v.stage === 'content'}
+				<div class="inline-board"><h3>Кейс-борд</h3><CaseBoard c={caseOf(run)} compact /></div>
+			{/if}
 			{#if v.demands.length}
 				<section class="sum paper">
 					<h3>Що хоче змінити</h3>
@@ -181,60 +194,102 @@
 
 
 {#snippet summary(core: boolean)}
-				{#if core}
-					{#if s}
-						<section class="sum paper">
-							<h3>Стратегія</h3>
-							<dl>
-								<dt>Проблема</dt><dd>{s.problem}</dd>
-								<dt>Інсайт</dt><dd>{s.insight}</dd>
-								<dt>Перевага</dt><dd>{s.advantage}</dd>
-								<dt>Напрям</dt><dd>{s.direction}</dd>
-							</dl>
-						</section>
-					{/if}
-					{#if e.positioning}
-						<section class="sum paper">
-							<h3>Позиціонування {#if isNew('positioning')}<span class="new">нове</span>{/if}</h3>
-							<p class="big">{e.positioning.text}</p>
-							<p class="small">{e.positioning.details.join(' · ')}</p>
-							{#if e.positioning.why}<p class="why">Чому так: {e.positioning.why}</p>{/if}
-						</section>
-					{/if}
-					<section class="sum paper brandrow">
-						{#if e.logo?.logo}<PixelLogo logo={e.logo.logo} size={104} />{/if}
-						<div>
-							<h3>{e.name?.text ?? '—'} {#if isNew('name') || isNew('slogan') || isNew('logo')}<span class="new">нове</span>{/if}</h3>
-							<p class="big">«{e.slogan?.text ?? '—'}»</p>
-							{#if e.name?.why}<p class="why">Назва й слоган: {e.name.why}</p>{/if}
-							{#if e.logo}<p class="why">Знак: {e.logo.text}</p>{/if}
-						</div>
+	<div class="grid" class:core>
+		{#if core}
+			{#if s}
+				<section class="sum paper">
+					<h3>Стратегія</h3>
+					<dl>
+						<dt>Проблема</dt><dd>{s.problem}</dd>
+						<dt>Інсайт</dt><dd>{s.insight}</dd>
+						<dt>Перевага</dt><dd>{s.advantage}</dd>
+						<dt>Напрям</dt><dd>{s.direction}</dd>
+					</dl>
+				</section>
+			{/if}
+			{#if e.positioning}
+				<section class="sum paper">
+					<h3>Позиціонування {#if isNew('positioning')}<span class="new">нове</span>{/if}</h3>
+					<p class="big">{e.positioning.text}</p>
+					<p class="small">{e.positioning.details.join(' · ')}</p>
+					{#if e.positioning.why}<p class="why">Чому так: {e.positioning.why}</p>{/if}
+				</section>
+			{/if}
+			<section class="sum paper">
+				{#if e.logo?.logo}<PixelLogo logo={e.logo.logo} size={96} />{/if}
+				<h3 class="bn">{e.name?.text ?? '—'} {#if isNew('name') || isNew('slogan') || isNew('logo')}<span class="new">нове</span>{/if}</h3>
+				<p class="big">«{e.slogan?.text ?? '—'}»</p>
+				{#if e.name?.why}<p class="why">Назва й слоган: {e.name.why}</p>{/if}
+				{#if e.logo}<p class="why">Знак: {e.logo.text}</p>{/if}
+			</section>
+		{:else}
+			{#if e.instagram}
+				<section class="sum paper">
+					<h3>{ELEMENT_TITLE.instagram} {#if isNew('instagram')}<span class="new">нове</span>{/if}</h3>
+					<div class="phonewrap"><PhoneMock image={e.instagram.image} brand={e.name?.text ?? ''} caption={e.instagram.text} logo={e.logo?.logo} width={200} /></div>
+				</section>
+			{/if}
+			{#if e.youtube}
+				<section class="sum paper">
+					<h3>YouTube: {e.youtube.text} {#if isNew('youtube')}<span class="new">нове</span>{/if}</h3>
+					{#if e.youtube.image}<img src={e.youtube.image} alt="Розкадровка" />{/if}
+					<ol class="scenes">{#each e.youtube.details as d, i}<li><span class="n px">{i + 1}</span>{d}</li>{/each}</ol>
+				</section>
+			{/if}
+			<div class="col">
+				{#if e.threads}
+					<section class="sum paper">
+						<h3>{ELEMENT_TITLE.threads} {#if isNew('threads')}<span class="new">нове</span>{/if}</h3>
+						<ThreadsMock posts={e.threads.details} brand={e.name?.text ?? ''} logo={e.logo?.logo} />
+						<p class="why">Голос: {e.threads.text}</p>
 					</section>
-				{:else}
-					{#each CONTENT as id}
-						{@const c = e[id]}
-						{#if c}
-							<section class="sum paper">
-								<h3>{ELEMENT_TITLE[id]} {#if isNew(id)}<span class="new">нове</span>{/if}</h3>
-								{#if id === 'instagram'}
-									<div class="phonewrap"><PhoneMock image={c.image} brand={e.name?.text ?? ''} caption={c.text} logo={e.logo?.logo} /></div>
-									{#if c.details.length}<p class="small">{c.details.join(' · ')}</p>{/if}
-								{:else if id === 'youtube'}
-									{#if c.image}<img src={c.image} alt="Розкадровка" />{/if}
-									<p class="big">{c.text}</p>
-									<ol class="scenes">{#each c.details as d, i}<li><span class="n px">{i + 1}</span>{d}</li>{/each}</ol>
-								{:else}
-									{#if c.image}<img src={c.image} alt={ELEMENT_TITLE[id]} />{/if}
-									<p class="big">{c.text}</p>
-									{#if c.details.length}<ul>{#each c.details as d}<li>{d}</li>{/each}</ul>{/if}
-								{/if}
-							</section>
-						{/if}
-					{/each}
 				{/if}
+				{#if e.reels}
+					<section class="sum paper">
+						<h3>{ELEMENT_TITLE.reels} {#if isNew('reels')}<span class="new">нове</span>{/if}</h3>
+						<ul>{#each e.reels.details as d}<li>{d}</li>{/each}</ul>
+					</section>
+				{/if}
+			</div>
+		{/if}
+	</div>
 {/snippet}
 
 <style lang="scss">
+	.shown {
+		display: flex;
+		gap: 10px;
+		align-items: center;
+		padding: 8px 10px;
+		.st {
+			flex: 1;
+			min-width: 0;
+			font-size: 14px;
+		}
+		.th {
+			width: 54px;
+			height: 40px;
+			object-fit: cover;
+			image-rendering: pixelated;
+			border: 2px solid #3a2414;
+		}
+	}
+	.grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+		gap: 10px;
+		align-items: start;
+		&.core {
+			grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+		}
+	}
+	.col {
+		display: grid;
+		gap: 10px;
+	}
+	.bn {
+		font-size: 20px !important;
+	}
 	.new {
 		font-size: 11px;
 		padding: 0 5px;
@@ -259,17 +314,22 @@
 			font-size: 15px;
 		}
 	}
-	@media (max-width: 1180px) {
-		.side-board {
-			left: auto;
-			right: 12px;
-			top: auto;
-			bottom: 12px;
-			transform: none;
-			width: min(320px, calc(100vw - 24px));
-			max-height: 40dvh;
+	.inline-board {
+		display: none;
+		gap: 8px;
+		h3 {
+			font-size: 15px;
 		}
 	}
+	@media (max-width: 1180px) {
+		.side-board {
+			display: none;
+		}
+		.inline-board {
+			display: grid;
+		}
+	}
+
 	.phonewrap {
 		display: grid;
 		justify-items: center;
@@ -362,14 +422,6 @@
 	}
 	.quote {
 		font-size: 15px;
-	}
-	.brandrow {
-		grid-template-columns: auto 1fr;
-		align-items: center;
-		gap: 12px;
-		h3 {
-			font-size: 22px;
-		}
 	}
 	.actions {
 		display: flex;

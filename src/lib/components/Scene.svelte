@@ -96,6 +96,18 @@
 		run ? (Object.fromEntries(ROLES.map((r) => [r, r === lounge ? { ...run!.agents[r], spot: 'armchair' as const } : run!.agents[r]])) as RunState['agents']) : null
 	);
 
+	/** Скільки нотаток на дошці: рівно по ходу брифу — від розбору до оплати, 12 наприкінці. */
+	function boardNotes(r: RunState): number {
+		const RANK: Partial<Record<RunState['phase'], number>> = {
+			read: 0, huddle: 1, position: 2, naming: 3, pick_name: 3, logo: 4,
+			player_core: 5, rework_core: 5, client_core: 5, client_decision_core: 5,
+			content: 8, images: 9, player_content: 10, rework_content: 10, client_content: 10, client_decision_content: 10, done: 12, failed: 0
+		};
+		const base = RANK[r.phase] ?? 0;
+		const rounds = r.verdicts.filter((v) => v.stage === (base >= 8 ? 'content' : 'core')).length;
+		return Math.min(12, base + (base >= 5 && base < 8 ? Math.min(3, rounds) : base >= 10 && base < 12 ? Math.min(2, rounds) : 0));
+	}
+
 	const input = $derived<SceneInput>({
 		agents: agents ?? {
 			strategist: { spot: 'desk', status: 'idle', burnout: 0 },
@@ -111,7 +123,7 @@
 			slogan: !!run?.elements.slogan,
 			logo: !!run?.elements.logo,
 			// з кожним кроком і колом на дошці більше нотаток
-			notes: run ? run.steps.reduce((n, x) => n + x.lines.length, 0) / 2 + run.verdicts.length : 0
+			notes: run ? boardNotes(run) : 0
 		},
 		logo: run?.elements.logo?.logo ?? null,
 		hour,

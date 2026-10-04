@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { sceneOnly } from './run';
 import type { ElementValue } from '$lib/types';
 import { qualityOf, quoteFound, reputationDelta } from './checks';
 
@@ -30,5 +31,13 @@ describe('перевірки', () => {
 	it('цитата шукається дослівно', () => {
 		expect(quoteFound('«Клієнт сам не знає»', '- клієнт сам не знає, кому продає')).toBe(true);
 		expect(quoteFound('вигадана цитата', '- клієнт сам не знає')).toBe(false);
+	});
+});
+
+describe('розкадровка', () => {
+	it('з опису сцени прибираються цитати, телефони, відсотки й «акції»', () => {
+		expect(sceneOnly('Великі цифри телефону 067-123-45-67 на пів кадру, АКЦІЯ −20% і золотий будиночок.')).toBe('Великі цифри на пів кадру, і золотий будиночок.');
+		expect(sceneOnly('Напис: «Борщ щодня»')).toBe('a sign');
+		expect(sceneOnly('Вечір: у вікні лампи')).toBe('у вікні лампи');
 	});
 });

@@ -25,7 +25,7 @@ export const ELEMENT_TITLE: Record<ElementId, string> = {
 	name: 'Назва',
 	slogan: 'Слоган',
 	logo: 'Лого',
-	threads: 'Threads: голос бренду',
+	threads: 'Threads: пости',
 	instagram: 'Instagram: банер',
 	reels: 'Reels: ідеї',
 	youtube: 'YouTube: іміджевий ролик'
@@ -60,7 +60,10 @@ export interface LogoSpec {
 export type ClientLook = 'leather' | 'suit' | 'casual' | 'creative' | 'farmer' | 'sport';
 
 export interface Client {
+	/** Лише імʼя, без по батькові. */
 	name: string;
+	/** Посада або статус: власниця, директор з продажу… */
+	role?: string;
 	business: string;
 	/** Характер: від нього залежить, чого він хоче й як сварить. */
 	archetype: string;

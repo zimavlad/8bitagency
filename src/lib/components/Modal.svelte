@@ -36,7 +36,7 @@
 		padding: 14px 16px 16px;
 		gap: 12px;
 		&.wide {
-			width: min(640px, calc(100vw - 24px));
+			width: min(1000px, calc(100vw - 24px));
 		}
 	}
 	.pop {

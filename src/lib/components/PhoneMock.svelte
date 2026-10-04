@@ -4,7 +4,7 @@
 
 	/** Банер, «намакаплений» у піксельний iPhone 5s зі стрічкою Instagram. */
 	let { image, brand, caption, logo, width = 220 }: { image?: string; brand: string; caption: string; logo?: LogoSpec; width?: number } = $props();
-	const handle = $derived(brand.toLowerCase().replace(/[^a-zа-яіїєґ0-9]+/giu, '_').replace(/^_|_$/g, '') || 'brand');
+	const handle = $derived(brand.toLowerCase().replace(/[^a-zа-яіїєґ0-9]+/giu, '_').replace(/^_|_$/g, '').slice(0, 18) || 'brand');
 </script>
 
 <figure class="phone" style:width="{width}px">
@@ -13,7 +13,7 @@
 		<div class="bar px"><span>9:41</span><span>Instagram</span><span>▮▮▮</span></div>
 		<div class="head">
 			{#if logo}<PixelLogo {logo} size={18} grid={16} />{:else}<span class="ava"></span>{/if}
-			<span class="px">{handle}</span>
+			<span class="px handle">{handle}</span>
 			<span class="sp">Реклама</span>
 		</div>
 		{#if image}<img src={image} alt="Банер {brand}" />{:else}<div class="ph px">банер ще малюється</div>{/if}
@@ -56,6 +56,9 @@
 		clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%);
 	}
 	.screen {
+		min-width: 0;
+		overflow: hidden;
+		grid-template-columns: minmax(0, 1fr);
 		background: #fafafa;
 		color: #111;
 		display: grid;
@@ -77,6 +80,12 @@
 		gap: 6px;
 		padding: 0 6px;
 		font-size: 11px;
+		.handle {
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
 		.sp {
 			margin-left: auto;
 			color: #888;
@@ -132,6 +141,7 @@
 	}
 	.cap {
 		padding: 0 6px;
+		overflow-wrap: anywhere;
 		b {
 			font-weight: 600;
 		}

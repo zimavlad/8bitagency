@@ -34,7 +34,7 @@
 			<header>
 				<Avatar who="client" client={b.client} size={40} />
 				<div class="who">
-					<div class="client">{b.client.name}</div>
+					<div class="client">{b.client.name}{#if b.client.role}<span class="role">, {b.client.role}</span>{/if}</div>
 					<div class="faint biz">{b.client.business}</div>
 				</div>
 				<div class="fee"><Num value={b.fee} width={6} suffix=" ₴" /></div>
@@ -86,7 +86,7 @@
 	}
 	.sticky {
 		position: sticky;
-		top: 52px;
+		top: 50px;
 		z-index: 3;
 		background: var(--bg);
 		padding: 4px 0 6px;
@@ -121,6 +121,11 @@
 		font-family: var(--pixel);
 		font-weight: 600;
 		font-size: 16px;
+	}
+	.role {
+		font-family: var(--font);
+		font-size: 13px;
+		color: var(--text-3);
 	}
 	.biz {
 		font-size: 13px;

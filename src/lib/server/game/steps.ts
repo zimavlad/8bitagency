@@ -137,9 +137,9 @@ export const SCHEMA = {
 		slogan: S('слоган до 6 слів'),
 		why: S('що змінив і чому, до 14 слів')
 	}),
-	threads: obj({ thought: THOUGHT, voice: S('голос бренду одним реченням до 12 слів'), posts: list(S('пост для Threads до 120 знаків'), 'рівно 2') }),
+	threads: obj({ thought: THOUGHT, voice: S('голос бренду одним реченням до 12 слів'), posts: list(S('пост для Threads до 200 знаків: жива думка, спостереження чи жарт від імені бренду, як пишуть люди в Threads; без хештегів і закликів «купуйте»'), 'рівно 3, різні за настроєм') }),
 	instagram: obj({ thought: THOUGHT, headline: S('заголовок на банері, до 6 слів'), visual: S('що на картинці, до 16 слів') }),
-	reels: obj({ thought: THOUGHT, hooks: list(S('ідея Reels одним рядком до 12 слів'), 'рівно 3') }),
+	reels: obj({ thought: THOUGHT, hooks: list(S('ідея Reels до 18 слів: стьоб над конкретним трендом соцмереж, підігнаний під бренд; почни з назви тренду'), 'рівно 3, різні тренди') }),
 	youtube: obj({ thought: THOUGHT, title: S('назва ролика до 5 слів'), scenes: list(S('сцена до 10 слів: що в кадрі'), 'рівно 4, від першої до останньої') }),
 	gpt: obj({ answer: S('порада до 200 знаків, без вступу і без запитань у відповідь'), source: S('назва файлу з бази або «загальні знання»') }),
 	client: obj({
@@ -215,19 +215,20 @@ export const prompt = {
 
 	recontent: (id: ContentElement, who: 'керівник агенції' | 'клієнт', notes: string[], cur: ElementValue) =>
 		`${who === 'клієнт' ? 'Клієнт' : 'Керівник агенції'} дав правки до каналів:\n${notes.map((n, i) => `${i + 1}. ${n}`).join('\n')}\n\n` +
-		`Твоя поточна версія «${ELEMENT_TITLE[id]}»:\n${[cur.text, ...cur.details].join('\n')}\n\nПерероби з урахуванням правок, що стосуються саме цього каналу; решту лиши. Так само коротко.${who === 'клієнт' ? ' Клієнт платить: його штуки (сайт, QR-код, «АКЦІЯ», телефон, знижка тощо) вписуй дослівно в кожен канал, де їх можна вліпити, навіть якщо це псує креатив.' : ''}`,
+		`Твоя поточна версія «${ELEMENT_TITLE[id]}»:\n${[cur.text, ...cur.details].join('\n')}\n\nПерероби з урахуванням правок, що стосуються саме цього каналу; решту лиши. Так само коротко.${who === 'клієнт' ? ' Клієнт платить, тож його штуки (сайт, QR-код, «АКЦІЯ», телефон, знижка тощо) вписуємо, але з розумом і з гумором: на банер — майже все підряд, у Threads і Reels — одну-дві, обіграні смішно, у ролик — одну деталь у фіналі. Не повторюй однакову штуку в кожному каналі.' : ''}`,
 
 	gpt: (role: Role, question: string, chunks: { source: string; text: string }[]) =>
 		`${ROLE_NAME[role]} питає: ${question}\n\n` +
 		(chunks.length ? `Уривки з бази знань:\n${chunks.map((c, i) => `[${i + 1}] (${c.source}) ${c.text}`).join('\n\n')}` : 'Уривків з бази знань нема.'),
 
-	client: (items: ElementValue[], stage: 'core' | 'content', round: number, extra?: string, asked: string[] = [], hints: string[] = []) =>
+	client: (items: ElementValue[], stage: 'core' | 'content', round: number, extra?: string, asked: string[] = [], hints: string[] = [], gender: 'm' | 'f' = 'm') =>
 		'Спершу скажи 3 короткі репліки вголос (lines): про конкретні речі з того, що бачиш, твоїми словами. Потім підсумок і рішення.\n\n' +
 		(asked.length ? `Ти вже просив раніше (не повторюйся, вигадай інше):\n${asked.map((a) => `- ${a}`).join('\n')}\n\n` : '') +
 		(hints.length ? `Цього разу тебе чомусь чіпляє (візьми щось звідси, своїми словами): ${hints.join('; ')}.\nЗнижку чи акцію згадуй щонайбільше в одній вимозі за весь проєкт. Кожна вимога — про одну штуку.\n\n` : '') +
 		`Агенція показує${round > 1 ? ` (коло ${round}, після твоїх правок)` : ''}:\n${items.map((e) => `- ${ELEMENT_TITLE[e.id]}: ${e.text}${e.details.length ? ' (' + e.details.slice(0, 4).join('; ') + ')' : ''}`).join('\n')}` +
 		(extra ? `\n\n${extra}` : '') +
-		`\n\n${CLIENT_ROUND[stage][Math.min(round, CLIENT_ROUND[stage].length) - 1]}`,
+		`\n\n${CLIENT_ROUND[stage][Math.min(round, CLIENT_ROUND[stage].length) - 1].replace('{spouse}', gender === 'f' ? 'чоловік' : 'дружина')}` +
+		(gender === 'f' ? '\nТи жінка: про себе в жіночому роді; якщо згадуєш родину — це чоловік, не дружина.' : ''),
 
 	persona: (text: string) => `Бриф:\n«${text}»`
 };
@@ -241,7 +242,7 @@ export interface Pos { positioning: string; role: string; enemy: string }
 const CLIENT_ROUND: Record<'core' | 'content', string[]> = {
 	core: [
 		'Перше знайомство з роботою. Не погоджуйся одразу: verdict "rework", 3 вимоги по-своєму — що тобі не так і чого бракує, твоїми словами з брифу.',
-		'Агенція врахувала твої правки. Тепер додай своє: що порадив кум чи дружина, що є в конкурента, що любиш ти (більший логотип, золото, «щоб було видно», знижки, «як у Києві»). verdict "rework", 3 вимоги.',
+		'Агенція врахувала твої правки. Тепер додай своє: що порадив кум чи {spouse}, що є в конкурента, що любиш ти (більший логотип, золото, «щоб було видно», знижки, «як у Києві»). verdict "rework", 3 вимоги.',
 		'Агенція зробила все, як ти казав. Перечитай вголос конкретні пункти — процитуй назву, слоган, шматок позиціонування — і щиро захоплюйся тим, у що воно перетворилось, навіть якщо це вже абсурд. Ти дуже задоволений: verdict "ok", mood 85–100, demands порожньо.'
 	],
 	content: [
@@ -251,10 +252,10 @@ const CLIENT_ROUND: Record<'core' | 'content', string[]> = {
 };
 
 const CONTENT_TASK: Record<ContentElement, string> = {
-	threads: 'голос бренду для Threads одним реченням і 2 пости (до 120 знаків).',
+	threads: 'голос бренду одним реченням і 3 приклади постів для Threads у цьому голосі: смішні, людські, такі, що хочеться відповісти; без хештегів, цін і закликів.',
 	instagram: 'банер для Instagram: заголовок до 6 слів і що на картинці одним реченням.',
-	reels: '3 ідеї для Reels — по одному рядку до 12 слів.',
-	youtube: 'дорогий іміджевий ролик для YouTube: назва і розкадровка з 4 сцен, кожна одним рядком до 10 слів — що в кадрі.'
+	reels: '3 ідеї для Reels, що стьобуть тренди (наприклад «POV: …», «get ready with me», «я у 20 vs я у 40», «тихе звільнення», «сигма-ранок о 5:00», ASMR-розпаковка, «розповідаю, як…», «день з життя …») — кожна про цей бренд, з конкретним смішним поворотом.',
+	youtube: 'дорогий іміджевий ролик для YouTube: емоційна історія про людей і роль бренду, як у великих брендів — без цін, акцій, телефонів і написів у кадрі. Назва до 5 слів і розкадровка з 4 сцен, кожна одним рядком до 12 слів — лише що видно в кадрі.'
 };
 
 export const GPT_QUESTION = {
@@ -311,7 +312,7 @@ export function normContent(id: ContentElement, j: Record<string, unknown>): { t
 	const thought = str(j.thought, 120);
 	switch (id) {
 		case 'threads':
-			return { thought, text: str(j.voice, 160), details: strs(j.posts, 2, 160) };
+			return { thought, text: str(j.voice, 160), details: strs(j.posts, 3, 240) };
 		case 'instagram':
 			return { thought, text: str(j.headline, 80), details: [str(j.visual, 200)].filter(Boolean) };
 		case 'reels':

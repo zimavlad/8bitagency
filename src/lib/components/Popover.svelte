@@ -51,7 +51,7 @@
 	{:else if what === 'client' && live.run}
 		<header>
 			<Avatar who="client" client={live.run.brief.client} size={40} />
-			<div><div class="nm">{live.run.brief.client.name}</div><div class="faint small">{live.run.brief.client.business}</div></div>
+			<div><div class="nm">{live.run.brief.client.name}</div><div class="faint small">{live.run.brief.client.role ?? 'власник бізнесу'}</div><div class="faint small">{live.run.brief.client.business}</div></div>
 		</header>
 		{#if mood !== undefined}<Bar label="Настрій" value={mood} kind={mood >= 60 ? 'hp' : 'stress'} />{/if}
 		<p class="small muted">{live.run.brief.client.archetype}</p>

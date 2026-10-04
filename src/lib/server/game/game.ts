@@ -113,7 +113,7 @@ export class Game {
 			const s = { ...newGame(), ...(JSON.parse(readFileSync(this.file(), 'utf8')) as GameState) };
 			s.ledger = { ...START_LEDGER(), ...(s.ledger ?? {}) };
 			// Сейви до рівнів: брифи без рівня перегенеровуємо.
-			if (s.inbox.some((b) => !b.tier)) s.inbox = inboxFor(s.day, s.reputation);
+			if (s.inbox.some((b) => !b.tier || !b.client.role)) s.inbox = inboxFor(s.day, s.reputation);
 			if (!s.perks || s.perks.day !== s.day) s.perks = perksFor(s.day);
 			if (typeof s.clock !== 'number') s.clock = DAY_START;
 			s.team = Object.fromEntries(ROLES.map((r) => [r, s.team?.[r] ?? junior()])) as GameState['team'];
