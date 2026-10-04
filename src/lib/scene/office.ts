@@ -282,13 +282,41 @@ export class Office {
 		this.poly([up(D), up(Cc), Cc, D], left);
 		this.poly([up(A), up(B), up(Cc), up(D)], top);
 		if (!outline) return;
+		// волокно дерева на великих гранях і темніший низ граней (дизеринг)
+		if (w > 0.6 && h > 6) {
+			for (let k = 1; k < 4; k++) { const z = (h * k) / 4; this.line([{ x: D.x + 2, y: D.y - z }, { x: Cc.x - 2, y: Cc.y - z }].map((p, j) => ({ x: p.x, y: p.y + (j ? -0.5 : 0) })), 'rgba(70,40,20,.18)'); }
+			this.poly([{ x: D.x, y: D.y - 3 }, { x: Cc.x, y: Cc.y - 3 }, Cc, D], this.dither('rgba(50,25,10,.3)') as unknown as string);
+			this.poly([{ x: B.x, y: B.y - 3 }, { x: Cc.x, y: Cc.y - 3 }, Cc, B], this.dither('rgba(40,20,8,.3)') as unknown as string);
+		}
 		this.line([up(D), up(Cc), up(B)], 'rgba(255,240,210,.35)');
 		this.line([up(Cc), Cc], 'rgba(0,0,0,.18)');
 		this.line([up(A), up(B), B, Cc, D, up(D)], C.ink, 1, true);
 	}
 
+	/** Дизеринг: шаховий (density 2) або розріджений (4) візерунок кольору — переходи без градієнтів, як у піксель-арті. */
+	private dithers = new Map<string, CanvasPattern>();
+	private dither(color: string, density: 2 | 4 = 2): CanvasPattern {
+		const key = `${color}:${density}`;
+		let pat = this.dithers.get(key);
+		if (!pat) {
+			const c = document.createElement('canvas');
+			c.width = c.height = density === 2 ? 2 : 4;
+			const x = c.getContext('2d')!;
+			x.fillStyle = color;
+			if (density === 2) { x.fillRect(0, 0, 1, 1); x.fillRect(1, 1, 1, 1); }
+			else { x.fillRect(0, 0, 1, 1); x.fillRect(2, 2, 1, 1); }
+			pat = this.o.createPattern(c, 'repeat')!;
+			this.dithers.set(key, pat);
+		}
+		return pat;
+	}
+
+	/** Тінь під предметом: щільна серцевина й розсипаний дизеринг по краю. */
 	private shadowUnder(gx: number, gy: number, w: number, d: number, a = 0.22) {
-		this.poly([s(gx + 0.08, gy + 0.08), s(gx + w + 0.12, gy + 0.08), s(gx + w + 0.12, gy + d + 0.14), s(gx + 0.08, gy + d + 0.14)], `rgba(60,30,15,${a})`);
+		const q = (m: number) => [s(gx + 0.08 - m, gy + 0.08 - m), s(gx + w + 0.12 + m, gy + 0.08 - m), s(gx + w + 0.12 + m, gy + d + 0.14 + m), s(gx + 0.08 - m, gy + d + 0.14 + m)];
+		this.poly(q(0.08), this.dither(`rgba(60,30,15,${a * 0.9})`, 4) as unknown as string);
+		this.poly(q(0.03), this.dither(`rgba(60,30,15,${a})`) as unknown as string);
+		this.poly(q(-0.02), `rgba(60,30,15,${a * 0.8})`);
 	}
 
 	/* ─────────── кадр ─────────── */
@@ -338,15 +366,30 @@ export class Office {
 		// шпалери з вертикальною смугою й дрібним візерунком
 		this.qL(0, GH, WS, WH, C.wallL);
 		for (let d = 0; d < GH; d += 0.5) this.qL(d + 0.18, d + 0.32, WS, WH - 6, C.wallLs);
-		for (let d = 0.09; d < GH; d += 0.5) for (let h = WS + 6; h < WH - 8; h += 9) { const p = wL(d + ((h / 9) % 2) * 0.25, h); this.px(p.x, p.y, 1, 1, C.wallLdot); }
+		// дрібний візерунок-ромбик шпалер
+		for (let d = 0.09; d < GH; d += 0.5) for (let h = WS + 6; h < WH - 8; h += 9) { const p = wL(d + ((h / 9) % 2) * 0.25, h); this.px(p.x, p.y - 1, 1, 1, C.wallLdot); this.px(p.x - 1, p.y, 3, 1, C.wallLdot); this.px(p.x, p.y + 1, 1, 1, C.wallLdot); }
 		this.qR(0, GW, WS, WH, C.wallR);
 		for (let d = 0; d < GW; d += 0.5) this.qR(d + 0.18, d + 0.32, WS, WH - 6, C.wallRs);
-		for (let d = 0.09; d < GW; d += 0.5) for (let h = WS + 6; h < WH - 8; h += 9) { const p = wR(d + ((h / 9) % 2) * 0.25, h); this.px(p.x, p.y, 1, 1, C.wallRdot); }
+		for (let d = 0.09; d < GW; d += 0.5) for (let h = WS + 6; h < WH - 8; h += 9) { const p = wR(d + ((h / 9) % 2) * 0.25, h); this.px(p.x, p.y - 1, 1, 1, C.wallRdot); this.px(p.x - 1, p.y, 3, 1, C.wallRdot); this.px(p.x, p.y + 1, 1, 1, C.wallRdot); }
+		// під стелею стіна темнішає дизерингом, права стіна в тіні сильніше
+		this.qL(0, GH, WH - 16, WH - 5, this.dither('rgba(120,70,30,.18)', 4) as unknown as string);
+		this.qL(0, GH, WH - 10, WH - 5, this.dither('rgba(120,70,30,.2)') as unknown as string);
+		this.qR(0, GW, WH - 18, WH - 5, this.dither('rgba(110,60,25,.2)', 4) as unknown as string);
+		this.qR(0, GW, WH - 11, WH - 5, this.dither('rgba(110,60,25,.24)') as unknown as string);
 		// дерев'яні панелі
 		this.qL(0, GH, 0, WS, C.panel);
 		this.qR(0, GW, 0, WS, C.panelDk);
-		for (let d = 0.12; d < GH - 0.2; d += 0.75) { this.qL(d, d + 0.6, 4, WS - 6, C.panelDk); this.qL(d + 0.04, d + 0.6, 5, WS - 7, C.panel); }
-		for (let d = 0.12; d < GW - 0.2; d += 0.75) { this.qR(d, d + 0.6, 4, WS - 6, '#6a4228'); this.qR(d, d + 0.56, 5, WS - 7, C.panelDk); }
+		// панелі з фаскою: світла грань угорі, темна знизу, волокно всередині
+		for (let d = 0.12; d < GH - 0.2; d += 0.75) {
+			this.qL(d, d + 0.6, 4, WS - 6, C.panelDk); this.qL(d + 0.04, d + 0.6, 5, WS - 7, C.panel);
+			this.qL(d + 0.04, d + 0.6, WS - 8, WS - 7, C.panelLt); this.qL(d + 0.04, d + 0.6, 5, 6, '#6a4228');
+			for (let k = 0; k < 3; k++) this.qL(d + 0.1 + k * 0.15, d + 0.18 + k * 0.15, 8 + k * 3, 9 + k * 3, 'rgba(90,55,30,.45)');
+		}
+		for (let d = 0.12; d < GW - 0.2; d += 0.75) {
+			this.qR(d, d + 0.6, 4, WS - 6, '#6a4228'); this.qR(d, d + 0.56, 5, WS - 7, C.panelDk);
+			this.qR(d, d + 0.56, WS - 8, WS - 7, C.panel); this.qR(d, d + 0.56, 5, 6, '#5a3620');
+			for (let k = 0; k < 3; k++) this.qR(d + 0.08 + k * 0.15, d + 0.16 + k * 0.15, 8 + k * 3, 9 + k * 3, 'rgba(60,35,18,.45)');
+		}
 		this.qL(0, GH, WS - 3, WS, C.rail); this.qR(0, GW, WS - 3, WS, C.panelLt);
 		this.qL(0, GH, 0, 3, C.woodDkr); this.qR(0, GW, 0, 3, C.woodDkr);
 		// карниз під стелею
@@ -370,12 +413,17 @@ export class Office {
 				const a = Math.max(0, x), b = Math.min(GW, x + len);
 				if (b > a) {
 					this.qF(a, y1, b, y2, C.plank[Math.floor(hash(r * 13 + i, 3) * C.plank.length)]);
-					// волокна
-					for (let k = 0; k < 3; k++) {
-						const gx = a + hash(r, i * 7 + k) * (b - a), gy = y1 + 0.1 + hash(i, r * 3 + k) * 0.13;
-						const p = s(gx, gy);
-						this.px(p.x, p.y, 2, 1, C.plankGrain);
+					// світлий кант зверху й тінь знизу дошки
+					this.line([s(a, y1 + 0.02), s(b, y1 + 0.02)], 'rgba(255,225,170,.28)');
+					this.qF(a, y2 - 0.05, b, y2, this.dither('rgba(110,60,25,.35)') as unknown as string);
+					// волокна: довгі світлі й темні штрихи вздовж дошки
+					for (let k = 0; k < 4; k++) {
+						const gx = a + hash(r, i * 7 + k) * (b - a), gy = y1 + 0.08 + hash(i, r * 3 + k) * 0.17;
+						const len = 0.15 + hash(k, r + i) * 0.3;
+						this.line([s(gx, gy), s(Math.min(b, gx + len), gy)], k % 2 ? C.plankGrain : 'rgba(255,220,160,.25)');
 					}
+					// сучок
+					if (hash(r * 5 + i, 17) > 0.86) { const kp = s(a + (b - a) * 0.5, (y1 + y2) / 2); this.px(kp.x - 1, kp.y, 3, 1, C.plankLine); this.px(kp.x, kp.y - 1, 1, 1, C.plankGrain); }
 					// шов між дошками
 					if (b < GW) this.line([s(b, y1), s(b, y2)], C.plankLine);
 				}
@@ -384,9 +432,13 @@ export class Office {
 			}
 			this.line([s(0, y2), s(GW, y2)], 'rgba(120,70,35,.55)');
 		}
-		// тінь уздовж стін
-		this.poly([s(0, 0), s(GW, 0), s(GW, 0.28), s(0.28, 0.28)], 'rgba(60,30,10,.18)');
-		this.poly([s(0, 0), s(0.28, 0.28), s(0.28, GH), s(0, GH)], 'rgba(60,30,10,.14)');
+		// тінь уздовж стін: суцільна біля плінтуса, далі дизеринг, що розсіюється
+		this.poly([s(0, 0), s(GW, 0), s(GW, 0.16), s(0.16, 0.16)], 'rgba(60,30,10,.22)');
+		this.poly([s(0, 0), s(0.16, 0.16), s(0.16, GH), s(0, GH)], 'rgba(60,30,10,.18)');
+		this.poly([s(0.16, 0.16), s(GW, 0.16), s(GW, 0.4), s(0.4, 0.4)], this.dither('rgba(60,30,10,.22)') as unknown as string);
+		this.poly([s(0.16, 0.16), s(0.4, 0.4), s(0.4, GH), s(0.16, GH)], this.dither('rgba(60,30,10,.18)') as unknown as string);
+		this.poly([s(0.4, 0.4), s(GW, 0.4), s(GW, 0.7), s(0.7, 0.7)], this.dither('rgba(60,30,10,.16)', 4) as unknown as string);
+		this.poly([s(0.4, 0.4), s(0.7, 0.7), s(0.7, GH), s(0.4, GH)], this.dither('rgba(60,30,10,.14)', 4) as unknown as string);
 		this.line([s(0, GH), s(GW, GH), s(GW, 0)], C.ink);
 	}
 
