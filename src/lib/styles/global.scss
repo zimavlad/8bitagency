@@ -1,0 +1,217 @@
+/* Токени обгортки. Сцена має свою палітру в src/lib/scene — тут лише інтерфейс. */
+:root,
+[data-theme='dark'] {
+	--bg: #121316;
+	--surface-1: #18191d;
+	--surface-2: #1f2025;
+	--surface-3: #282a30;
+	--line: #2e3037;
+	--line-hi: #4a4d57;
+	--text: #ecebe8;
+	--text-2: #a9a8a3;
+	--text-3: #74736f;
+	/* два акценти: дія/прогрес і людина (твоє: бриф, правки) */
+	--accent: #6aa7ff;
+	--accent-ink: #0d1626;
+	--human: #e8a93b;
+	--human-ink: #24180a;
+	/* станові — лише точками */
+	--ok: #6fcf8f;
+	--bad: #ef6f6f;
+	--warn: #e8c75a;
+	--scene-bg: #0f1013;
+	color-scheme: dark;
+}
+
+[data-theme='light'] {
+	--bg: #f4f2ee;
+	--surface-1: #fbfaf8;
+	--surface-2: #ffffff;
+	--surface-3: #efece6;
+	--line: #e0dcd4;
+	--line-hi: #b9b3a8;
+	--text: #1d1c1a;
+	--text-2: #5c5a55;
+	--text-3: #8b8882;
+	--accent: #2f6fd6;
+	--accent-ink: #ffffff;
+	--human: #b8780f;
+	--human-ink: #ffffff;
+	--ok: #2f9a55;
+	--bad: #d04545;
+	--warn: #b8901a;
+	--scene-bg: #e9e5de;
+	color-scheme: light;
+}
+
+:root {
+	--r: 12px;
+	--r-sm: 10px;
+	--t: 200ms;
+	--ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+	--font: 'Onest', system-ui, sans-serif;
+	--mono: 'JetBrains Mono', ui-monospace, monospace;
+	--top-h: 56px;
+	--tabs-h: 60px;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+}
+
+html {
+	-webkit-text-size-adjust: 100%;
+}
+
+body {
+	background: var(--bg);
+	color: var(--text);
+	font: 400 15px/1.5 var(--font);
+	min-height: 100dvh;
+	-webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+textarea {
+	font: inherit;
+	color: inherit;
+}
+
+button {
+	cursor: pointer;
+	background: none;
+	border: none;
+}
+
+:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+
+.num {
+	font-family: var(--mono);
+	font-variant-numeric: tabular-nums;
+}
+
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	min-height: 40px;
+	padding: 0 14px;
+	border-radius: var(--r-sm);
+	border: 1px solid var(--line);
+	background: var(--surface-2);
+	font-weight: 500;
+	transition: border-color var(--t) var(--ease), background var(--t) var(--ease), opacity var(--t);
+	&:hover:not(:disabled) {
+		border-color: var(--line-hi);
+	}
+	&:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+	&.primary {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: var(--accent-ink);
+	}
+	&.human {
+		border-color: var(--human);
+		color: var(--human);
+	}
+	&.ghost {
+		background: transparent;
+	}
+	&.sm {
+		min-height: 32px;
+		padding: 0 10px;
+		font-size: 13px;
+	}
+}
+
+.panel {
+	background: var(--surface-1);
+	border: 1px solid var(--line);
+	border-radius: var(--r);
+	transition: border-color var(--t) var(--ease);
+}
+
+.dot {
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	flex: 0 0 auto;
+	&.ok {
+		background: var(--ok);
+	}
+	&.bad {
+		background: var(--bad);
+	}
+	&.warn {
+		background: var(--warn);
+	}
+	&.accent {
+		background: var(--accent);
+	}
+}
+
+.muted {
+	color: var(--text-2);
+}
+
+.faint {
+	color: var(--text-3);
+}
+
+.label {
+	font-size: 12px;
+	color: var(--text-3);
+	letter-spacing: 0.02em;
+}
+
+textarea,
+input[type='text'] {
+	width: 100%;
+	background: var(--surface-2);
+	border: 1px solid var(--line);
+	border-radius: var(--r-sm);
+	padding: 10px 12px;
+	resize: vertical;
+	transition: border-color var(--t) var(--ease);
+	&:focus {
+		outline: none;
+		border-color: var(--human);
+	}
+}
+
+@keyframes rise {
+	from {
+		opacity: 0;
+		transform: translateY(6px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+.rise {
+	animation: rise var(--t) var(--ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+	}
+}

@@ -1,0 +1,11 @@
+node_modules/
+.svelte-kit/
+build/
+.env
+.env.*
+!.env.example
+data/*
+!data/knowledge/
+data/knowledge/**/*
+!data/knowledge/**/.gitkeep
+.claude/settings.local.json
