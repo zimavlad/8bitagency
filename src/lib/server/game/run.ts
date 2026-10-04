@@ -457,7 +457,7 @@ export class Run {
 		const prev = this.state.elements[id];
 		this.state.elements = {
 			...this.state.elements,
-			[id]: { id, text, details, reworks: prev?.reworks ?? 0, ...(prev?.rejected ? { rejected: prev.rejected } : {}), ...(prev?.logo ? { logo: prev.logo } : {}), ...(prev?.image ? { image: prev.image } : {}), ...extra }
+			[id]: { id, text, details, reworks: prev?.reworks ?? 0, ...(prev?.rejected ? { rejected: prev.rejected } : {}), ...(prev?.logo ? { logo: prev.logo } : {}), ...(prev?.image ? { image: prev.image } : {}), ...(prev?.why ? { why: prev.why } : {}), ...extra }
 		};
 		this.emit();
 	}
@@ -543,7 +543,7 @@ export class Run {
 			const rp = normReposition(await this.ask('strategist', 'rework', prompt.reposition(who, notes, this.pos), SCHEMA.reposition, () => fake.reposition(who === 'клієнт')), this.pos);
 			if (rp.changed) {
 				this.pos = rp.pos;
-				this.setEl('positioning', rp.pos.positioning, [`Роль: ${rp.pos.role}`, `Ворог: ${rp.pos.enemy}`]);
+				this.setEl('positioning', rp.pos.positioning, [`Роль: ${rp.pos.role}`, `Ворог: ${rp.pos.enemy}`], rp.why ? { why: rp.why } : {});
 				this.bump('positioning');
 			}
 			this.say('strategist', rp.thought, 'thought', undefined, [rp.changed ? `Змінила: ${rp.why}` : 'Позиціонування лишила']);
@@ -554,7 +554,7 @@ export class Run {
 			this.agent('copywriter', 'thinking', 'переглядає назву й слоган');
 			const rn = normRename(await this.ask('copywriter', 'rework', prompt.rename(who, notes, this.pos, rp.changed, name, slogan), SCHEMA.rename, () => fake.rename(who === 'клієнт')), name, slogan);
 			if (rn.changed) {
-				if (rn.name !== name) { this.setEl('name', rn.name, [rn.why].filter(Boolean)); this.bump('name'); }
+				if (rn.name !== name) { this.setEl('name', rn.name, [], rn.why ? { why: rn.why } : {}); this.bump('name'); }
 				if (rn.slogan !== slogan) { this.setEl('slogan', rn.slogan, []); this.bump('slogan'); }
 			}
 			this.say('copywriter', rn.thought, 'thought', undefined, [rn.changed ? `${rn.name} — «${rn.slogan}»: ${rn.why}` : 'Назву й слоган лишив']);
