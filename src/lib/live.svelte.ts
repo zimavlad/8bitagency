@@ -1,23 +1,34 @@
-import type { ElementId, GameState, RunState } from './types';
+import type { BriefForm, GameState, RunState } from './types';
 
 type KB = Record<'strategist' | 'copywriter' | 'designer', number>;
+type Init = { game: GameState; demo: boolean; imagesDemo: boolean; kb: KB };
+export type Act =
+	| { action: 'pick'; index: number }
+	| { action: 'submit' | 'retry' | 'giveup' | 'drop' }
+	| { action: 'edit'; notes: string[] }
+	| { action: 'pause'; on: boolean };
 
 /** Стан гри на клієнті: гра з сервера, активний бриф — живим потоком SSE. */
 export class Live {
 	game = $state<GameState | null>(null);
 	demo = $state(true);
+	imagesDemo = $state(true);
 	kb = $state<KB | null>(null);
 	run = $state<RunState | null>(null);
-	editsLeft = $state<ElementId[]>([]);
 	error = $state<string | null>(null);
 	busy = $state(false);
 	private es: EventSource | null = null;
 
-	constructor(init: { game: GameState; demo: boolean; kb: KB }) {
-		this.game = init.game;
-		this.demo = init.demo;
-		this.kb = init.kb;
+	constructor(init: Init) {
+		this.apply(init);
 		if (init.game.activeRun) this.connect(init.game.activeRun);
+	}
+
+	private apply(j: Init) {
+		this.game = j.game;
+		this.demo = j.demo;
+		this.imagesDemo = j.imagesDemo;
+		this.kb = j.kb;
 	}
 
 	private async api<T>(url: string, body?: unknown): Promise<T | null> {
@@ -37,30 +48,22 @@ export class Live {
 	}
 
 	async refresh() {
-		const j = await this.api<{ game: GameState; demo: boolean; kb: KB }>('/api/game');
-		if (j) {
-			this.game = j.game;
-			this.demo = j.demo;
-			this.kb = j.kb;
-		}
+		const j = await this.api<Init>('/api/game');
+		if (j) this.apply(j);
 	}
 
 	connect(id: string) {
 		this.es?.close();
 		this.es = new EventSource(`/api/runs/${id}/events`);
 		this.es.onmessage = (e) => {
-			const d = JSON.parse(e.data) as { state: RunState; editsLeft: ElementId[] };
+			const d = JSON.parse(e.data) as { state: RunState };
 			const wasDone = this.run?.phase === 'done';
 			this.run = d.state;
-			this.editsLeft = d.editsLeft;
 			if (d.state.phase === 'done' && !wasDone) this.refresh();
-		};
-		this.es.onerror = () => {
-			// EventSource перепідключається сам; після перепідключення сервер одразу шле повний стан.
 		};
 	}
 
-	async start(input: { briefId?: string; custom?: { text: string; business: string } }) {
+	async start(input: { briefId?: string; custom?: BriefForm }) {
 		this.busy = true;
 		const j = await this.api<{ id: string; state: RunState }>('/api/runs', input);
 		this.busy = false;
@@ -71,28 +74,26 @@ export class Live {
 		return true;
 	}
 
-	async act(body: { action: 'edit' | 'approve' | 'submit' | 'drop'; element?: ElementId; comment?: string }) {
+	async act(body: Act) {
 		if (!this.run) return false;
-		this.busy = body.action !== 'edit';
-		const j = await this.api<{ state: RunState; editsLeft: ElementId[] }>(`/api/runs/${this.run.id}/act`, body);
+		this.busy = true;
+		const j = await this.api<{ state: RunState }>(`/api/runs/${this.run.id}/act`, body);
 		this.busy = false;
-		if (j) {
-			this.run = j.state;
-			this.editsLeft = j.editsLeft;
-		}
+		if (j) this.run = j.state;
 		if (body.action === 'drop') await this.refresh();
 		return !!j;
 	}
 
-	async game_(action: 'rest' | 'reset') {
+	async gameAction(body: { action: 'rest' | 'reset' } | { action: 'balance'; provider: 'claude' | 'gemini'; usd: number }) {
 		this.busy = true;
-		const j = await this.api<{ game: GameState }>('/api/game', { action });
+		const j = await this.api<{ game: GameState }>('/api/game', body);
 		this.busy = false;
 		if (j) this.game = j.game;
-		if (action === 'reset') {
+		if (body.action === 'reset') {
 			this.es?.close();
 			this.run = null;
 		}
+		return !!j;
 	}
 
 	close() {

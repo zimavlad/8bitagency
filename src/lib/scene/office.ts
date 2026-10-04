@@ -1,5 +1,5 @@
 import { ROLES, ROLE_NAME, type LogoSpec, type Role, type Speaker, type Spot } from '$lib/types';
-import { BODY, CAT, EMOTE, LEGS, PALETTE, SPRITE_H, SPRITE_W, type SpriteId } from './sprites';
+import { BODY, CAT, EMOTE, LEGS, PALETTE, SPRITE_H, SPRITE_W, clientSprite, type SpriteId } from './sprites';
 
 /**
  * Ізометричний офіс у справжній піксельній сітці, як у Stardew Valley: сцена малюється в маленьке
@@ -19,6 +19,9 @@ export interface SceneInput {
 	hour: number;
 	sky: Sky;
 	reducedMotion: boolean;
+	client: { gender: 'm' | 'f'; look: 'leather' | 'suit' | 'casual' | 'creative' | 'farmer' | 'sport' };
+	/** Вихідний: усі йдуть у двері й зникають. */
+	away: boolean;
 }
 
 /* ─────────── геометрія ─────────── */
@@ -71,9 +74,9 @@ const C = {
 const DESKS: Record<Role, { gx: number; gy: number }> = { strategist: { gx: 0.75, gy: 1.05 }, copywriter: { gx: 3.15, gy: 1.05 }, designer: { gx: 5.55, gy: 1.05 } };
 const DESK_W = 1.55, DESK_D = 0.9, DESK_H = 16;
 const SPOTS: Record<Role, Record<Spot, { gx: number; gy: number }>> = {
-	strategist: { desk: { gx: 1.45, gy: 0.6 }, table: { gx: 1.7, gy: 4.2 }, board: { gx: 2.72, gy: 0.62 }, coffee: { gx: 5.75, gy: 4.25 } },
-	copywriter: { desk: { gx: 3.85, gy: 0.6 }, table: { gx: 3.4, gy: 2.95 }, board: { gx: 2.72, gy: 0.62 }, coffee: { gx: 5.85, gy: 5.45 } },
-	designer: { desk: { gx: 6.25, gy: 0.6 }, table: { gx: 5.3, gy: 4.95 }, board: { gx: 2.72, gy: 0.62 }, coffee: { gx: 7.5, gy: 5.75 } }
+	strategist: { desk: { gx: 1.45, gy: 0.6 }, table: { gx: 1.7, gy: 4.2 }, board: { gx: 2.72, gy: 0.62 }, coffee: { gx: 5.75, gy: 4.25 }, away: { gx: 0.3, gy: 5.1 } },
+	copywriter: { desk: { gx: 3.85, gy: 0.6 }, table: { gx: 3.4, gy: 2.95 }, board: { gx: 2.72, gy: 0.62 }, coffee: { gx: 5.85, gy: 5.45 }, away: { gx: 0.3, gy: 5.1 } },
+	designer: { desk: { gx: 6.25, gy: 0.6 }, table: { gx: 5.3, gy: 4.95 }, board: { gx: 2.72, gy: 0.62 }, coffee: { gx: 7.5, gy: 5.75 }, away: { gx: 0.3, gy: 5.1 } }
 };
 const CLIENT_DOOR = { gx: 0.35, gy: 5.15 };
 const CLIENT_TABLE = { gx: 3.45, gy: 5.8 };
@@ -131,7 +134,7 @@ export class Office {
 	update(input: SceneInput) {
 		this.input = input;
 		for (const r of ROLES) {
-			const sp = SPOTS[r][input.agents[r].spot];
+			const sp = SPOTS[r][input.away ? 'away' : input.agents[r].spot];
 			this.pos[r].tx = sp.gx;
 			this.pos[r].ty = sp.gy;
 		}
@@ -168,6 +171,18 @@ export class Office {
 		const c = this.pos[k];
 		const p = s(c.gx, c.gy);
 		return { x: this.TX + p.x * this.S, y: this.TY + (p.y - SPRITE_H - 6) * this.S };
+	}
+
+	/** Хто під пальцем/курсором (CSS-пікселі в межах сцени). */
+	hit(x: number, y: number): SpriteId | null {
+		const ax = (x - this.TX) / this.S, ay = (y - this.TY) / this.S;
+		const order = (['strategist', 'copywriter', 'designer', 'client'] as SpriteId[]).sort((a, b) => this.pos[b].gx + this.pos[b].gy - (this.pos[a].gx + this.pos[a].gy));
+		for (const k of order) {
+			if (k === 'client' && !this.input.clientInOffice) continue;
+			const p = s(this.pos[k].gx, this.pos[k].gy);
+			if (ax >= p.x - 9 && ax <= p.x + 9 && ay >= p.y - SPRITE_H - 2 && ay <= p.y + 2) return k;
+		}
+		return null;
 	}
 
 	private loop = (now: number) => {
@@ -536,8 +551,9 @@ export class Office {
 				for (let i = 0; i < 10; i++) { const u = i / 10; this.px(wR(d1 + u * (d2 - d1), h1).x, wR(d1 + u * (d2 - d1), h1).y, 1, 1, 'rgba(255,255,255,.45)'); this.px(wR(d1 + u * (d2 - d1), h2).x, wR(d1 + u * (d2 - d1), h2).y, 1, 1, 'rgba(255,255,255,.45)'); }
 			}
 		}
-		this.shelf(5.0, 7.45, 52, 0);
-		this.shelf(5.35, 7.45, 32, 3);
+		this.shelf(5.0, 7.45, 32, 3);
+		this.flag(5.2, 6.7, 70, this.t);
+		this.poster(6.9, 7.48, 46, 68);
 		// годинник
 		const cc = wR(4.7, 66);
 		this.px(cc.x - 5, cc.y - 5, 10, 10, C.woodDkr); this.px(cc.x - 4, cc.y - 4, 8, 8, '#fff7e4');
@@ -548,6 +564,35 @@ export class Office {
 		// картинка над кріслом
 		this.qL(3.75, 4.35, 44, 60, C.woodDkr); this.qL(3.8, 4.3, 45, 59, '#9fd0e8');
 		this.poly([wL(3.8, 45), wL(4.3, 45), wL(4.3, 50), wL(4.05, 54), wL(3.8, 49)], '#6fae5e');
+	}
+
+	/** Прапор України: повішений за два кути, провисає й хвилюється, не рівний прямокутник. */
+	private flag(d1: number, d2: number, top: number, t: number) {
+		const steps = 40, band = 8;
+		for (let i = 0; i < steps; i++) {
+			const u = i / steps, u2 = (i + 1) / steps;
+			const dd = d1 + u * (d2 - d1), dd2 = d1 + u2 * (d2 - d1);
+			const sag = Math.sin(u * Math.PI) * 2.5;
+			const wave = Math.sin(u * Math.PI * 3 + t * 1.6) * 1.2;
+			const y0 = top - sag + wave;
+			const shade = Math.cos(u * Math.PI * 3 + t * 1.6);
+			const blue = shade > 0.35 ? '#2a6ccc' : shade < -0.35 ? '#003f8a' : '#0057b7';
+			const yel = shade > 0.35 ? '#ffe34d' : shade < -0.35 ? '#e0b800' : '#ffd700';
+			this.qR(dd, dd2 + 0.004, y0 - band, y0, blue);
+			this.qR(dd, dd2 + 0.004, y0 - band * 2 - Math.max(0, -wave * 0.4), y0 - band, yel);
+		}
+		for (const dd of [d1, d2]) { const p = wR(dd, top); this.px(p.x - 1, p.y - 1, 2, 2, '#9aa1ab'); }
+		this.line([wR(d1, top), wR(d2, top)], 'rgba(40,20,10,.25)');
+	}
+
+	/** Абстрактний плакат на скотчі. */
+	private poster(d1: number, d2: number, h1: number, h2: number) {
+		this.qR(d1 + 0.03, d2 + 0.03, h1 - 1, h2 - 1, 'rgba(60,30,10,.2)');
+		this.qR(d1, d2, h1, h2, '#f6efe0');
+		this.poly([wR(d1 + 0.08, h1 + 3), wR(d2 - 0.06, h1 + 3), wR(d1 + 0.3, h1 + 14)], '#2f7f86');
+		const c = wR(d1 + 0.34, h2 - 8); this.px(c.x - 4, c.y - 4, 8, 8, '#e07a4a'); this.px(c.x - 3, c.y - 5, 6, 1, '#e07a4a'); this.px(c.x - 3, c.y + 4, 6, 1, '#e07a4a');
+		for (let i = 0; i < 3; i++) this.qR(d1 + 0.06, d2 - 0.1 - i * 0.08, h1 + 16 + i * 2.5, h1 + 17 + i * 2.5, '#2b2420');
+		for (const dd of [d1 - 0.03, d2 - 0.1]) this.qR(dd, dd + 0.13, h2 - 2, h2 + 1.5, 'rgba(240,226,180,.85)');
 	}
 
 	private shelf(d1: number, d2: number, h: number, seed: number) {
@@ -596,6 +641,7 @@ export class Office {
 		for (const k of ['strategist', 'copywriter', 'designer', 'client'] as SpriteId[]) {
 			if (k === 'client' && !this.input.clientInOffice && this.pos.client.gx === CLIENT_DOOR.gx) continue;
 			const c = this.pos[k];
+			if (k !== 'client' && this.input.away && Math.hypot(c.gx - SPOTS.strategist.away.gx, c.gy - SPOTS.strategist.away.gy) < 0.25) continue;
 			add(c.gx + c.gy, () => this.sprite(k));
 		}
 		add(2.2 + 3.6 + 2.4 + 1.6, () => this.meetingTable(2.2, 3.6));
@@ -621,8 +667,8 @@ export class Office {
 	private chair(r: Role, gx: number, gy: number) {
 		const cushion = r === 'strategist' ? '#c76b9a' : r === 'copywriter' ? '#3f8f88' : '#5f6672';
 		this.box(gx + 0.22, gy + 0.18, 0.08, 0.08, 7, C.metalDk, C.metalDk, C.metalDk, false);
-		this.box(gx, gy, 0.52, 0.46, 10, cushion, C.woodDk, C.woodDkr);
-		this.box(gx, gy - 0.1, 0.52, 0.12, 25, cushion, C.woodDk, C.woodDkr);
+		this.box(gx + 0.04, gy + 0.04, 0.44, 0.4, 8, cushion, C.woodDk, C.woodDkr);
+		this.box(gx + 0.04, gy - 0.04, 0.44, 0.1, 18, cushion, C.woodDk, C.woodDkr);
 	}
 
 	private desk(r: Role, gx: number, gy: number) {
@@ -637,32 +683,43 @@ export class Office {
 			const hp = at(gx + (a + b) / 2, gy + d, 12.5); this.px(hp.x - 1, hp.y, 3, 1, C.brass);
 			const hp2 = at(gx + (a + b) / 2, gy + d, 6.5); this.px(hp2.x - 1, hp2.y, 3, 1, C.brass);
 		}
-		// монітор
-		const mx = gx + 0.08, my = gy + 0.12, mw = 0.55, md = 0.12, h1 = h + 4, h2 = h + 18;
-		this.qH(mx + 0.18, my, mx + 0.38, my + md, h1, C.metalDk);
-		this.qFace(mx + 0.18, mx + 0.38, my + md, h, h1, C.metalDk);
-		this.qH(mx, my, mx + mw, my + md, h2, C.metalTop);
-		this.qSide(mx + mw, my, my + md, h1, h2, C.metal);
-		this.qFace(mx, mx + mw, my + md, h1, h2, C.metalDk);
+		// техніка дивиться екраном на людину за столом — глядач бачить кришки зі спини
 		const asking = this.input.gptFor === r;
-		this.qFace(mx + 0.05, mx + mw - 0.05, my + md, h1 + 1.5, h2 - 1.5, asking ? C.gptDk : C.screen);
-		const busy = this.input.agents[r].status === 'thinking' || asking;
-		for (let i = 0; i < 4; i++) {
-			const yy = h1 + 3 + i * 3;
-			const ww = (mw - 0.16) * (busy ? 0.4 + ((Math.sin(this.t * 6 + i * 1.7 + gx) + 1) / 2) * 0.6 : i % 2 ? 0.62 : 1);
-			this.qFace(mx + 0.09, mx + 0.09 + ww, my + md, yy, yy + 1, asking ? C.gpt : i === 0 ? C.screenOn2 : C.screenOn);
-		}
-		this.line([at(mx, my + md, h1), at(mx + mw, my + md, h1), at(mx + mw, my + md, h2), at(mx, my + md, h2)], C.ink, 1, true);
-		// клавіатура, папери, кружка, олівці, лампа
-		this.qH(gx + 0.12, gy + 0.42, gx + 0.68, gy + 0.62, h + 0.6, '#ece6da');
-		for (let i = 0; i < 4; i++) this.qH(gx + 0.16 + i * 0.13, gy + 0.46, gx + 0.24 + i * 0.13, gy + 0.58, h + 1.2, '#cfc6b6');
-		this.qH(gx + 0.8, gy + 0.48, gx + 1.12, gy + 0.78, h + 0.4, C.paper);
-		this.qH(gx + 0.84, gy + 0.44, gx + 1.16, gy + 0.74, h + 1, C.paperDk);
-		this.qH(gx + 0.86, gy + 0.46, gx + 1.14, gy + 0.72, h + 1.4, C.paper);
-		this.mug(gx + 1.3, gy + 0.62, h);
-		const pc = at(gx + 0.75, gy + 0.22, h); this.px(pc.x - 2, pc.y - 5, 4, 5, '#5a6fa8'); this.px(pc.x - 1, pc.y - 8, 1, 3, '#f0c23b'); this.px(pc.x + 1, pc.y - 7, 1, 2, '#c8463a');
-		if (r === 'designer') { const tb = at(gx + 0.95, gy + 0.3, h); this.px(tb.x - 4, tb.y - 2, 8, 3, '#2b2420'); this.px(tb.x - 3, tb.y - 2, 6, 2, '#3a4a52'); }
-		if (r === 'strategist') this.smallPlant(gx + 0.2, gy + 0.8, h);
+		if (r === 'designer') this.monitorBack(gx + 0.18, gy + 0.22, h, asking);
+		this.macbook(r === 'designer' ? gx + 0.85 : gx + 0.5, gy + 0.18, h, asking);
+		// папери, кружка, олівці
+		this.qH(gx + 0.12, gy + 0.55, gx + 0.44, gy + 0.82, h + 0.4, C.paper);
+		this.qH(gx + 0.15, gy + 0.52, gx + 0.47, gy + 0.79, h + 1, C.paperDk);
+		this.qH(gx + 0.17, gy + 0.54, gx + 0.45, gy + 0.77, h + 1.4, C.paper);
+		this.mug(gx + 1.32, gy + 0.66, h);
+		const pc = at(gx + 1.38, gy + 0.3, h); this.px(pc.x - 2, pc.y - 4, 4, 4, '#5a6fa8'); this.px(pc.x - 1, pc.y - 7, 1, 3, '#f0c23b'); this.px(pc.x + 1, pc.y - 6, 1, 2, '#c8463a');
+		if (r === 'strategist') this.smallPlant(gx + 1.2, gy + 0.78, h);
+		if (r === 'copywriter') { const st = at(gx + 1.1, gy + 0.72, h); this.px(st.x - 3, st.y - 2, 6, 2, '#f0c23b'); this.px(st.x - 2, st.y - 3, 5, 1, '#ffd77a'); }
+	}
+
+	/** MacBook: тонка основа й кришка, що дивиться на людину; глядач бачить алюмінієву спинку. */
+	private macbook(gx: number, gy: number, h: number, glow: boolean) {
+		const w = 0.42, d = 0.26;
+		this.qH(gx, gy, gx + w, gy + d, h + 1, '#c9ced6');
+		this.qFace(gx, gx + w, gy + d, h, h + 1, '#9aa1ab');
+		this.qSide(gx + w, gy, gy + d, h, h + 1, '#aab1ba');
+		// кришка стоїть на передньому краї основи
+		this.qFace(gx + 0.01, gx + w - 0.01, gy + d, h + 1, h + 10, '#d6dbe2');
+		this.qFace(gx + 0.01, gx + w - 0.01, gy + d, h + 9, h + 10, '#eef1f5');
+		this.qFace(gx + 0.19, gx + 0.23, gy + d, h + 5, h + 6.5, glow ? C.gpt : '#f6f8fb');
+		this.line([at(gx + 0.01, gy + d, h + 1), at(gx + w - 0.01, gy + d, h + 1), at(gx + w - 0.01, gy + d, h + 10), at(gx + 0.01, gy + d, h + 10)], C.ink, 1, true);
+	}
+
+	/** Монітор дизайнера зі спини: темний корпус на ніжці. */
+	private monitorBack(gx: number, gy: number, h: number, glow: boolean) {
+		const w = 0.58;
+		this.qH(gx + 0.2, gy, gx + 0.38, gy + 0.14, h + 0.6, '#3a3f46');
+		this.qFace(gx + 0.26, gx + 0.32, gy + 0.08, h, h + 6, '#2c3036');
+		this.qFace(gx, gx + w, gy + 0.1, h + 5, h + 17, '#3a3f46');
+		this.qFace(gx + 0.02, gx + w - 0.02, gy + 0.1, h + 15.5, h + 17, '#4b515a');
+		this.qSide(gx + w, gy + 0.06, gy + 0.1, h + 5, h + 17, '#2c3036');
+		if (glow) this.qFace(gx - 0.02, gx + w + 0.02, gy + 0.1, h + 17, h + 17.8, C.gpt);
+		this.line([at(gx, gy + 0.1, h + 5), at(gx + w, gy + 0.1, h + 5), at(gx + w, gy + 0.1, h + 17), at(gx, gy + 0.1, h + 17)], C.ink, 1, true);
 	}
 
 	private mug(gx: number, gy: number, base: number) {
@@ -734,10 +791,13 @@ export class Office {
 		for (let i = 0; i < 8; i++) { const p = at(gx + 0.2 + hash(i, 11) * 2, gy + 0.2 + hash(i, 12) * 1.2, h); this.px(p.x, p.y, 3, 1, '#b67c48'); }
 		this.qH(gx + 0.3, gy + 0.3, gx + 0.95, gy + 0.78, h + 0.4, C.paper);
 		for (let i = 0; i < 3; i++) this.qH(gx + 0.38, gy + 0.4 + i * 0.12, gx + 0.85, gy + 0.44 + i * 0.12, h + 0.8, '#b8ad98');
-		// ноутбук
-		this.qH(gx + 1.25, gy + 0.62, gx + 1.9, gy + 1.08, h + 1, '#c9ced6');
-		this.qFace(gx + 1.25, gx + 1.9, gy + 0.62, h + 1, h + 12, '#4a5260');
-		this.qFace(gx + 1.29, gx + 1.86, gy + 0.62, h + 2.5, h + 10.5, '#7fd29a');
+		// коробка з-під піци: хтось уже поїв
+		this.box(gx + 1.2, gy + 0.55, 0.62, 0.62, h + 3, '#e6cfa0', '#c9a86e', '#b8955c', false);
+		this.qH(gx + 1.2, gy + 0.55, gx + 1.82, gy + 1.17, h + 3, '#ecd8ae');
+		this.qH(gx + 1.32, gy + 0.68, gx + 1.7, gy + 1.04, h + 3.2, '#d8433a');
+		this.qH(gx + 1.36, gy + 0.72, gx + 1.66, gy + 1.0, h + 3.4, '#ecd8ae');
+		this.qH(gx + 1.45, gy + 0.62, gx + 1.58, gy + 0.72, h + 3.3, 'rgba(160,110,50,.45)');
+		this.line([at(gx + 1.2, gy + 0.55, h + 3), at(gx + 1.82, gy + 0.55, h + 3), at(gx + 1.82, gy + 1.17, h + 3), at(gx + 1.2, gy + 1.17, h + 3)], C.ink, 1, true);
 		this.mug(gx + 2.05, gy + 0.42, h);
 		this.mug(gx + 0.55, gy + 1.25, h);
 		// ваза з квітами
@@ -756,20 +816,27 @@ export class Office {
 			const k = at(gx + (a > 0.5 ? a + 0.08 : b - 0.08), gy + 1.05, 10); this.px(k.x, k.y, 1, 2, C.brass);
 		}
 		this.qH(gx + 0.04, gy + 0.04, gx + 1.36, gy + 1.01, CH + 0.5, '#e8dcc0');
-		const mx = gx + 0.16, my = gy + 0.18, mw = 0.58, md = 0.46, t1 = CH, t2 = CH + 24;
-		this.qH(mx, my, mx + mw, my + md, t2, C.metalTop);
-		this.qSide(mx + mw, my, my + md, t1, t2, C.metalDk);
-		this.qFace(mx, mx + mw, my + md, t1, t2, C.metal);
-		this.qFace(mx + 0.08, mx + mw - 0.08, my + md, t2 - 9, t2 - 2, '#2e3a40');
-		this.qFace(mx + 0.12, mx + 0.24, my + md, t2 - 7, t2 - 4, '#7fd29a');
-		this.qFace(mx + 0.16, mx + 0.42, my + md, t1 + 1, t1 + 6, '#24282c');
-		this.line([at(mx, my + md, t1), at(mx + mw, my + md, t1), at(mx + mw, my + md, t2), at(mx, my + md, t2)], C.ink, 1, true);
-		this.mug(mx + 0.29, my + md - 0.04, CH + 1);
-		for (let i = 0; i < 4; i++) {
-			const ph = (this.t * 0.55 + i * 0.25) % 1;
-			const p = at(mx + mw / 2, my + md / 2, t2 + 2 + ph * 18);
-			this.o.globalAlpha = (1 - ph) * 0.6;
-			this.px(p.x + Math.sin(ph * 7 + i * 1.7) * 3 - 1, p.y, 2, 2, '#ffffff');
+		// крапельна кавоварка: чорний корпус з баком позаду, колба з кавою на підігріві
+		const mx = gx + 0.18, my = gy + 0.2, mw = 0.5, md = 0.42, t1 = CH;
+		this.box(mx, my, mw, 0.16, 18, '#3a3a40', '#26262b', '#303036');
+		this.box(mx, my, mw, md, 2, '#3a3a40', '#26262b', '#303036');
+		this.box(mx, my + 0.12, mw, md - 0.12, 2, '#4a4a52', '#303036', '#3a3a40', false);
+		this.qH(mx, my, mx + mw, my + md, t1 + 18, '#3a3a40');
+		this.qFace(mx, mx + mw, my + md, t1 + 14, t1 + 18, '#26262b');
+		this.qFace(mx + 0.06, mx + 0.14, my + md, t1 + 15.5, t1 + 16.5, '#d8433a');
+		// колба
+		const cx = mx + 0.25, cy = my + 0.3;
+		const c0 = at(cx, cy, t1 + 2);
+		this.px(c0.x - 4, c0.y - 9, 8, 9, 'rgba(210,230,240,.55)');
+		this.px(c0.x - 4, c0.y - 5, 8, 5, '#4a2a18');
+		this.px(c0.x - 3, c0.y - 9, 1, 8, 'rgba(255,255,255,.6)');
+		this.px(c0.x + 4, c0.y - 7, 2, 4, '#26262b');
+		this.px(c0.x - 3, c0.y - 10, 6, 1, '#26262b');
+		for (let i = 0; i < 3; i++) {
+			const ph = (this.t * 0.5 + i * 0.33) % 1;
+			const p = at(cx, cy, t1 + 12 + ph * 12);
+			this.o.globalAlpha = (1 - ph) * 0.55;
+			this.px(p.x + Math.sin(ph * 7 + i * 1.7) * 2 - 1, p.y, 2, 2, '#ffffff');
 		}
 		this.o.globalAlpha = 1;
 		// банки з кавою й печивом
@@ -802,9 +869,10 @@ export class Office {
 		const bob = moving ? 0 : Math.round(Math.sin(this.t * (burn > 70 ? 1.6 : 3.3) + k.length) * 0.6);
 		const x = Math.round(p.x - SPRITE_W / 2), y = Math.round(p.y - SPRITE_H) + bob;
 		this.poly([{ x: p.x, y: p.y - 3 }, { x: p.x + 8, y: p.y }, { x: p.x, y: p.y + 3 }, { x: p.x - 8, y: p.y }], 'rgba(60,30,15,.28)');
-		const pal = PALETTE[k];
-		const legs = LEGS[k][moving ? Math.floor(this.t * 6) % 2 : 0];
-		const rows = BODY[k].concat(legs);
+		const cs = k === 'client' ? clientSprite(this.input.client.gender, this.input.client.look) : null;
+		const pal: Record<string, string> = cs ? cs.pal : PALETTE[k];
+		const legs = (cs ? cs.legs : LEGS[k])[moving ? Math.floor(this.t * 6) % 2 : 0];
+		const rows = (cs ? cs.body : BODY[k]).concat(legs);
 		const blink = Math.sin(this.t * 1.1 + k.length * 2.1) > 0.985;
 		const filled = (rx: number, ry: number) => ry >= 0 && ry < rows.length && rx >= 0 && rx < SPRITE_W && rows[ry][rx] !== '.';
 		// обводка: темний колір навколо силуету

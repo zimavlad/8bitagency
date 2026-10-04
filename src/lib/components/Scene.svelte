@@ -3,7 +3,7 @@
 	import { Office, type SceneInput, type Sky } from '$lib/scene/office';
 	import { ROLE_NAME, ROLES, type Role, type RunState, type Speaker, type Speech } from '$lib/types';
 
-	let { run, hour, sky, bubbles = true }: { run: RunState | null; hour: number; sky: Sky; bubbles?: boolean } = $props();
+	let { run, hour, sky, bubbles = true, away = false, onPick }: { run: RunState | null; hour: number; sky: Sky; bubbles?: boolean; away?: boolean; onPick?: (who: Role | 'client') => void } = $props();
 
 	let stage: HTMLDivElement;
 	let canvas: HTMLCanvasElement;
@@ -11,11 +11,16 @@
 	let raf = 0;
 	const reduced = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-	/** Що зараз висить над головами: остання репліка кожного мовця, 9 секунд. */
-	let shown = $state<Partial<Record<Speaker, Speech & { at: number }>>>({});
+	/**
+	 * Бабли йдуть чергою по кожному мовцю: репліка висить стільки, скільки треба її прочитати
+	 * (2,2 с + 55 мс на знак, від 3 до 9 с), наступна чекає своєї черги — нічого не проскакує.
+	 */
+	type Shown = Speech & { until: number };
+	let shown = $state<Partial<Record<Speaker, Shown>>>({});
+	const queue: Partial<Record<Speaker, Speech[]>> = {};
 	let lastSeq = 0;
 	let now = $state(Date.now());
-	const LIFE = 9000;
+	const dur = (t: string) => Math.min(9000, Math.max(3000, 2200 + t.length * 55));
 
 	$effect(() => {
 		const sp = run?.speech ?? [];
@@ -24,21 +29,36 @@
 			lastSeq = 0;
 			return;
 		}
-		const fresh = sp.filter((s) => s.seq > lastSeq);
-		if (!fresh.length) return;
-		lastSeq = Math.max(...fresh.map((s) => s.seq));
-		const next = { ...shown };
-		for (const s of fresh) next[s.who] = { ...s, at: Date.now() };
-		shown = next;
+		for (const s of sp) if (s.seq > lastSeq) (queue[s.who] ??= []).push(s);
+		lastSeq = Math.max(lastSeq, ...sp.map((s) => s.seq));
 	});
 
-	const live = $derived(Object.values(shown).filter((s): s is Speech & { at: number } => !!s && now - s.at < LIFE));
+	function advance(t: number) {
+		let changed = false;
+		const next = { ...shown };
+		for (const who of new Set([...Object.keys(queue), ...Object.keys(shown)]) as Set<Speaker>) {
+			const cur = next[who];
+			if (cur && cur.until > t) continue;
+			const q = queue[who];
+			if (q?.length) {
+				const s = q.shift()!;
+				next[who] = { ...s, until: t + dur(s.text) };
+				changed = true;
+			} else if (cur) {
+				delete next[who];
+				changed = true;
+			}
+		}
+		if (changed) shown = next;
+	}
+
+	const live = $derived(Object.values(shown).filter((s): s is Shown => !!s));
 
 	const gptFor = $derived.by((): Role | null => {
 		const asking = run ? ROLES.find((r) => run!.agents[r].status === 'gpt') : undefined;
 		if (asking) return asking;
 		const g = shown.gpt;
-		return g && g.to && now - g.at < LIFE ? g.to : null;
+		return g && g.to ? g.to : null;
 	});
 
 	const input = $derived<SceneInput>({
@@ -59,7 +79,9 @@
 		logo: run?.elements.logo?.logo ?? null,
 		hour,
 		sky,
-		reducedMotion: reduced
+		reducedMotion: reduced,
+		client: { gender: run?.brief.client.gender ?? 'm', look: run?.brief.client.look ?? 'leather' },
+		away
 	});
 
 	$effect(() => {
@@ -72,6 +94,7 @@
 
 	function place() {
 		now = Date.now();
+		advance(now);
 		if (office && bubbles) {
 			const w = stage.clientWidth;
 			// Бабли не налазять: ставимо зліва направо, і той, що перетинається з уже поставленим, піднімаємо вище.
@@ -117,7 +140,15 @@
 </script>
 
 <div class="stage" bind:this={stage}>
-	<canvas bind:this={canvas} aria-label="Офіс агенції"></canvas>
+	<canvas
+		bind:this={canvas}
+		aria-label="Офіс агенції. Торкнись персонажа, щоб прочитати його думки."
+		onclick={(e) => {
+			const r = canvas.getBoundingClientRect();
+			const who = office?.hit(e.clientX - r.left, e.clientY - r.top);
+			if (who && onPick) onPick(who);
+		}}
+	></canvas>
 	{#if bubbles}
 		{#each live as s (s.who)}
 			<div class="bubble" class:gpt={s.who === 'gpt'} class:client={s.who === 'client'} class:sys={s.kind === 'system'} bind:this={els[s.who]}>
@@ -137,6 +168,7 @@
 		background: var(--scene-bg);
 	}
 	canvas {
+		cursor: pointer;
 		position: absolute;
 		inset: 0;
 		width: 100%;
@@ -148,13 +180,13 @@
 		position: absolute;
 		left: 0;
 		top: 0;
-		max-width: min(260px, 70%);
-		padding: 8px 10px 9px;
+		max-width: min(230px, 64%);
+		padding: 7px 10px 8px;
 		background: var(--surface-2);
 		border: 1px solid var(--line-hi);
 		border-radius: var(--r-sm);
-		font-size: 13px;
-		line-height: 1.45;
+		font-size: 12.5px;
+		line-height: 1.4;
 		opacity: 0;
 		pointer-events: none;
 		white-space: pre-line;

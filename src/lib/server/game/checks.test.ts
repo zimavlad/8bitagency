@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ElementValue } from '$lib/types';
 import { qualityOf, quoteFound, reputationDelta } from './checks';
 
-const el = (id: ElementValue['id'], text: string, details: string[] = []): ElementValue => ({ id, text, details, edited: false, approved: false, clientReworks: 0 });
+const el = (id: ElementValue['id'], text: string, details: string[] = []): ElementValue => ({ id, text, details, reworks: 0 });
 
 describe('перевірки', () => {
 	it('чиста робота дає високу якість', () => {

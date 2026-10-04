@@ -1,23 +1,27 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
-	CONTENT, CORE, ELEMENT_OWNER, ELEMENT_TITLE, ROLE_NAME, ROLES,
-	type Brief, type Burnout, type ClientVerdict, type ContentElement, type CoreElement, type ElementId,
-	type ElementValue, type Role, type RunPhase, type RunResult, type RunState, type Speaker, type Speech, type Spot
+	CONTENT, CORE, EDIT_SLOTS, ELEMENT_OWNER, ELEMENT_TITLE, MAX_CLIENT_ROUNDS, ROLE_NAME, ROLES,
+	type Brief, type Burnout, type ClientVerdict, type ContentElement, type ElementId, type ElementValue,
+	type Role, type RunPhase, type RunResult, type RunState, type Speaker, type Spot
 } from '$lib/types';
-import { isAbortError, type ModelClient } from '../model/client';
+import { errFields, log } from '../log';
+import { isAbortError, type CallPurpose, type ModelClient } from '../model/client';
+import type { ImageModel } from '../model/images';
 import { costUsd } from '../pricing';
-import { CLIENT_CARD, CLIENT_ROUND2, GPT_CARD, systemFor } from './characters';
-import { qualityOf, quoteFound, reputationDelta } from './checks';
+import { rasterLogo } from '../raster';
+import { GPT_CARD, PERSONA_CARD, clientCard, systemFor } from './characters';
+import { qualityOf, reputationDelta } from './checks';
 import { fake } from './fake';
 import { indexFor, search } from './kb';
 import {
-	GPT_HABIT, GPT_QUESTION, SCHEMA, StepError, briefBlock, normClient, normContent, normGpt, normLogo, normNaming,
-	guide, normPositioning, normRead, normReview, normRework, parseJson, prompt, readText, request, type Msg, type ReadOut, type ReviewOut
+	GPT_HABIT, GPT_QUESTION, SCHEMA, StepError, briefBlock, guide, normClient, normContent, normGpt, normHuddle, normLogo,
+	normNaming, normPersona, normPositioning, normRead, normRename, normReposition, parseJson, prompt, readText, request,
+	type Msg, type Pos, type Read
 } from './steps';
 
 export interface Models {
-	/** Основна модель трьох агентів. */
 	agent: string;
-	/** Перехресне ревʼю — сильніша модель окремою розмовою. */
 	review: string;
 	client: string;
 	gpt: string;
@@ -25,17 +29,38 @@ export interface Models {
 
 export interface RunDeps {
 	model: ModelClient;
+	images: ImageModel;
 	models: Models;
 	dataDir: string;
-	/** Вигорання команди на старті брифу. */
 	burnout: Burnout;
 	onChange?: (run: Run) => void;
 	onFinish?: (run: Run) => void;
+	onSpend?: (provider: 'claude' | 'gemini', usd: number) => void;
 }
 
-const EDIT_MAX = 280;
+/** Рішення гравця, на яке чекає бриф. */
+export type Decision =
+	| { action: 'pick'; index: number }
+	| { action: 'submit' }
+	| { action: 'edit'; notes: string[] }
+	| { action: 'retry' }
+	| { action: 'giveup' };
 
-/** Детерміноване «кинути монетку» для звички питати Джіпітенка. */
+/** Запис одного виклику моделі — для архіву прогону (бачити, що агенти думали насправді). */
+export interface TraceEntry {
+	t: string;
+	purpose: CallPurpose | 'image';
+	who: string;
+	model: string;
+	prompt: string;
+	response: string;
+	stop: string | null;
+	ms: number;
+	usd: number;
+}
+
+const NOTE_MAX = 280;
+
 function chance(seed: string): number {
 	let h = 2166136261;
 	for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
@@ -51,24 +76,32 @@ function humanError(e: unknown): string {
 	return 'Не вдалося дістатися до Claude. Перевір мережу сервера.';
 }
 
+const lastUser = (messages: Msg[]) => {
+	const m = [...messages].reverse().find((x) => x.role === 'user');
+	return typeof m?.content === 'string' ? m.content : JSON.stringify(m?.content ?? '');
+};
+
 /**
- * Один бриф від початку до оплати. Фази й «хто що бачить»:
- * - read: кожен бачить лише бриф і свою картку (наосліп, паралельно);
- * - review: окрема розмова на моделі ревʼю — своє прочитання і прочитання двох колег;
- * - core: стратегиня бачить свою розмову і всі рецензії; копірайтер і дизайнер — позиціонування, роль і ворога, але не одне одного;
- * - гравець: одна правка на кожен елемент; клієнт: одна хвиля правок, потім «так» або «ні».
+ * Один бриф. Порядок і «хто що бачить»:
+ * 1. Стратегиня читає бриф сама (Four Points), іноді питає Джіпітенка.
+ * 2. Радиться: копірайтер і дизайнер бачать бриф і її розбір, відповідають «ок/сумнів» (модель ревʼю, окремі розмови).
+ * 3. Стратегиня — позиціонування з трьох кандидатів.
+ * 4. Копірайтер — 3 варіанти «назва + слоган», гравець обирає один.
+ * 5. Дизайнер — знак під обрану назву.
+ * 6. Гравець: показати клієнту або один раунд до 3 правок; переробка узгоджена (позиціонування → назва → знак).
+ * 7. Клієнт: так / ще коло з його правками (вирішує гравець) / ні. До трьох кіл.
+ * 8. Після «так» — канали коротко + картинки Gemini, знову гравець і клієнт, потім оплата.
  */
 export class Run {
 	readonly state: RunState;
+	readonly trace: TraceEntry[] = [];
 	private abort = new AbortController();
 	private history: Record<Role, Msg[]> = { strategist: [], copywriter: [], designer: [] };
 	private locks: Record<Role, Promise<unknown>> = { strategist: Promise.resolve(), copywriter: Promise.resolve(), designer: Promise.resolve() };
-	private reads: Partial<Record<Role, ReadOut>> = {};
-	private reviews: Partial<Record<Role, ReviewOut>> = {};
-	private pos = { positioning: '', role: '', enemy: '' };
-	private edited = new Set<ElementId>();
-	private waiter: (() => void) | null = null;
-	private busy = false;
+	private read: Read | null = null;
+	private pos: Pos = { positioning: '', role: '', enemy: '' };
+	private waiter: { phases: RunPhase[]; resolve: (d: Decision) => void } | null = null;
+	private resume: (() => void) | null = null;
 	private seq = 0;
 	private coreAccepted = false;
 	readonly burnoutDelta: Burnout = { strategist: 0, copywriter: 0, designer: 0 };
@@ -79,13 +112,17 @@ export class Run {
 			brief,
 			phase: 'read',
 			status: 'Команда відкриває бриф',
+			paused: false,
 			agents: {
-				strategist: { status: 'idle', spot: 'desk', burnout: deps.burnout.strategist },
-				copywriter: { status: 'idle', spot: 'desk', burnout: deps.burnout.copywriter },
-				designer: { status: 'idle', spot: 'desk', burnout: deps.burnout.designer }
+				strategist: { status: 'idle', spot: 'desk', burnout: deps.burnout.strategist, doing: 'на місці' },
+				copywriter: { status: 'idle', spot: 'desk', burnout: deps.burnout.copywriter, doing: 'на місці' },
+				designer: { status: 'idle', spot: 'desk', burnout: deps.burnout.designer, doing: 'на місці' }
 			},
 			clientInOffice: false,
 			elements: {},
+			options: [],
+			editAvailable: false,
+			clientRound: 0,
 			speech: [],
 			log: [],
 			verdicts: [],
@@ -93,7 +130,8 @@ export class Run {
 			error: null,
 			demo: deps.model.demo,
 			calls: 0,
-			costUsd: 0
+			costUsd: 0,
+			imagesUsd: 0
 		};
 	}
 
@@ -103,16 +141,16 @@ export class Run {
 		this.deps.onChange?.(this);
 	}
 
-	private say(who: Speaker, text: string, kind: Speech['kind'] = 'thought', to?: Role) {
+	private say(who: Speaker, text: string, kind: 'thought' | 'gpt' | 'client' | 'system' = 'thought', to?: Role, more?: string[]) {
 		if (!text) return;
 		const seq = ++this.seq;
 		this.state.speech = [...this.state.speech.slice(-29), { seq, who, text, kind, to }];
-		this.state.log = [...this.state.log.slice(-199), { seq, who, text }];
+		this.state.log = [...this.state.log.slice(-299), { seq, who, text, ...(more?.length ? { more } : {}) }];
 		this.emit();
 	}
 
-	private note(text: string) {
-		this.state.log = [...this.state.log.slice(-199), { seq: ++this.seq, who: 'system', text }];
+	private note(text: string, more?: string[]) {
+		this.state.log = [...this.state.log.slice(-299), { seq: ++this.seq, who: 'system', text, ...(more?.length ? { more } : {}) }];
 		this.emit();
 	}
 
@@ -120,18 +158,19 @@ export class Run {
 		this.state.phase = p;
 		this.state.status = status;
 		if (spots) for (const r of ROLES) if (spots[r]) this.state.agents[r].spot = spots[r]!;
+		log('info', 'run_phase', { run: this.id, phase: p });
 		this.emit();
 	}
 
-	private agent(r: Role, status: RunState['agents'][Role]['status']) {
+	private agent(r: Role, status: RunState['agents'][Role]['status'], doing?: string) {
 		this.state.agents[r].status = status;
+		if (doing) this.state.agents[r].doing = doing;
 		this.emit();
 	}
 
 	private tire(r: Role, n: number) {
 		this.burnoutDelta[r] += n;
-		const v = Math.min(100, this.deps.burnout[r] + this.burnoutDelta[r]);
-		this.state.agents[r].burnout = v;
+		this.state.agents[r].burnout = this.burnoutOf(r);
 	}
 
 	private burnoutOf(r: Role) {
@@ -146,26 +185,48 @@ export class Run {
 		}
 	}
 
+	/** Між кроками: якщо гравець поставив паузу — чекаємо. */
+	private async gate() {
+		this.alive();
+		if (this.state.paused) await new Promise<void>((r) => (this.resume = r));
+		this.alive();
+	}
+
+	setPaused(on: boolean) {
+		if (this.state.phase === 'done' || this.state.phase === 'failed') return;
+		this.state.paused = on;
+		if (!on && this.resume) {
+			const r = this.resume;
+			this.resume = null;
+			r();
+		}
+		this.emit();
+	}
+
 	/* ─────────── виклики ─────────── */
 
-	private async call(o: { purpose: Parameters<ModelClient['call']>[1]['purpose']; who: string; model: string; system: string; messages: Msg[]; schema: Record<string, unknown>; fake: () => unknown }) {
+	private async call(o: { purpose: CallPurpose; who: string; model: string; system: string; messages: Msg[]; schema: Record<string, unknown>; fake: () => unknown }) {
 		this.alive();
+		const started = Date.now();
 		const r = await this.deps.model.call(request({ model: o.model, system: o.system, messages: o.messages, schema: o.schema }), {
 			purpose: o.purpose,
-			who: o.who,
+			who: `${this.id}:${o.who}`,
 			signal: this.abort.signal,
 			fake: o.fake
 		});
 		this.alive();
+		const usd = costUsd(r.model, r.usage);
 		this.state.calls++;
-		this.state.costUsd += costUsd(r.model, r.usage);
+		this.state.costUsd += usd;
+		this.deps.onSpend?.('claude', usd);
+		this.trace.push({ t: new Date().toISOString(), purpose: o.purpose, who: o.who, model: r.model, prompt: lastUser(o.messages), response: r.text, stop: r.stopReason, ms: Date.now() - started, usd });
 		if (r.stopReason === 'refusal') throw new StepError('Claude відмовився відповідати на цей бриф');
 		if (r.stopReason === 'max_tokens') throw new StepError('відповідь обірвалась на півслові');
 		return r;
 	}
 
-	/** Хід агента в його власній розмові: історія лише дописується, ходи одного агента — по черзі. */
-	private ask(role: Role, purpose: 'read' | 'core' | 'rework' | 'content', user: string, schema: Record<string, unknown>, fakeFn: () => unknown): Promise<Record<string, unknown>> {
+	/** Хід у власній розмові агента: історія лише дописується, ходи одного агента — по черзі. */
+	private ask(role: Role, purpose: CallPurpose, user: string, schema: Record<string, unknown>, fakeFn: () => unknown): Promise<Record<string, unknown>> {
 		const job = this.locks[role].catch(() => undefined).then(async () => {
 			const messages: Msg[] = [...this.history[role], { role: 'user', content: user + guide(schema) }];
 			const r = await this.call({ purpose, who: role, model: this.deps.models.agent, system: systemFor(role, this.burnoutOf(role)), messages, schema, fake: fakeFn });
@@ -177,24 +238,58 @@ export class Run {
 		return job;
 	}
 
-	/** Іноді агент сам біжить до Джіпітенка; той відповідає з бази знань ролі. */
-	private async maybeGpt(role: Role, step: 'read' | 'core'): Promise<string | undefined> {
+	/** Окремий виклик без історії агента (порада колезі, клієнт, персона). */
+	private async once(o: { purpose: CallPurpose; who: string; model: string; system: string; user: string; schema: Record<string, unknown>; fake: () => unknown }) {
+		const r = await this.call({ ...o, messages: [{ role: 'user', content: o.user + guide(o.schema) }] });
+		return parseJson(r.text);
+	}
+
+	private async maybeGpt(role: Role, step: 'read' | 'naming'): Promise<string | undefined> {
 		if (chance(`${this.id}:${role}:${step}`) >= GPT_HABIT[role]) return undefined;
-		const question = GPT_QUESTION[step](role, this.state.brief);
-		this.agent(role, 'gpt');
+		const question = step === 'read' ? GPT_QUESTION.read(role, this.state.brief) : GPT_QUESTION.naming(this.state.brief);
+		this.agent(role, 'gpt', 'радиться з Джіпітенком');
 		this.say(role, `Джіпітенко, ${question}`, 'system');
 		const index = await indexFor(this.deps.dataDir, role);
 		const chunks = search(index, `${this.state.brief.client.business} ${this.state.brief.text} ${question}`, 3);
-		const r = await this.call({
+		const g = normGpt(await this.once({
 			purpose: 'gpt', who: `gpt:${role}`, model: this.deps.models.gpt, system: GPT_CARD,
-			messages: [{ role: 'user', content: prompt.gpt(role, question, chunks) + guide(SCHEMA.gpt) }], schema: SCHEMA.gpt,
-			fake: () => fake.gpt(role, chunks[0]?.source ?? '')
-		});
-		const g = normGpt(parseJson(r.text));
-		const text = [g.answer, ...g.tips.map((t) => `• ${t}`)].join('\n');
-		this.say('gpt', g.source && g.source !== 'загальні знання' ? `${text}\n(з бази: ${g.source})` : text, 'gpt', role);
+			user: prompt.gpt(role, question, chunks), schema: SCHEMA.gpt, fake: () => fake.gpt(chunks[0]?.source ?? '')
+		}));
+		this.say('gpt', g.source && g.source !== 'загальні знання' ? `${g.answer} (з бази: ${g.source})` : g.answer, 'gpt', role);
 		this.agent(role, 'thinking');
-		return text;
+		return g.answer;
+	}
+
+	/* ─────────── гравець ─────────── */
+
+	private wait(phases: RunPhase[]): Promise<Decision> {
+		return new Promise((resolve) => (this.waiter = { phases, resolve }));
+	}
+
+	/** Рішення гравця. Повертає текст помилки або null. */
+	decide(d: Decision): string | null {
+		const w = this.waiter;
+		if (!w || !w.phases.includes(this.state.phase)) return 'Зараз команда не чекає твого рішення.';
+		const p = this.state.phase;
+		if (d.action === 'pick') {
+			if (p !== 'pick_name') return 'Зараз не обирають назву.';
+			if (!Number.isInteger(d.index) || d.index < 0 || d.index >= this.state.options.length) return 'Нема такого варіанта.';
+		} else if (d.action === 'submit') {
+			if (p !== 'player_core' && p !== 'player_content') return 'Зараз нема чого показувати клієнту.';
+		} else if (d.action === 'edit') {
+			if (p !== 'player_core' && p !== 'player_content') return 'Зараз правки не приймаються.';
+			if (!this.state.editAvailable) return 'Раунд правок на цьому етапі вже використано.';
+			const notes = d.notes.map((n) => String(n ?? '').trim()).filter(Boolean);
+			if (!notes.length) return 'Напиши хоча б одну правку.';
+			if (notes.length > EDIT_SLOTS) return `Не більше ${EDIT_SLOTS} правок.`;
+			if (notes.some((n) => n.length > NOTE_MAX)) return `Кожна правка — до ${NOTE_MAX} знаків.`;
+			d = { action: 'edit', notes };
+		} else if (d.action === 'retry' || d.action === 'giveup') {
+			if (p !== 'client_decision_core' && p !== 'client_decision_content') return 'Зараз клієнт не чекає відповіді.';
+		}
+		this.waiter = null;
+		w.resolve(d);
+		return null;
 	}
 
 	/* ─────────── сценарій ─────────── */
@@ -203,268 +298,288 @@ export class Run {
 		this.play().catch((e) => {
 			if (isAbortError(e)) return;
 			this.state.error = humanError(e);
+			log('error', 'run_failed', { run: this.id, phase: this.state.phase, ...errFields(e) });
 			this.phase('failed', 'Бриф зупинився через помилку');
 			for (const r of ROLES) this.state.agents[r].status = 'idle';
 			this.note(this.state.error);
+			this.deps.onFinish?.(this);
 		});
 	}
 
 	private async play() {
 		const b = this.state.brief;
+		if (b.custom) await this.persona();
 		this.note(`Бриф від ${b.client.name}, ${b.client.business}. Гонорар ${b.fee.toLocaleString('uk-UA')} ₴.`);
 
-		this.phase('read', 'Кожен читає бриф сам', { strategist: 'desk', copywriter: 'desk', designer: 'desk' });
-		await Promise.all(ROLES.map((r) => this.readStep(r)));
+		// 1. стратегиня читає сама
+		this.phase('read', 'Стратегиня читає бриф', { strategist: 'desk', copywriter: 'desk', designer: 'desk' });
+		this.agent('copywriter', 'idle', 'чекає на стратегиню');
+		this.agent('designer', 'idle', 'чекає на стратегиню');
+		await this.gate();
+		this.agent('strategist', 'thinking', 'читає бриф');
+		const gpt = await this.maybeGpt('strategist', 'read');
+		this.read = normRead(await this.ask('strategist', 'read', prompt.read(b, gpt), SCHEMA.read, () => fake.read(b, !!gpt)));
+		this.say('strategist', this.read.thought, 'thought', undefined, readText(this.read).split('\n'));
+		if (this.read.gptTake) this.note(`Стратегиня про Джіпітенка: ${this.read.gptTake}`);
 
-		this.phase('review', 'Обговорення за столом переговорів', { strategist: 'table', copywriter: 'table', designer: 'table' });
-		await Promise.all(ROLES.map((r) => this.reviewStep(r)));
+		// 2. радиться з колегами
+		await this.gate();
+		this.phase('huddle', 'Стратегиня радиться з колегами', { strategist: 'table', copywriter: 'table', designer: 'table' });
+		this.agent('strategist', 'idle', 'розповідає напрям');
+		this.say('strategist', this.read.direction, 'thought');
+		const notes = await Promise.all((['copywriter', 'designer'] as const).map(async (r) => {
+			await this.gate();
+			this.agent(r, 'thinking', 'слухає стратегиню');
+			const h = normHuddle(await this.once({
+				purpose: 'review', who: r, model: this.deps.models.review, system: systemFor(r, this.burnoutOf(r)),
+				user: prompt.huddle(r, b, this.read!), schema: SCHEMA.huddle, fake: () => fake.huddle(r)
+			}));
+			this.tire(r, 2);
+			this.say(r, h.thought, 'thought', undefined, [`${h.ok ? 'Ок' : 'Сумнів'}: ${h.note}`]);
+			this.agent(r, 'done', h.ok ? 'погодився' : 'має сумнів');
+			return { role: r as Role, text: `${h.ok ? 'ок' : 'сумнів'} — ${h.note}` };
+		}));
 
-		this.phase('core', 'Стратегиня формулює позиціонування', { strategist: 'board', copywriter: 'desk', designer: 'desk' });
-		await this.positioningStep();
-		this.state.status = 'Копірайтер і дизайнер працюють від позиціонування';
-		this.state.agents.strategist.spot = 'coffee';
-		await Promise.all([this.namingStep(), this.logoStep()]);
+		// 3. позиціонування
+		await this.gate();
+		this.phase('position', 'Стратегиня формулює позиціонування', { strategist: 'board', copywriter: 'desk', designer: 'desk' });
+		this.agent('strategist', 'thinking', 'пише позиціонування');
+		const p = normPositioning(await this.ask('strategist', 'core', prompt.positioning(notes), SCHEMA.positioning, () => fake.positioning(b)));
+		this.pos = { positioning: p.positioning, role: p.role, enemy: p.enemy };
+		this.setEl('positioning', p.positioning, [`Роль: ${p.role}`, `Ворог: ${p.enemy}`], { rejected: p.rejected });
+		this.say('strategist', p.thought, 'thought', undefined, [p.positioning, ...p.rejected.map((r) => `відкинула: ${r.text} — ${r.reason}`)]);
+		this.agent('strategist', 'done', 'позиціонування готове');
 
-		this.phase('player_core', 'Твоє слово: затверди або дай по одній правці на елемент', { strategist: 'table', copywriter: 'table', designer: 'table' });
-		for (const r of ROLES) this.agent(r, 'idle');
-		await this.waitPlayer();
+		// 4. назва: 3 варіанти, обирає гравець
+		await this.gate();
+		this.phase('naming', 'Копірайтер шукає назву', { strategist: 'coffee' });
+		this.agent('copywriter', 'thinking', 'шукає назву');
+		const g2 = await this.maybeGpt('copywriter', 'naming');
+		const nm = normNaming(await this.ask('copywriter', 'core', prompt.naming(this.pos, g2), SCHEMA.naming, () => fake.naming(!!g2)));
+		this.state.options = nm.options;
+		this.say('copywriter', nm.thought, 'thought', undefined, nm.options.map((o) => `${o.name} — «${o.slogan}» (${o.why})`));
+		if (nm.gptTake) this.note(`Копірайтер про Джіпітенка: ${nm.gptTake}`);
+		this.agent('copywriter', 'idle', 'чекає твого вибору');
+		this.phase('pick_name', 'Обери назву й слоган — із цим піде дизайнер', { copywriter: 'table', strategist: 'table' });
+		const pick = (await this.wait(['pick_name'])) as { action: 'pick'; index: number };
+		const chosen = this.state.options[pick.index];
+		this.setEl('name', chosen.name, [chosen.why].filter(Boolean), { rejected: this.state.options.filter((_, i) => i !== pick.index).map((o) => ({ text: o.name, reason: o.slogan })) });
+		this.setEl('slogan', chosen.slogan, []);
+		this.note(`Ти обрав: ${chosen.name} — «${chosen.slogan}»`);
+		this.history.copywriter.push({ role: 'user', content: `Керівник обрав варіант: ${chosen.name} — «${chosen.slogan}».` }, { role: 'assistant', content: '{"ok":true}' });
 
-		this.coreAccepted = await this.clientStage('core', CORE);
+		// 5. знак
+		await this.gate();
+		this.phase('logo', 'Дизайнер малює знак', { designer: 'desk', copywriter: 'desk' });
+		this.agent('designer', 'thinking', 'малює знак');
+		const lg = normLogo(await this.ask('designer', 'core', prompt.logo(this.pos, chosen.name, chosen.slogan), SCHEMA.logo, () => fake.logo()));
+		this.setEl('logo', lg.concept, [], { logo: lg.logo });
+		this.say('designer', lg.thought, 'thought', undefined, [lg.concept]);
+		this.agent('designer', 'done', 'знак готовий');
+
+		// 6–7. гравець і клієнт по основі
+		this.coreAccepted = await this.stage('core');
 		if (!this.coreAccepted) return this.finish('reject');
 
-		this.phase('content', 'Команда робить контент для соцмереж і ролик', { strategist: 'desk', copywriter: 'desk', designer: 'desk' });
+		// 8. канали
+		await this.gate();
+		this.phase('content', 'Команда робить ідеї для каналів', { strategist: 'desk', copywriter: 'desk', designer: 'desk' });
 		await Promise.all(CONTENT.map((id) => this.contentStep(id)));
-
-		this.phase('player_content', 'Твоє слово по контенту: по одній правці на елемент', { strategist: 'table', copywriter: 'table', designer: 'table' });
-		for (const r of ROLES) this.agent(r, 'idle');
-		await this.waitPlayer();
-
-		const ok = await this.clientStage('content', CONTENT);
+		await this.images();
+		const ok = await this.stage('content');
 		this.finish(ok ? 'ok' : 'reject');
 	}
 
-	private async readStep(r: Role) {
-		this.agent(r, 'thinking');
-		const gpt = await this.maybeGpt(r, 'read');
-		const out = normRead(await this.ask(r, 'read', prompt.read(r, this.state.brief, gpt), SCHEMA.read, () => fake.read(r, this.state.brief, !!gpt)));
-		this.reads[r] = out;
-		this.say(r, out.thought);
-		if (out.gptTake) this.note(`${ROLE_NAME[r]} про пораду Джіпітенка: ${out.gptTake}`);
-		this.agent(r, 'done');
+	private async persona() {
+		const r = normPersona(await this.once({ purpose: 'client', who: 'persona', model: this.deps.models.gpt, system: PERSONA_CARD, user: prompt.persona(this.state.brief.text), schema: SCHEMA.persona, fake: () => fake.persona() }));
+		this.state.brief = { ...this.state.brief, client: { ...this.state.brief.client, name: r.name, gender: r.gender, look: r.look, archetype: r.archetype || this.state.brief.client.archetype, voice: r.voice } };
+		this.emit();
 	}
 
-	private async reviewStep(r: Role) {
-		this.agent(r, 'thinking');
-		const peers = ROLES.filter((p) => p !== r).map((p) => ({ role: p, text: readText(this.reads[p]!) }));
-		const own = readText(this.reads[r]!);
-		// Окрема розмова на моделі ревʼю: модель посеред розмови агента не міняємо.
-		const res = await this.call({
-			purpose: 'review', who: r, model: this.deps.models.review, system: systemFor(r, this.burnoutOf(r)),
-			messages: [{ role: 'user', content: `${briefBlock(this.state.brief)}\n\nТвоє прочитання:\n${own}\n\n${prompt.review(r, peers)}${guide(SCHEMA.review)}` }],
-			schema: SCHEMA.review, fake: () => fake.review(r, peers)
-		});
-		this.tire(r, 3);
-		const out = normReview(parseJson(res.text), r);
-		const src = this.reads[out.weakest.whom] ? readText(this.reads[out.weakest.whom]!) : '';
-		const honest = out.weakest.whom !== r && quoteFound(out.weakest.quote, src);
-		this.reviews[r] = out;
-		this.say(r, out.thought);
-		this.note(`${ROLE_NAME[r]} → ${ROLE_NAME[out.weakest.whom]}: «${out.weakest.quote}» — ${out.weakest.why}${honest ? '' : ' (цитату перекручено)'}`);
-		this.agent(r, 'done');
-	}
-
-	private reviewsText() {
-		return ROLES.filter((r) => this.reviews[r]).map((r) => {
-			const v = this.reviews[r]!;
-			return { role: r, text: `найслабше в ${ROLE_NAME[v.weakest.whom]}: «${v.weakest.quote}» — ${v.weakest.why}. Взяти в ${ROLE_NAME[v.take.whom]}: ${v.take.what}. Здогадка: ${v.revised}` };
-		});
-	}
-
-	private async positioningStep() {
-		this.agent('strategist', 'thinking');
-		const gpt = await this.maybeGpt('strategist', 'core');
-		const out = normPositioning(await this.ask('strategist', 'core', prompt.positioning(this.reviewsText(), gpt), SCHEMA.positioning, () => fake.positioning(this.state.brief, !!gpt)));
-		this.pos = { positioning: out.positioning, role: out.role, enemy: out.enemy };
-		this.setElement('positioning', out.positioning, [`Роль бренду: ${out.role}`, `Ворог: ${out.enemy}`], { rejected: out.rejected.map((c) => ({ text: c.text, reason: c.reason })) });
-		this.say('strategist', out.thought);
-		this.agent('strategist', 'done');
-	}
-
-	private async namingStep() {
-		this.agent('copywriter', 'thinking');
-		const gpt = await this.maybeGpt('copywriter', 'core');
-		const out = normNaming(await this.ask('copywriter', 'core', prompt.creative('copywriter', this.pos, gpt), SCHEMA.naming, () => fake.naming(!!gpt)));
-		this.setElement('name', out.name.text, [out.name.reason].filter(Boolean), { rejected: out.names.map((c) => ({ text: c.text, reason: c.reason })) });
-		this.setElement('slogan', out.slogan.text, [out.slogan.reason].filter(Boolean), { rejected: out.slogans.map((c) => ({ text: c.text, reason: c.reason })) });
-		this.say('copywriter', out.thought);
-		this.agent('copywriter', 'done');
-	}
-
-	private async logoStep() {
-		this.agent('designer', 'thinking');
-		const gpt = await this.maybeGpt('designer', 'core');
-		const out = normLogo(await this.ask('designer', 'core', prompt.creative('designer', this.pos, gpt), SCHEMA.logo, () => fake.logo()));
-		this.setElement('logo', out.concept, [], { logo: out.logo });
-		this.say('designer', out.thought);
-		this.agent('designer', 'done');
-	}
-
-	private pack(): string {
-		const e = this.state.elements;
-		const lines = CORE.map((id) => `- ${ELEMENT_TITLE[id]}: ${e[id]?.text ?? '—'}`);
-		lines.splice(1, 0, `- Роль бренду: ${this.pos.role}; ворог: ${this.pos.enemy}`);
-		const asks = this.state.verdicts.filter((v) => v.stage === 'core').flatMap((v) => v.demands.map((d) => `${ELEMENT_TITLE[d.element]} — ${d.demand}`));
-		return lines.join('\n') + (asks.length ? `\nКлієнт по дорозі вимагав: ${asks.join('; ')}` : '');
-	}
-
-	private async contentStep(id: ContentElement) {
-		const r = ELEMENT_OWNER[id];
-		this.agent(r, 'thinking');
-		const out = normContent(id, await this.ask(r, 'content', prompt.content(id, this.pack()), SCHEMA[id], () => fake.content(id)));
-		this.setElement(id, out.text, out.details);
-		this.say(r, out.thought);
-		this.agent(r, 'done');
-	}
-
-	private setElement(id: ElementId, text: string, details: string[], extra: Partial<ElementValue> = {}) {
+	private setEl(id: ElementId, text: string, details: string[], extra: Partial<ElementValue> = {}) {
 		const prev = this.state.elements[id];
 		this.state.elements = {
 			...this.state.elements,
-			[id]: { id, text, details, edited: prev?.edited ?? false, approved: false, clientReworks: prev?.clientReworks ?? 0, ...(prev?.rejected ? { rejected: prev.rejected } : {}), ...(prev?.logo ? { logo: prev.logo } : {}), ...extra }
+			[id]: { id, text, details, reworks: prev?.reworks ?? 0, ...(prev?.rejected ? { rejected: prev.rejected } : {}), ...(prev?.logo ? { logo: prev.logo } : {}), ...(prev?.image ? { image: prev.image } : {}), ...extra }
 		};
 		this.emit();
 	}
 
-	private async rework(id: ElementId, from: 'гравець' | 'клієнт', ask: string) {
-		const r = ELEMENT_OWNER[id];
-		const current = this.state.elements[id];
-		if (!current) return;
-		this.agent(r, 'thinking');
-		if (id === 'logo') {
-			const out = normLogo(await this.ask(r, 'rework', prompt.rework(from, id, current, ask), SCHEMA.logo, () => fake.rework(id, ask)));
-			this.setElement(id, out.concept || current.text, current.details, { logo: out.logo });
-			this.say(r, out.thought);
-		} else {
-			const out = normRework(await this.ask(r, 'rework', prompt.rework(from, id, current, ask), SCHEMA.rework, () => fake.rework(id, ask)));
-			this.setElement(id, out.text || current.text, out.details.length ? out.details : current.details);
-			this.say(r, out.thought);
-		}
-		if (id === 'positioning') this.pos.positioning = this.state.elements.positioning!.text;
-		this.agent(r, 'done');
-	}
-
-	/* ─────────── клієнт ─────────── */
-
-	private async clientStage(stage: 'core' | 'content', ids: ElementId[]): Promise<boolean> {
-		this.state.clientInOffice = true;
-		this.phase(stage === 'core' ? 'client_core' : 'client_content', `${this.state.brief.client.name} дивиться роботу`);
-		const v1 = await this.clientCall(stage, ids, 1);
-		if (v1.verdict !== 'rework') {
-			this.state.clientInOffice = false;
-			return v1.verdict === 'ok';
-		}
-
-		this.phase(stage === 'core' ? 'rework_core' : 'rework_content', 'Переробляємо на вимогу клієнта');
-		const byElement = new Map<ElementId, string[]>();
-		for (const d of v1.demands) byElement.set(d.element, [...(byElement.get(d.element) ?? []), d.demand]);
-		await Promise.all([...byElement].map(async ([id, asks]) => {
-			await this.rework(id, 'клієнт', asks.join('; '));
-			const e = this.state.elements[id];
-			if (e) this.setElement(id, e.text, e.details, { clientReworks: e.clientReworks + 1 });
-			this.tire(ELEMENT_OWNER[id], 6);
-		}));
-
-		this.phase(stage === 'core' ? 'client_core' : 'client_content', `${this.state.brief.client.name} дивиться правки`);
-		const v2 = await this.clientCall(stage, ids, 2);
-		this.state.clientInOffice = false;
-		return v2.verdict === 'ok';
-	}
-
-	private async clientCall(stage: 'core' | 'content', ids: ElementId[], round: number): Promise<ClientVerdict> {
-		const items = ids.map((id) => this.state.elements[id]).filter((e): e is ElementValue => !!e);
-		const res = await this.call({
-			purpose: 'client', who: 'client', model: this.deps.models.client,
-			system: CLIENT_CARD.replace('{archetype}', this.state.brief.client.archetype),
-			messages: [{ role: 'user', content: prompt.client(this.state.brief, items, round, CLIENT_ROUND2) + guide(SCHEMA.client) }],
-			schema: SCHEMA.client, fake: () => fake.client(round, stage)
-		});
-		const c = normClient(parseJson(res.text), ids, round);
-		const v: ClientVerdict = { stage, round, ...c };
-		this.state.verdicts = [...this.state.verdicts, v];
-		this.say('client', c.reaction, 'client');
-		const word = c.verdict === 'ok' ? 'приймає' : c.verdict === 'reject' ? 'відмовляється' : 'хоче правок';
-		this.note(`Клієнт ${word}${c.demands.length ? ': ' + c.demands.map((d) => `${ELEMENT_TITLE[d.element]} — ${d.demand}`).join('; ') : ''}`);
-		return v;
-	}
-
-	/* ─────────── гравець ─────────── */
-
-	private waitPlayer(): Promise<void> {
-		return new Promise((resolve) => {
-			this.waiter = resolve;
-		});
-	}
-
-	private playerIds(): ElementId[] {
-		return this.state.phase === 'player_core' ? CORE : this.state.phase === 'player_content' ? CONTENT : [];
-	}
-
-	editsLeft(): ElementId[] {
-		return this.playerIds().filter((id) => !this.edited.has(id));
-	}
-
-	/** Одна правка на елемент. Повертає текст помилки або null. */
-	async edit(id: ElementId, comment: string): Promise<string | null> {
-		const text = comment.trim();
-		if (!this.playerIds().includes(id)) return 'Зараз цей елемент не правиться.';
-		if (this.busy) return 'Команда ще переробляє попередню правку.';
-		if (this.edited.has(id)) return 'Правку на цей елемент уже використано.';
-		if (!text) return 'Напиши, що змінити.';
-		if (text.length > EDIT_MAX) return `Коротше, до ${EDIT_MAX} знаків.`;
-		this.edited.add(id);
-		this.busy = true;
-		const owner = ELEMENT_OWNER[id];
-		this.state.status = `${ROLE_NAME[owner]} переробляє: ${ELEMENT_TITLE[id].toLowerCase()}`;
-		this.note(`Твоя правка до «${ELEMENT_TITLE[id]}»: ${text}`);
-		try {
-			await this.rework(id, 'гравець', text);
-			this.tire(owner, 4);
-			const e = this.state.elements[id];
-			if (e) this.setElement(id, e.text, e.details, { edited: true });
-			return null;
-		} catch (e) {
-			if (isAbortError(e)) return 'Бриф закрито.';
-			this.edited.delete(id);
-			return humanError(e);
-		} finally {
-			this.busy = false;
-			this.state.status = this.state.phase === 'player_core' ? 'Твоє слово: затверди або дай по одній правці на елемент' : 'Твоє слово по контенту: по одній правці на елемент';
-			this.emit();
-		}
-	}
-
-	approve(id: ElementId): string | null {
+	private bump(id: ElementId) {
 		const e = this.state.elements[id];
-		if (!e || !this.playerIds().includes(id)) return 'Зараз цей елемент не затверджується.';
-		this.setElement(id, e.text, e.details, { approved: !e.approved });
-		return null;
+		if (e) this.setEl(id, e.text, e.details, { reworks: e.reworks + 1 });
 	}
 
-	submit(): string | null {
-		if (!this.waiter) return 'Зараз нема чого показувати клієнту.';
-		if (this.busy) return 'Зачекай, команда ще переробляє.';
-		const w = this.waiter;
-		this.waiter = null;
-		w();
-		return null;
+	/** Етап «гравець → клієнт» для основи або каналів, з колами переробки. */
+	private async stage(stage: 'core' | 'content'): Promise<boolean> {
+		const ids: ElementId[] = stage === 'core' ? CORE : CONTENT;
+		const playerPhase: RunPhase = stage === 'core' ? 'player_core' : 'player_content';
+		const decisionPhase: RunPhase = stage === 'core' ? 'client_decision_core' : 'client_decision_content';
+
+		this.state.editAvailable = true;
+		for (;;) {
+			this.phase(playerPhase, this.state.editAvailable ? 'Твоє слово: показати клієнту або дати до трьох правок' : 'Правки враховано. Показуємо клієнту?', { strategist: 'table', copywriter: 'table', designer: 'table' });
+			for (const r of ROLES) this.agent(r, 'idle', 'чекає твого рішення');
+			const d = await this.wait([playerPhase]);
+			if (d.action !== 'edit') break;
+			this.state.editAvailable = false;
+			this.note('Твої правки', d.notes);
+			await this.rework(stage, 'керівник агенції', d.notes);
+		}
+		this.state.editAvailable = false;
+
+		this.state.clientInOffice = true;
+		for (let round = 1; round <= MAX_CLIENT_ROUNDS; round++) {
+			await this.gate();
+			this.state.clientRound = round;
+			this.phase(stage === 'core' ? 'client_core' : 'client_content', `${this.state.brief.client.name} дивиться роботу${round > 1 ? ` (коло ${round})` : ''}`);
+			const last = round === MAX_CLIENT_ROUNDS;
+			const items = ids.map((id) => this.state.elements[id]).filter((e): e is ElementValue => !!e);
+			const c = normClient(await this.once({
+				purpose: 'client', who: 'client', model: this.deps.models.client, system: clientCard(this.state.brief.client, this.state.brief.text),
+				user: prompt.client(items, round, last, stage === 'content' ? `Основу (${this.state.elements.name?.text}, «${this.state.elements.slogan?.text}») ти вже затвердив.` : undefined),
+				schema: SCHEMA.client, fake: () => fake.client(round, stage)
+			}), last);
+			const v: ClientVerdict = { stage, round, ...c };
+			this.state.verdicts = [...this.state.verdicts, v];
+			this.say('client', c.reaction, 'client', undefined, c.demands);
+			if (c.verdict === 'ok') {
+				this.note(`${this.state.brief.client.name} приймає.`);
+				this.state.clientInOffice = false;
+				return true;
+			}
+			if (c.verdict === 'reject') {
+				this.note(`${this.state.brief.client.name} відмовляється.`);
+				this.state.clientInOffice = false;
+				return false;
+			}
+			this.phase(decisionPhase, `${this.state.brief.client.name} хоче правок. Ще коло чи здаємось?`);
+			const d = await this.wait([decisionPhase]);
+			if (d.action === 'giveup') {
+				this.note('Ти вирішив здатися.');
+				this.state.clientInOffice = false;
+				return false;
+			}
+			await this.rework(stage, 'клієнт', c.demands);
+			for (const r of ROLES) this.tire(r, 3);
+		}
+		this.state.clientInOffice = false;
+		return false;
 	}
 
-	/** Кинути бриф: команда втомилась даремно, репутація трохи падає. Після збою — без штрафу. */
+	/** Узгоджена переробка: позиціонування → назва й слоган → знак (або канали). */
+	private async rework(stage: 'core' | 'content', who: 'керівник агенції' | 'клієнт', notes: string[]) {
+		this.phase(stage === 'core' ? 'rework_core' : 'rework_content', who === 'клієнт' ? 'Переробляємо під клієнта' : 'Команда враховує твої правки', { strategist: 'desk', copywriter: 'desk', designer: 'desk' });
+		if (stage === 'core') {
+			await this.gate();
+			this.agent('strategist', 'thinking', 'переглядає позиціонування');
+			const rp = normReposition(await this.ask('strategist', 'rework', prompt.reposition(who, notes, this.pos), SCHEMA.reposition, () => fake.reposition(who === 'клієнт')), this.pos);
+			if (rp.changed) {
+				this.pos = rp.pos;
+				this.setEl('positioning', rp.pos.positioning, [`Роль: ${rp.pos.role}`, `Ворог: ${rp.pos.enemy}`]);
+				this.bump('positioning');
+			}
+			this.say('strategist', rp.thought, 'thought', undefined, [rp.changed ? `Змінила: ${rp.why}` : 'Позиціонування лишила']);
+			this.agent('strategist', 'done', rp.changed ? 'оновила позиціонування' : 'лишила позиціонування');
+
+			await this.gate();
+			const name = this.state.elements.name?.text ?? '', slogan = this.state.elements.slogan?.text ?? '';
+			this.agent('copywriter', 'thinking', 'переглядає назву й слоган');
+			const rn = normRename(await this.ask('copywriter', 'rework', prompt.rename(who, notes, this.pos, rp.changed, name, slogan), SCHEMA.rename, () => fake.rename(who === 'клієнт')), name, slogan);
+			if (rn.changed) {
+				if (rn.name !== name) { this.setEl('name', rn.name, [rn.why].filter(Boolean)); this.bump('name'); }
+				if (rn.slogan !== slogan) { this.setEl('slogan', rn.slogan, []); this.bump('slogan'); }
+			}
+			this.say('copywriter', rn.thought, 'thought', undefined, [rn.changed ? `${rn.name} — «${rn.slogan}»: ${rn.why}` : 'Назву й слоган лишив']);
+			this.agent('copywriter', 'done', rn.changed ? 'оновив назву' : 'лишив назву');
+
+			await this.gate();
+			this.agent('designer', 'thinking', 'переглядає знак');
+			const lg = normLogo(await this.ask('designer', 'rework', prompt.relogo(who, notes, this.pos, this.state.elements.name?.text ?? ''), SCHEMA.logo, () => fake.logo()));
+			this.setEl('logo', lg.concept, [], { logo: lg.logo });
+			this.bump('logo');
+			this.say('designer', lg.thought, 'thought', undefined, [lg.concept]);
+			this.agent('designer', 'done', 'оновив знак');
+		} else {
+			await Promise.all(CONTENT.map(async (id) => {
+				const r = ELEMENT_OWNER[id];
+				const cur = this.state.elements[id];
+				if (!cur) return;
+				await this.gate();
+				this.agent(r, 'thinking', `переробляє ${ELEMENT_TITLE[id]}`);
+				const out = normContent(id, await this.ask(r, 'rework', prompt.recontent(id, who, notes, cur), SCHEMA[id], () => fake.content(id)));
+				this.setEl(id, out.text || cur.text, out.details.length ? out.details : cur.details);
+				this.bump(id);
+				this.say(r, out.thought);
+				this.agent(r, 'done', 'переробив');
+			}));
+			await this.images();
+		}
+	}
+
+	private pack(): string {
+		const e = this.state.elements;
+		return [`- Позиціонування: ${this.pos.positioning}`, `- Роль бренду: ${this.pos.role}; ворог: ${this.pos.enemy}`, `- Назва: ${e.name?.text ?? '—'}`, `- Слоган: ${e.slogan?.text ?? '—'}`, `- Знак: ${e.logo?.text ?? '—'}`].join('\n');
+	}
+
+	private async contentStep(id: ContentElement) {
+		const r = ELEMENT_OWNER[id];
+		await this.gate();
+		this.agent(r, 'thinking', `робить ${ELEMENT_TITLE[id]}`);
+		const out = normContent(id, await this.ask(r, 'content', prompt.content(id, this.pack()), SCHEMA[id], () => fake.content(id)));
+		this.setEl(id, out.text, out.details);
+		this.say(r, out.thought, 'thought', undefined, [out.text, ...out.details]);
+		this.agent(r, 'done', `${ELEMENT_TITLE[id]} готово`);
+	}
+
+	/** Банер і розкадровка в піксельному стилі гри (Gemini). Без ключа — заглушки; збій картинки бриф не валить. */
+	private async images() {
+		await this.gate();
+		this.phase('images', 'Дизайнер малює банер і розкадровку', { designer: 'desk' });
+		this.agent('designer', 'thinking', 'малює банер і розкадровку');
+		const e = this.state.elements;
+		const logoPng = e.logo?.logo ? rasterLogo(e.logo.logo, 256) : null;
+		const refs = logoPng ? [{ mime: 'image/png', data: logoPng }] : [];
+		const STYLE = 'Pixel art in the cozy style of Stardew Valley: chunky visible pixels, warm saturated palette, dark coloured outlines (not black), soft dithering, no photorealism, no gradients like 3D render.';
+		const brand = `Brand name: «${e.name?.text ?? ''}». Slogan (Ukrainian, keep exactly): «${e.slogan?.text ?? ''}».`;
+		const jobs: { id: 'instagram' | 'youtube'; prompt: string; aspect: '1:1' | '16:9' }[] = [
+			{
+				id: 'instagram', aspect: '1:1',
+				prompt: `${STYLE}\nA square Instagram ad banner. ${brand}\nHeadline in big pixel font (Ukrainian, keep exactly): «${e.instagram?.text ?? ''}».\nScene: ${e.instagram?.details[0] ?? ''}.\n${logoPng ? 'Place the provided logo image (first image) as the brand mark in a corner, keep its shapes and colours.' : ''}\nUse the brand colours ${e.logo?.logo?.palette.a ?? ''} and ${e.logo?.logo?.palette.b ?? ''}. All text must be crisp pixel text, spelled exactly.`
+			},
+			{
+				id: 'youtube', aspect: '16:9',
+				prompt: `${STYLE}\nA storyboard sheet for a premium brand video: a 2×2 grid of four pixel-art frames, each numbered 1–4 with a very short Ukrainian caption under it.\nTitle at the top: «${e.youtube?.text ?? ''}». ${brand}\nFrames:\n${(e.youtube?.details ?? []).map((s, i) => `${i + 1}. ${s}`).join('\n')}\n${logoPng ? 'Show the provided logo (first image) in the last frame.' : ''}`
+			}
+		];
+		await Promise.all(jobs.map(async (j) => {
+			try {
+				const started = Date.now();
+				const img = await this.deps.images.generate(j.prompt, refs, { aspect: j.aspect, who: `${this.id}:${j.id}`, signal: this.abort.signal });
+				this.alive();
+				const dir = join(this.deps.dataDir, 'images', this.id);
+				mkdirSync(dir, { recursive: true });
+				const file = `${j.id}-${Date.now().toString(36)}.${img.mime.includes('png') ? 'png' : 'jpg'}`;
+				writeFileSync(join(dir, file), img.data);
+				this.state.imagesUsd += img.usd;
+				this.deps.onSpend?.('gemini', img.usd);
+				this.trace.push({ t: new Date().toISOString(), purpose: 'image', who: j.id, model: this.deps.images.demo ? 'demo' : 'gemini', prompt: j.prompt, response: file, stop: null, ms: Date.now() - started, usd: img.usd });
+				const cur = this.state.elements[j.id];
+				if (cur) this.setEl(j.id, cur.text, cur.details, { image: `/api/images/${this.id}/${file}` });
+			} catch (err) {
+				if (isAbortError(err)) throw err;
+				this.note(`Картинка «${ELEMENT_TITLE[j.id]}» не вийшла: ${(err as Error).message.slice(0, 120)}`);
+			}
+		}));
+		this.agent('designer', 'done', 'картинки готові');
+	}
+
 	drop() {
 		if (this.state.phase === 'done') return;
 		const failed = this.state.phase === 'failed';
 		this.abort.abort();
 		this.waiter = null;
+		this.resume?.();
 		this.finish('dropped', failed);
 	}
 
@@ -478,31 +593,30 @@ export class Run {
 		let paid = 0;
 		if (verdict === 'ok') paid = Math.round((fee * (0.6 + ((last?.mood ?? 50) / 100) * 0.6)) / 100) * 100;
 		else if (verdict === 'reject' && this.coreAccepted) paid = Math.round((fee * 0.4) / 100) * 100;
-		if (verdict === 'reject') for (const r of ROLES) this.tire(r, 10);
-
+		if (verdict === 'reject') for (const r of ROLES) this.tire(r, 8);
 		const repDelta = free ? 0 : reputationDelta(quality, verdict);
 		const result: RunResult = {
-			verdict,
-			paid,
-			repDelta,
-			quality,
+			verdict, paid, repDelta, quality,
 			notes: [
 				...notes.filter((n) => !n.ok).map((n) => `${ELEMENT_TITLE[n.element]}: ${n.text}`),
 				...(performanceHits ? ['Клієнт протягнув перфоманс-штампи — індустрія це бачить.'] : []),
-				...(verdict === 'reject' && this.coreAccepted ? ['Айдентику клієнт оплатив частково, від контенту відмовився.'] : [])
+				...(verdict === 'reject' && this.coreAccepted ? ['Основу клієнт оплатив частково, від каналів відмовився.'] : [])
 			],
 			burnoutDelta: { ...this.burnoutDelta }
 		};
 		this.state.result = result;
 		this.state.clientInOffice = false;
+		this.state.paused = false;
 		for (const r of ROLES) {
 			this.state.agents[r].status = this.burnoutOf(r) >= 85 ? 'tired' : 'idle';
 			this.state.agents[r].spot = 'coffee';
+			this.state.agents[r].doing = 'пʼє каву';
 		}
 		const word = verdict === 'ok' ? 'Клієнт заплатив' : verdict === 'reject' ? 'Клієнт пішов' : 'Бриф закрито';
 		this.phase('done', `${word}: +${paid.toLocaleString('uk-UA')} ₴, репутація ${repDelta >= 0 ? '+' : ''}${repDelta}`);
+		log('info', 'run_done', { run: this.id, verdict, paid, repDelta, quality, calls: this.state.calls, usd: Number(this.state.costUsd.toFixed(4)), images_usd: this.state.imagesUsd });
 		this.deps.onFinish?.(this);
 	}
 }
 
-export type { CoreElement };
+export { ROLE_NAME };

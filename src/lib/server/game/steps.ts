@@ -1,6 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { normalizeLogo } from '$lib/logo';
-import { CONTENT, ELEMENT_TITLE, ROLE_NAME, type Brief, type ContentElement, type ElementId, type ElementValue, type LogoSpec, type Role } from '$lib/types';
+import { ELEMENT_TITLE, ROLE_NAME, type Brief, type ContentElement, type ElementId, type ElementValue, type LogoSpec, type NamingOption, type Role } from '$lib/types';
 import type { RequestParams } from '../model/client';
 
 /* ───────────────────────── запит ───────────────────────── */
@@ -27,12 +27,12 @@ export function guide(schema: Record<string, unknown>): string {
 		const props = (o.properties ?? {}) as Record<string, Record<string, unknown>>;
 		for (const [k, v] of Object.entries(props)) {
 			const name = path ? `${path}.${k}` : k;
-			const d = [v.description, (v.items as Record<string, unknown> | undefined)?.description].filter(Boolean).join('; ');
-			const en = (v.enum as string[] | undefined) ?? ((v.items as Record<string, unknown> | undefined)?.enum as string[] | undefined);
+			const items = v.items as Record<string, unknown> | undefined;
+			const d = [v.description, items?.description].filter(Boolean).join('; ');
+			const en = (v.enum as string[] | undefined) ?? (items?.enum as string[] | undefined);
 			if (d || en) lines.push(`- ${name}: ${d}${en ? `${d ? ' ' : ''}(${en.join(' | ')})` : ''}`);
 			if (v.type === 'object') walk(v, name);
-			const it = v.items as Record<string, unknown> | undefined;
-			if (it?.type === 'object') walk(it, `${name}[]`);
+			if (items?.type === 'object') walk(items, `${name}[]`);
 		}
 	};
 	walk(schema, '');
@@ -52,7 +52,6 @@ export function request(o: { model: string; system: string; messages: Msg[]; sch
 	} as RequestParams;
 }
 
-/** JSON з відповіді; модель інколи обгортає його текстом. */
 export function parseJson(text: string): Record<string, unknown> {
 	const a = text.indexOf('{');
 	const b = text.lastIndexOf('}');
@@ -68,27 +67,47 @@ export class StepError extends Error {
 	name = 'StepError';
 }
 
-const str = (v: unknown, max = 600): string => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+/* ───────────────────────── схеми ───────────────────────── */
+
+const str = (v: unknown, max = 400): string => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ').slice(0, max) : '');
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
-const strs = (v: unknown, n: number, max = 300): string[] => arr(v).map((x) => str(x, max)).filter(Boolean).slice(0, n);
+const strs = (v: unknown, n: number, max = 200): string[] => arr(v).map((x) => str(x, max)).filter(Boolean).slice(0, n);
 
 const S = (description: string, extra: Record<string, unknown> = {}) => ({ type: 'string', description, ...extra });
 const obj = (properties: Record<string, unknown>, required = Object.keys(properties)) => ({ type: 'object', properties, required, additionalProperties: false });
 const list = (items: unknown, description?: string) => ({ type: 'array', items, ...(description ? { description } : {}) });
 
-const THOUGHT = S('думка вголос для бабла, до 160 знаків');
-const ROLE_ENUM = { type: 'string', enum: ['strategist', 'copywriter', 'designer'] };
-
-/* ───────────────────────── схеми ───────────────────────── */
+const THOUGHT = S('репліка в баблі, до 90 знаків');
+const VERDICT = { type: 'string', enum: ['keep', 'rejected'] };
 
 export const SCHEMA = {
-	read: obj({ thought: THOUGHT, observations: list(S('спостереження про бриф'), '2–3 пункти'), cliches: list(S('кліше категорії'), '1–3'), hunch: S('здогадка: де напруга'), gpt_take: S('що взяв або відкинув з поради Джіпітенка; порожньо, якщо не питав') }),
-	review: obj({ thought: THOUGHT, weakest: obj({ whom: ROLE_ENUM, quote: S('дослівний фрагмент з тексту колеги'), why: S('чому це слабко') }), take: obj({ whom: ROLE_ENUM, what: S('що варто взяти в колеги') }), revised: S('оновлена здогадка') }),
-	positioning: obj({ thought: THOUGHT, candidates: list(obj({ text: S('позиціонування, одне речення'), verdict: { type: 'string', enum: ['keep', 'rejected'] }, reason: S('чому') }), 'рівно 3, один keep'), role: S('роль бренду, 1–2 слова'), enemy: S('ворог бренду, 1–2 слова'), gpt_take: S('що взяла з поради Джіпітенка; порожньо, якщо не питала') }),
-	naming: obj({ thought: THOUGHT, names: list(obj({ text: S('назва'), verdict: { type: 'string', enum: ['keep', 'rejected'] }, reason: S('чому') }), 'рівно 3, один keep'), slogans: list(obj({ text: S('слоган'), technique: S('прийом: твердження, контраст, запитання, команда, ідентифікація'), verdict: { type: 'string', enum: ['keep', 'rejected'] }, reason: S('чому') }), 'рівно 3 різними прийомами, один keep'), gpt_take: S('що взяв з поради Джіпітенка; порожньо, якщо не питав') }),
+	read: obj({
+		thought: THOUGHT,
+		problem: S('людська проблема за бізнесовою, одне речення до 16 слів'),
+		insight: S('інсайт у форматі «X — це Y», до 14 слів'),
+		advantage: S('що в цьому бізнесі унікальне й важливе для людей, до 14 слів'),
+		direction: S('напрям для команди: «Показати, що X — це Y», до 14 слів'),
+		gpt_take: S('що взяла з поради Джіпітенка, до 12 слів; порожньо, якщо не питала')
+	}),
+	huddle: obj({
+		thought: THOUGHT,
+		verdict: { type: 'string', enum: ['ok', 'doubt'] },
+		note: S('що бачиш зі свого боку або в чому сумнів, до 16 слів')
+	}),
+	positioning: obj({
+		thought: THOUGHT,
+		candidates: list(obj({ text: S('позиціонування, одне речення до 22 слів'), verdict: VERDICT, reason: S('чому, до 10 слів') }), 'рівно 3, один keep'),
+		role: S('роль бренду, 1–2 слова'),
+		enemy: S('ворог бренду, 1–2 слова')
+	}),
+	naming: obj({
+		thought: THOUGHT,
+		options: list(obj({ name: S('назва, 1–2 слова'), slogan: S('слоган до 6 слів'), why: S('чому працює, до 10 слів') }), 'рівно 3 різні варіанти'),
+		gpt_take: S('що взяв з поради Джіпітенка, до 12 слів; порожньо, якщо не питав')
+	}),
 	logo: obj({
 		thought: THOUGHT,
-		concept: S('ідея знака, 1–2 речення'),
+		concept: S('ідея знака, одне речення до 16 слів'),
 		palette: obj({ a: S('основний колір, hex #rrggbb'), b: S('другий колір, hex #rrggbb') }),
 		shapes: list(
 			obj(
@@ -101,181 +120,206 @@ export const SCHEMA = {
 				},
 				['type', 'fill']
 			),
-			'до 8 фігур на полотні 100×100'
+			'до 6 фігур на полотні 100×100'
 		)
 	}),
-	rework: obj({ thought: THOUGHT, text: S('нова версія елемента'), details: list(S('додаткові рядки, якщо потрібні')) }),
-	threads: obj({ thought: THOUGHT, summary: S('tone of voice одним реченням'), principles: list(S('принцип голосу'), '3'), posts: list(S('приклад посту для Threads'), '2') }),
-	instagram: obj({ thought: THOUGHT, headline: S('заголовок на креативі'), visual: S('що на картинці'), caption: S('підпис до посту') }),
-	reels: obj({ thought: THOUGHT, idea: S('загальна ідея рубрики'), items: list(obj({ hook: S('перші 2 секунди'), scenario: S('що відбувається') }), '3') }),
-	youtube: obj({ thought: THOUGHT, title: S('назва ролика'), concept: S('ідея іміджевого ролика'), beats: list(S('сцена'), '4') }),
-	gpt: obj({ answer: S('порада, до 400 знаків'), tips: list(S('коротка порада'), 'до 3'), source: S('назва файлу з бази або «загальні знання»') }),
+	/** Узгоджена переробка: стратегиня вирішує, чи міняти позиціонування. */
+	reposition: obj({
+		thought: THOUGHT,
+		changed: { type: 'boolean' },
+		positioning: S('нове або те саме позиціонування, одне речення до 22 слів'),
+		role: S('роль бренду, 1–2 слова'),
+		enemy: S('ворог бренду, 1–2 слова'),
+		why: S('що змінила і чому, до 14 слів')
+	}),
+	rename: obj({
+		thought: THOUGHT,
+		changed: { type: 'boolean' },
+		name: S('назва, 1–2 слова'),
+		slogan: S('слоган до 6 слів'),
+		why: S('що змінив і чому, до 14 слів')
+	}),
+	threads: obj({ thought: THOUGHT, voice: S('голос бренду одним реченням до 12 слів'), posts: list(S('пост для Threads до 120 знаків'), 'рівно 2') }),
+	instagram: obj({ thought: THOUGHT, headline: S('заголовок на банері, до 6 слів'), visual: S('що на картинці, до 16 слів') }),
+	reels: obj({ thought: THOUGHT, hooks: list(S('ідея Reels одним рядком до 12 слів'), 'рівно 3') }),
+	youtube: obj({ thought: THOUGHT, title: S('назва ролика до 5 слів'), scenes: list(S('сцена до 10 слів'), 'рівно 4') }),
+	gpt: obj({ answer: S('порада до 300 знаків'), source: S('назва файлу з бази або «загальні знання»') }),
 	client: obj({
-		reaction: S('що клієнт каже вголос, 1–3 речення'),
+		reaction: S('що кажеш уголос, 1–2 речення'),
 		verdict: { type: 'string', enum: ['ok', 'rework', 'reject'] },
-		mood: { type: 'integer', description: 'настрій 0..100' },
-		demands: list(obj({ element: { type: 'string', enum: ['positioning', 'name', 'slogan', 'logo', ...CONTENT] }, demand: S('конкретна вимога') }), 'вимоги, якщо rework')
+		mood: { type: 'integer' },
+		demands: list(S('вимога до 12 слів'), 'до 3, якщо rework')
+	}),
+	persona: obj({
+		name: S('як звертаються до власника чи власниці'),
+		gender: { type: 'string', enum: ['m', 'f'] },
+		look: { type: 'string', enum: ['leather', 'suit', 'casual', 'creative', 'farmer', 'sport'] },
+		archetype: S('характер одним реченням'),
+		voice: S('манера говорити, 2–4 маркери')
 	})
 } as const;
 
 /* ───────────────────────── тексти запитів ───────────────────────── */
 
-const LENS: Record<Role, string> = {
-	strategist: 'правду бренду і культурну правду: що бізнес робить насправді і що зараз відбувається з людьми навколо категорії',
-	copywriter: 'правду людини: як говорить аудиторія і чого вона не скаже вголос; і словесні кліше категорії',
-	designer: 'правду категорії: візуальні коди й кольори, які в цій категорії повторюють усі'
-};
-
 export function briefBlock(b: Brief): string {
 	return `Клієнт: ${b.client.name}, ${b.client.business}.\nБриф дослівно:\n«${b.text}»`;
 }
 
-const advice = (a?: string) => (a ? `\n\nТи спитав(ла) Джіпітенка, він порадив:\n«${a}»\nВізьми корисне або відкинь — коротко скажи в полі gpt_take.` : '');
+const advice = (a?: string) => (a ? `\n\nТи спитав(ла) Джіпітенка, він порадив:\n«${a}»\nВізьми одну корисну деталь або відкинь — скажи в gpt_take.` : '');
+
+export interface Read { thought: string; problem: string; insight: string; advantage: string; direction: string; gptTake: string }
+export const readText = (r: Read) => `Проблема: ${r.problem}\nІнсайт: ${r.insight}\nПеревага: ${r.advantage}\nНапрям: ${r.direction}`;
 
 export const prompt = {
-	read: (role: Role, b: Brief, gpt?: string) =>
-		`Новий бриф.\n${briefBlock(b)}\n\nРозбери його через свою лінзу — ${LENS[role]}. Колег ще не чув(ла).${advice(gpt)}`,
+	read: (b: Brief, gpt?: string) =>
+		`Новий бриф.\n${briefBlock(b)}\n\nПройди Four Points: проблема → інсайт «X — це Y» → перевага → напрям «Показати, що X — це Y». Коротко й конкретно про цей бізнес.${advice(gpt)}`,
 
-	review: (role: Role, peers: { role: Role; text: string }[]) =>
-		`Колеги прочитали бриф так:\n\n${peers.map((p) => `${ROLE_NAME[p.role]} (${p.role}):\n${p.text}`).join('\n\n')}\n\n` +
-		`Назви найслабше місце в одного з колег — поле quote має бути дослівним фрагментом з його тексту. ` +
-		`Скажи, що варто взяти в когось, і онови свою здогадку. Погоджуватись з усім не треба: спільна думка трьох — не доказ.`,
-
-	positioning: (reviews: { role: Role; text: string }[], gpt?: string) =>
-		`Рецензії команди:\n\n${reviews.map((r) => `${ROLE_NAME[r.role]}: ${r.text}`).join('\n\n')}\n\n` +
-		`Сформулюй позиціонування на перетині правд. Дай 3 кандидати: рівно один keep, два rejected з причиною. ` +
-		`Додай роль бренду і ворога.${advice(gpt)}`,
-
-	creative: (role: 'copywriter' | 'designer', pos: { positioning: string; role: string; enemy: string }, gpt?: string) =>
-		`Стратегиня визначила позиціонування:\n«${pos.positioning}»\nРоль бренду: ${pos.role}. Ворог: ${pos.enemy}.\n\n` +
+	huddle: (role: Role, b: Brief, read: Read) =>
+		`${briefBlock(b)}\n\nСтратегиня кличе тебе порадитись перед позиціонуванням. Її розбір:\n${readText(read)}\n\n` +
 		(role === 'copywriter'
-			? 'Придумай назву (3 варіанти, один keep) і слоган (3 варіанти різними прийомами, один keep). Назва й слоган мають випливати з позиціонування.'
-			: 'Намалюй знак: одна сильна форма, що несе роль бренду. Два кольори, до 8 фігур, без тексту.') +
-		advice(gpt),
+			? 'Подивись як копірайтер: чи з цього вийде назва і слоган, які люди запамʼятають? Скажи «ok» або «doubt» і коротко чому.'
+			: 'Подивись як дизайнер: чи з цього вийде одна сильна форма-знак? Скажи «ok» або «doubt» і коротко чому.'),
 
-	rework: (from: 'гравець' | 'клієнт', id: ElementId, current: ElementValue, ask: string) =>
-		`${from === 'гравець' ? 'Керівник агенції' : 'Клієнт'} просить переробити «${ELEMENT_TITLE[id]}»:\n«${ask}»\n\n` +
-		`Поточна версія:\n${current.text}${current.details.length ? '\n' + current.details.join('\n') : ''}\n\n` +
-		(id === 'logo' ? 'Перемалюй знак з урахуванням правки.' : 'Перероби лише цей елемент. У поле text — нова головна версія.') +
-		(from === 'клієнт' ? ' Клієнт не розуміється на брендингу: врахуй вимогу, але не зламай суть, якщо можна.' : ''),
+	positioning: (notes: { role: Role; text: string }[], gpt?: string) =>
+		`Колеги відповіли:\n${notes.map((n) => `${ROLE_NAME[n.role]}: ${n.text}`).join('\n')}\n\n` +
+		`Сформулюй позиціонування. 3 кандидати: рівно один keep, два rejected з причиною. Додай роль бренду і ворога.${advice(gpt)}`,
 
-	content: (id: ContentElement, pack: string) =>
-		`Клієнт затвердив основу:\n${pack}\n\nТепер ${CONTENT_TASK[id]}`,
+	naming: (pos: Pos, gpt?: string) =>
+		`Стратегиня визначила позиціонування:\n«${pos.positioning}»\nРоль бренду: ${pos.role}. Ворог: ${pos.enemy}.\n\n` +
+		`Дай 3 різні варіанти «назва + слоган» — різними прийомами. Керівник агенції обере один перед показом клієнту.${advice(gpt)}`,
+
+	logo: (pos: Pos, name: string, slogan: string) =>
+		`Позиціонування: «${pos.positioning}». Роль бренду: ${pos.role}. Ворог: ${pos.enemy}.\nОбрана назва: «${name}». Слоган: «${slogan}».\n\nНамалюй знак під цю назву: одна сильна форма, два кольори, до 6 фігур, без тексту.`,
+
+	/** Узгоджена переробка основи: правки гравця або клієнта, кожен вирішує свою частину. */
+	reposition: (who: 'керівник агенції' | 'клієнт', notes: string[], cur: Pos) =>
+		`${who === 'клієнт' ? 'Клієнт' : 'Керівник агенції'} дав правки:\n${notes.map((n, i) => `${i + 1}. ${n}`).join('\n')}\n\n` +
+		`Поточне позиціонування: «${cur.positioning}». Роль: ${cur.role}. Ворог: ${cur.enemy}.\n` +
+		`Вирішуй як стратегиня: якщо правки стосуються суті — зміни позиціонування (changed: true), якщо ні — лиши як є (changed: false).` +
+		(who === 'клієнт' ? ' Клієнт не розуміється на брендингу: врахуй, чого він насправді боїться, але не перетворюй позиціонування на рекламу знижок.' : ''),
+
+	rename: (who: 'керівник агенції' | 'клієнт', notes: string[], pos: Pos, posChanged: boolean, name: string, slogan: string) =>
+		`${who === 'клієнт' ? 'Клієнт' : 'Керівник агенції'} дав правки:\n${notes.map((n, i) => `${i + 1}. ${n}`).join('\n')}\n\n` +
+		`${posChanged ? 'Стратегиня змінила позиціонування' : 'Позиціонування лишилось'}: «${pos.positioning}». Роль: ${pos.role}. Ворог: ${pos.enemy}.\n` +
+		`Поточні назва «${name}» і слоган «${slogan}». Якщо правки чи нове позиціонування цього вимагають — зміни (changed: true), інакше лиши (changed: false).`,
+
+	relogo: (who: 'керівник агенції' | 'клієнт', notes: string[], pos: Pos, name: string) =>
+		`${who === 'клієнт' ? 'Клієнт' : 'Керівник агенції'} дав правки:\n${notes.map((n, i) => `${i + 1}. ${n}`).join('\n')}\n\n` +
+		`Позиціонування: «${pos.positioning}». Назва: «${name}».\nПеремалюй знак з урахуванням правок і назви. Якщо правки не про знак — лиши ту саму форму, можна уточнити кольори.`,
+
+	content: (id: ContentElement, pack: string) => `Клієнт затвердив основу:\n${pack}\n\nТепер ${CONTENT_TASK[id]} Дуже коротко, без пояснень.`,
+
+	recontent: (id: ContentElement, who: 'керівник агенції' | 'клієнт', notes: string[], cur: ElementValue) =>
+		`${who === 'клієнт' ? 'Клієнт' : 'Керівник агенції'} дав правки до каналів:\n${notes.map((n, i) => `${i + 1}. ${n}`).join('\n')}\n\n` +
+		`Твоя поточна версія «${ELEMENT_TITLE[id]}»:\n${[cur.text, ...cur.details].join('\n')}\n\nПерероби з урахуванням правок, що стосуються саме цього каналу; решту лиши. Так само коротко.`,
 
 	gpt: (role: Role, question: string, chunks: { source: string; text: string }[]) =>
 		`${ROLE_NAME[role]} питає: ${question}\n\n` +
 		(chunks.length ? `Уривки з бази знань:\n${chunks.map((c, i) => `[${i + 1}] (${c.source}) ${c.text}`).join('\n\n')}` : 'Уривків з бази знань нема.'),
 
-	client: (b: Brief, items: ElementValue[], round: number, round2: string) =>
-		`Твій бриф був:\n«${b.text}»\n\nАгенція показує:\n${items.map((e) => `- ${ELEMENT_TITLE[e.id]}: ${e.text}${e.details.length ? ' (' + e.details.slice(0, 3).join('; ') + ')' : ''}`).join('\n')}` +
-		(round > 1 ? `\n\n${round2}` : '')
+	client: (items: ElementValue[], round: number, last: boolean, extra?: string) =>
+		`Агенція показує${round > 1 ? ` (коло ${round}, після твоїх правок)` : ''}:\n${items.map((e) => `- ${ELEMENT_TITLE[e.id]}: ${e.text}${e.details.length ? ' (' + e.details.slice(0, 4).join('; ') + ')' : ''}`).join('\n')}` +
+		(extra ? `\n\n${extra}` : '') +
+		(last ? '\n\nЦе остання подивка: або "ok", або "reject".' : ''),
+
+	persona: (text: string) => `Бриф:\n«${text}»`
 };
 
+export interface Pos { positioning: string; role: string; enemy: string }
+
 const CONTENT_TASK: Record<ContentElement, string> = {
-	threads: 'опиши tone of voice бренду для Threads: одне речення-суть, 3 принципи голосу і 2 приклади постів.',
-	instagram: 'придумай рекламний креатив для Instagram: заголовок на картинці, що на картинці, підпис.',
-	reels: 'придумай рубрику Reels і 3 ідеї: хук перших двох секунд і що відбувається.',
-	youtube: 'придумай дорогий іміджевий ролик для YouTube: назва, ідея і 4 сцени.'
+	threads: 'голос бренду для Threads одним реченням і 2 пости (до 120 знаків).',
+	instagram: 'банер для Instagram: заголовок до 6 слів і що на картинці одним реченням.',
+	reels: '3 ідеї для Reels — по одному рядку до 12 слів.',
+	youtube: 'дорогий іміджевий ролик для YouTube: назва і 4 сцени по одному рядку до 10 слів.'
 };
 
 export const GPT_QUESTION = {
 	read: (role: Role, b: Brief) =>
-		role === 'strategist' ? `що зараз відбувається в категорії «${b.client.business}» і що всі в ній обіцяють?`
-			: role === 'copywriter' ? `які слова й кліше використовують у категорії «${b.client.business}»?`
-				: `які візуальні коди в категорії «${b.client.business}»?`,
-	core: (role: Role, b: Brief) =>
-		role === 'strategist' ? `як зібрати позиціонування для «${b.client.business}», щоб не вийшло як у всіх?`
-			: role === 'copywriter' ? `приклади сильних назв і слоганів у категорії «${b.client.business}»`
-				: `який знак пасує бізнесу «${b.client.business}»?`
+		role === 'strategist' ? `що зараз відбувається в категорії «${b.client.business}» і що всі в ній обіцяють?` : `які слова й кліше використовують у категорії «${b.client.business}»?`,
+	naming: (b: Brief) => `приклади сильних назв і слоганів у категорії «${b.client.business}»`
 };
 
 /** Наскільки кожен любить бігати до Джіпітенка. */
-export const GPT_HABIT: Record<Role, number> = { strategist: 0.45, copywriter: 0.75, designer: 0.08 };
+export const GPT_HABIT: Record<Role, number> = { strategist: 0.45, copywriter: 0.75, designer: 0.05 };
 
 /* ───────────────────────── нормалізація ───────────────────────── */
 
-export interface ReadOut { thought: string; observations: string[]; cliches: string[]; hunch: string; gptTake: string }
-export function normRead(j: Record<string, unknown>): ReadOut {
-	return { thought: str(j.thought, 200), observations: strs(j.observations, 3), cliches: strs(j.cliches, 3, 80), hunch: str(j.hunch, 300), gptTake: str(j.gpt_take, 200) };
-}
-export const readText = (r: ReadOut) => [...r.observations.map((o) => `- ${o}`), `Здогадка: ${r.hunch}`].join('\n');
-
-export interface ReviewOut { thought: string; weakest: { whom: Role; quote: string; why: string }; take: { whom: Role; what: string }; revised: string }
-const role = (v: unknown, fallback: Role): Role => (v === 'strategist' || v === 'copywriter' || v === 'designer' ? v : fallback);
-export function normReview(j: Record<string, unknown>, self: Role): ReviewOut {
-	const other: Role = self === 'strategist' ? 'copywriter' : 'strategist';
-	const w = (j.weakest ?? {}) as Record<string, unknown>;
-	const t = (j.take ?? {}) as Record<string, unknown>;
-	return {
-		thought: str(j.thought, 200),
-		weakest: { whom: role(w.whom, other), quote: str(w.quote, 200), why: str(w.why, 300) },
-		take: { whom: role(t.whom, other), what: str(t.what, 300) },
-		revised: str(j.revised, 300)
-	};
+export function normRead(j: Record<string, unknown>): Read {
+	const r = { thought: str(j.thought, 120), problem: str(j.problem, 200), insight: str(j.insight, 200), advantage: str(j.advantage, 200), direction: str(j.direction, 200), gptTake: str(j.gpt_take, 160) };
+	if (!r.insight && !r.direction) throw new StepError('стратегиня не дала розбір');
+	return r;
 }
 
-interface Cand { text: string; verdict: 'keep' | 'rejected'; reason: string }
-function pickKeep(v: unknown, max: number): { keep: Cand; rejected: Cand[] } | null {
-	const c: Cand[] = arr(v).slice(0, max).map((x) => {
-		const o = (x ?? {}) as Record<string, unknown>;
-		const technique = str(o.technique, 40);
-		return { text: str(o.text, 300), verdict: o.verdict === 'keep' ? 'keep' : 'rejected', reason: (technique ? `${technique}. ` : '') + str(o.reason, 200) } as Cand;
-	}).filter((x) => x.text);
-	if (!c.length) return null;
-	const keep = c.find((x) => x.verdict === 'keep') ?? c[0];
-	return { keep, rejected: c.filter((x) => x !== keep) };
+export function normHuddle(j: Record<string, unknown>) {
+	return { thought: str(j.thought, 120), ok: j.verdict !== 'doubt', note: str(j.note, 200) };
 }
 
 export function normPositioning(j: Record<string, unknown>) {
-	const p = pickKeep(j.candidates, 3);
-	if (!p) throw new StepError('стратегиня не дала позиціонування');
-	return { thought: str(j.thought, 200), positioning: p.keep.text, rejected: p.rejected, role: str(j.role, 40), enemy: str(j.enemy, 40), gptTake: str(j.gpt_take, 200) };
+	const c = arr(j.candidates).slice(0, 3).map((x) => { const o = (x ?? {}) as Record<string, unknown>; return { text: str(o.text, 300), keep: o.verdict === 'keep', reason: str(o.reason, 120) }; }).filter((x) => x.text);
+	if (!c.length) throw new StepError('стратегиня не дала позиціонування');
+	const keep = c.find((x) => x.keep) ?? c[0];
+	return { thought: str(j.thought, 120), positioning: keep.text, rejected: c.filter((x) => x !== keep).map((x) => ({ text: x.text, reason: x.reason })), role: str(j.role, 40), enemy: str(j.enemy, 40) };
 }
 
-export function normNaming(j: Record<string, unknown>) {
-	const n = pickKeep(j.names, 3);
-	const s = pickKeep(j.slogans, 3);
-	if (!n || !s) throw new StepError('копірайтер не дав назву чи слоган');
-	return { thought: str(j.thought, 200), name: n.keep, names: n.rejected, slogan: s.keep, slogans: s.rejected, gptTake: str(j.gpt_take, 200) };
+export function normNaming(j: Record<string, unknown>): { thought: string; options: NamingOption[]; gptTake: string } {
+	const options = arr(j.options).slice(0, 3).map((x) => { const o = (x ?? {}) as Record<string, unknown>; return { name: str(o.name, 60), slogan: str(o.slogan, 120), why: str(o.why, 120) }; }).filter((o) => o.name && o.slogan);
+	if (!options.length) throw new StepError('копірайтер не дав назву');
+	return { thought: str(j.thought, 120), options, gptTake: str(j.gpt_take, 160) };
 }
 
 export function normLogo(j: Record<string, unknown>): { thought: string; concept: string; logo: LogoSpec } {
 	const logo = normalizeLogo(j);
 	if (!logo) throw new StepError('дизайнер не намалював знак');
-	return { thought: str(j.thought, 200), concept: str(j.concept, 300), logo };
+	return { thought: str(j.thought, 120), concept: str(j.concept, 200), logo };
 }
 
-export function normRework(j: Record<string, unknown>) {
-	return { thought: str(j.thought, 200), text: str(j.text, 600), details: strs(j.details, 6) };
+export function normReposition(j: Record<string, unknown>, cur: Pos) {
+	const changed = j.changed === true && !!str(j.positioning);
+	return { thought: str(j.thought, 120), changed, pos: changed ? { positioning: str(j.positioning, 300), role: str(j.role, 40) || cur.role, enemy: str(j.enemy, 40) || cur.enemy } : cur, why: str(j.why, 160) };
+}
+
+export function normRename(j: Record<string, unknown>, name: string, slogan: string) {
+	const changed = j.changed === true && !!str(j.name);
+	return { thought: str(j.thought, 120), changed, name: changed ? str(j.name, 60) : name, slogan: changed ? str(j.slogan, 120) || slogan : slogan, why: str(j.why, 160) };
 }
 
 export function normContent(id: ContentElement, j: Record<string, unknown>): { thought: string; text: string; details: string[] } {
-	const thought = str(j.thought, 200);
+	const thought = str(j.thought, 120);
 	switch (id) {
 		case 'threads':
-			return { thought, text: str(j.summary), details: [...strs(j.principles, 3).map((p) => `Принцип: ${p}`), ...strs(j.posts, 2).map((p) => `Пост: ${p}`)] };
+			return { thought, text: str(j.voice, 160), details: strs(j.posts, 2, 160) };
 		case 'instagram':
-			return { thought, text: str(j.headline), details: [`Візуал: ${str(j.visual)}`, `Підпис: ${str(j.caption)}`] };
+			return { thought, text: str(j.headline, 80), details: [str(j.visual, 200)].filter(Boolean) };
 		case 'reels':
-			return { thought, text: str(j.idea), details: arr(j.items).slice(0, 3).map((x) => { const o = (x ?? {}) as Record<string, unknown>; return `Хук: ${str(o.hook, 200)} → ${str(o.scenario, 300)}`; }) };
+			return { thought, text: 'Три ідеї', details: strs(j.hooks, 3, 140) };
 		case 'youtube':
-			return { thought, text: str(j.title), details: [`Ідея: ${str(j.concept)}`, ...strs(j.beats, 4).map((b, i) => `Сцена ${i + 1}: ${b}`)] };
+			return { thought, text: str(j.title, 80), details: strs(j.scenes, 4, 120) };
 	}
 }
 
 export function normGpt(j: Record<string, unknown>) {
-	return { answer: str(j.answer, 450), tips: strs(j.tips, 3, 160), source: str(j.source, 80) };
+	return { answer: str(j.answer, 350), source: str(j.source, 80) };
 }
 
-export function normClient(j: Record<string, unknown>, allowed: ElementId[], round: number) {
+export function normClient(j: Record<string, unknown>, last: boolean) {
 	let verdict: 'ok' | 'rework' | 'reject' = j.verdict === 'ok' || j.verdict === 'reject' ? j.verdict : 'rework';
-	const demands = arr(j.demands)
-		.map((x) => { const o = (x ?? {}) as Record<string, unknown>; return { element: o.element as ElementId, demand: str(o.demand, 240) }; })
-		.filter((d) => allowed.includes(d.element) && d.demand)
-		.slice(0, 4);
-	// Друга подивка: правок більше нема — бурчить і приймає, або відмовляє.
-	if (round > 1 && verdict === 'rework') verdict = 'ok';
+	const demands = strs(j.demands, 3, 160);
+	if (last && verdict === 'rework') verdict = 'reject';
 	if (verdict === 'rework' && !demands.length) verdict = 'ok';
 	const mood = Math.max(0, Math.min(100, Math.round(Number(j.mood) || 50)));
-	return { reaction: str(j.reaction, 400), verdict, mood, demands: verdict === 'rework' ? demands : [] };
+	return { reaction: str(j.reaction, 300), verdict, mood, demands: verdict === 'rework' ? demands : [] };
 }
+
+export function normPersona(j: Record<string, unknown>) {
+	const looks = ['leather', 'suit', 'casual', 'creative', 'farmer', 'sport'] as const;
+	return {
+		name: str(j.name, 40) || 'Замовник',
+		gender: j.gender === 'f' ? ('f' as const) : ('m' as const),
+		look: (looks as readonly string[]).includes(String(j.look)) ? (j.look as (typeof looks)[number]) : ('casual' as const),
+		archetype: str(j.archetype, 200),
+		voice: str(j.voice, 120)
+	};
+}
+
+export type { ElementId };

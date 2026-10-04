@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Live } from '$lib/live.svelte';
-	import { CONTENT, CORE, ROLE_NAME, type ElementId, type RunPhase } from '$lib/types';
+	import { CONTENT, CORE, EDIT_SLOTS, MAX_CLIENT_ROUNDS, ROLE_NAME, type ClientVerdict, type RunPhase } from '$lib/types';
+	import Avatar from './Avatar.svelte';
 	import ElementCard from './ElementCard.svelte';
 	import Icon from './Icon.svelte';
 	import Num from './Num.svelte';
@@ -8,29 +9,39 @@
 	let { live, onNext }: { live: Live; onNext: () => void } = $props();
 	const run = $derived(live.run!);
 
-	const STEPS: { label: string; phases: RunPhase[] }[] = [
-		{ label: 'Читання', phases: ['read'] },
-		{ label: 'Суперечка', phases: ['review'] },
-		{ label: 'Основа', phases: ['core'] },
-		{ label: 'Ти', phases: ['player_core'] },
-		{ label: 'Клієнт', phases: ['client_core', 'rework_core'] },
-		{ label: 'Контент', phases: ['content'] },
-		{ label: 'Ти', phases: ['player_content'] },
-		{ label: 'Клієнт', phases: ['client_content', 'rework_content'] },
+	const STEPS: { label: string; phases: RunPhase[]; you?: boolean }[] = [
+		{ label: 'Стратегія', phases: ['read', 'huddle', 'position'] },
+		{ label: 'Назва', phases: ['naming', 'pick_name'] },
+		{ label: 'Лого', phases: ['logo'] },
+		{ label: 'Ти', phases: ['player_core', 'rework_core'], you: true },
+		{ label: 'Клієнт', phases: ['client_core', 'client_decision_core'] },
+		{ label: 'Канали', phases: ['content', 'images'] },
+		{ label: 'Ти', phases: ['player_content', 'rework_content'], you: true },
+		{ label: 'Клієнт', phases: ['client_content', 'client_decision_content'] },
 		{ label: 'Оплата', phases: ['done'] }
 	];
 	const stepIdx = $derived(STEPS.findIndex((s) => s.phases.includes(run.phase)));
 	const playerTurn = $derived(run.phase === 'player_core' || run.phase === 'player_content');
+	const deciding = $derived(run.phase === 'client_decision_core' || run.phase === 'client_decision_content');
+	const waitingYou = $derived(playerTurn || deciding || run.phase === 'pick_name');
 	const coreIds = $derived(CORE.filter((id) => run.elements[id]));
 	const contentIds = $derived(CONTENT.filter((id) => run.elements[id]));
-	const editable = (id: ElementId) => (run.phase === 'player_core' && CORE.includes(id as never)) || (run.phase === 'player_content' && CONTENT.includes(id as never));
-	let showLog = $state(false);
-	const whoName = (w: string) => (w === 'system' ? '' : w === 'gpt' ? 'Джіпітенко' : w === 'client' ? run.brief.client.name : ROLE_NAME[w as keyof typeof ROLE_NAME]);
+	const lastVerdict = $derived<ClientVerdict | undefined>(run.verdicts.at(-1));
+
+	let editing = $state(false);
+	let notes = $state<string[]>(Array(EDIT_SLOTS).fill(''));
+	async function sendEdits() {
+		if (await live.act({ action: 'edit', notes })) {
+			editing = false;
+			notes = Array(EDIT_SLOTS).fill('');
+		}
+	}
 </script>
 
 <section class="wrap">
 	<header class="brief">
-		<div>
+		<Avatar who="client" client={run.brief.client} size={44} />
+		<div class="bw">
 			<div class="client">{run.brief.client.name}</div>
 			<div class="faint biz">{run.brief.client.business}</div>
 		</div>
@@ -40,50 +51,77 @@
 
 	<ol class="steps" aria-label="Етапи брифу">
 		{#each STEPS as s, i}
-			<li class:done={i < stepIdx} class:now={i === stepIdx} class:you={s.label === 'Ти'}>{s.label}</li>
+			<li class:done={i < stepIdx} class:now={i === stepIdx} class:you={s.you}>{s.label}</li>
 		{/each}
 	</ol>
 
-	<div class="status panel" aria-live="polite">
-		{#if run.phase !== 'done' && run.phase !== 'failed' && !playerTurn}<span class="spin"></span>{/if}
-		<span>{run.status}</span>
+	<div class="status panel" class:you={waitingYou} aria-live="polite">
+		{#if run.paused}<Icon name="pause" size={16} />{:else if !waitingYou && run.phase !== 'done' && run.phase !== 'failed'}<span class="spin"></span>{/if}
+		<span>{run.paused ? 'Пауза — читай спокійно' : run.status}</span>
 	</div>
 	{#if run.error}<p class="err">{run.error}</p>{/if}
 	{#if live.error}<p class="err">{live.error}</p>{/if}
 
+	{#if run.phase === 'pick_name'}
+		<div class="pick rise">
+			<p class="label">Копірайтер пропонує три варіанти. Обери один — під нього дизайнер малюватиме знак.</p>
+			{#each run.options as o, i}
+				<button class="option panel" disabled={live.busy} onclick={() => live.act({ action: 'pick', index: i })}>
+					<span class="oname">{o.name}</span>
+					<span class="oslogan">«{o.slogan}»</span>
+					<span class="faint owhy">{o.why}</span>
+				</button>
+			{/each}
+		</div>
+	{/if}
+
 	{#if coreIds.length}
 		<h3>Основа бренду</h3>
-		{#each coreIds as id (id)}
-			<ElementCard el={run.elements[id]!} editable={editable(id)} canEdit={editable(id) && live.editsLeft.includes(id)} onEdit={(c) => live.act({ action: 'edit', element: id, comment: c })} onApprove={() => live.act({ action: 'approve', element: id })} />
-		{/each}
+		{#each coreIds as id (id)}<ElementCard el={run.elements[id]!} />{/each}
 	{/if}
 
 	{#each run.verdicts.filter((v) => v.stage === 'core') as v}
-		<article class="verdict panel rise" class:ok={v.verdict === 'ok'} class:bad={v.verdict === 'reject'}>
-			<div class="vh"><span class="dot" class:ok={v.verdict === 'ok'} class:bad={v.verdict === 'reject'} class:warn={v.verdict === 'rework'}></span>{run.brief.client.name} · {v.round === 1 ? 'перша подивка' : 'після правок'}</div>
-			<p>«{v.reaction}»</p>
-			{#each v.demands as d}<p class="small faint">вимагає: {d.demand}</p>{/each}
-		</article>
+		{@render verdict(v)}
 	{/each}
 
 	{#if contentIds.length}
-		<h3>Контент</h3>
-		{#each contentIds as id (id)}
-			<ElementCard el={run.elements[id]!} editable={editable(id)} canEdit={editable(id) && live.editsLeft.includes(id)} onEdit={(c) => live.act({ action: 'edit', element: id, comment: c })} onApprove={() => live.act({ action: 'approve', element: id })} />
-		{/each}
+		<h3>Канали</h3>
+		{#each contentIds as id (id)}<ElementCard el={run.elements[id]!} />{/each}
 	{/if}
 
 	{#each run.verdicts.filter((v) => v.stage === 'content') as v}
-		<article class="verdict panel rise">
-			<div class="vh"><span class="dot" class:ok={v.verdict === 'ok'} class:bad={v.verdict === 'reject'} class:warn={v.verdict === 'rework'}></span>{run.brief.client.name} · {v.round === 1 ? 'дивиться контент' : 'після правок'}</div>
-			<p>«{v.reaction}»</p>
-			{#each v.demands as d}<p class="small faint">вимагає: {d.demand}</p>{/each}
-		</article>
+		{@render verdict(v)}
 	{/each}
 
 	{#if playerTurn}
-		<div class="sticky">
-			<button class="btn primary wide" disabled={live.busy} onclick={() => live.act({ action: 'submit' })}><Icon name="send" size={16} />Показати клієнту</button>
+		<div class="act panel rise">
+			{#if editing}
+				<p class="label">До трьох правок одразу. Порожнє поле — нічого не міняти. Команда перегляне все узгоджено: якщо зміниться позиціонування, підтягнуться і назва, і знак.</p>
+				{#each notes as _, i}
+					<textarea rows="2" maxlength="280" placeholder="Правка {i + 1}" bind:value={notes[i]}></textarea>
+				{/each}
+				<div class="row">
+					<button class="btn ghost" onclick={() => (editing = false)}>Скасувати</button>
+					<button class="btn primary" disabled={live.busy || !notes.some((n) => n.trim())} onclick={sendEdits}><Icon name="send" size={16} />Віддати правки</button>
+				</div>
+			{:else}
+				<button class="btn primary wide" disabled={live.busy} onclick={() => live.act({ action: 'submit' })}><Icon name="send" size={16} />Показати клієнту</button>
+				{#if run.editAvailable}
+					<button class="btn human wide" onclick={() => (editing = true)}><Icon name="edit" size={16} />Дати правки</button>
+				{:else}
+					<p class="faint small">Раунд правок на цьому етапі використано.</p>
+				{/if}
+			{/if}
+		</div>
+	{/if}
+
+	{#if deciding && lastVerdict}
+		<div class="act panel rise">
+			<p class="label">Клієнт хоче правок. Коло {lastVerdict.round} з {MAX_CLIENT_ROUNDS}: команда переробить усе узгоджено з його вимогами, або можна здатися.</p>
+			<div class="row">
+				<button class="btn ghost" disabled={live.busy} onclick={() => live.act({ action: 'giveup' })}><Icon name="x" size={16} />Здатися</button>
+				<button class="btn primary" disabled={live.busy} onclick={() => live.act({ action: 'retry' })}><Icon name="reset" size={16} />Ще коло</button>
+			</div>
 		</div>
 	{/if}
 
@@ -107,16 +145,16 @@
 		<button class="btn ghost sm drop" onclick={() => confirm(run.phase === 'failed' ? 'Закрити бриф?' : 'Кинути бриф? Репутація трохи впаде, втома лишиться.') && live.act({ action: 'drop' })}><Icon name="x" size={16} />{run.phase === 'failed' ? 'Закрити бриф' : 'Кинути бриф'}</button>
 	{/if}
 
-	<button class="link faint" onclick={() => (showLog = !showLog)}>{showLog ? 'Сховати' : 'Показати'} стенограму ({run.log.length})</button>
-	{#if showLog}
-		<ol class="log">
-			{#each [...run.log].reverse() as l (l.seq)}
-				<li><b>{whoName(l.who)}</b> {l.text}</li>
-			{/each}
-		</ol>
-	{/if}
-	<p class="faint small">{run.demo ? 'Демо: відповідає підставна модель, грошей не коштує.' : `Claude · викликів ${run.calls} · $${run.costUsd.toFixed(3)}`}</p>
+	<p class="faint small">{run.demo ? 'Демо: відповідає підставна модель, грошей не коштує.' : `Claude · викликів ${run.calls} · $${run.costUsd.toFixed(3)}${run.imagesUsd ? ` · картинки $${run.imagesUsd.toFixed(2)}` : ''}`}</p>
 </section>
+
+{#snippet verdict(v: ClientVerdict)}
+	<article class="verdict panel rise">
+		<div class="vh"><span class="dot" class:ok={v.verdict === 'ok'} class:bad={v.verdict === 'reject'} class:warn={v.verdict === 'rework'}></span>{run.brief.client.name} · {v.stage === 'core' ? 'основа' : 'канали'}, коло {v.round}</div>
+		<p>«{v.reaction}»</p>
+		{#each v.demands as d}<p class="small faint">— {d}</p>{/each}
+	</article>
+{/snippet}
 
 <style lang="scss">
 	.wrap {
@@ -125,8 +163,12 @@
 	}
 	.brief {
 		display: flex;
-		justify-content: space-between;
 		gap: 10px;
+		align-items: center;
+	}
+	.bw {
+		flex: 1;
+		min-width: 0;
 	}
 	.client {
 		font-weight: 600;
@@ -138,6 +180,7 @@
 	}
 	.quote {
 		font-size: 14px;
+		white-space: pre-line;
 	}
 	.fee {
 		white-space: nowrap;
@@ -179,6 +222,9 @@
 		align-items: center;
 		padding: 10px 12px;
 		font-size: 14px;
+		&.you {
+			border-color: var(--human);
+		}
 	}
 	.spin {
 		width: 10px;
@@ -197,6 +243,53 @@
 		color: var(--bad);
 		font-size: 14px;
 	}
+	.pick {
+		display: grid;
+		gap: 8px;
+	}
+	.option {
+		display: grid;
+		gap: 2px;
+		text-align: left;
+		padding: 12px 14px;
+		transition: border-color var(--t) var(--ease);
+		&:hover:not(:disabled) {
+			border-color: var(--human);
+		}
+	}
+	.oname {
+		font-weight: 600;
+		font-size: 16px;
+	}
+	.oslogan {
+		font-size: 14px;
+	}
+	.owhy {
+		font-size: 12px;
+	}
+	.act {
+		padding: 12px;
+		display: grid;
+		gap: 8px;
+		position: sticky;
+		bottom: calc(var(--tabs-h) + 8px + env(safe-area-inset-bottom));
+		z-index: 2;
+		border-color: var(--human);
+	}
+	@media (min-width: 860px) {
+		.act {
+			bottom: 8px;
+		}
+	}
+	.row {
+		display: flex;
+		gap: 8px;
+		justify-content: flex-end;
+		flex-wrap: wrap;
+	}
+	.wide {
+		width: 100%;
+	}
 	.verdict {
 		padding: 12px 14px;
 		display: grid;
@@ -209,21 +302,6 @@
 			font-size: 13px;
 			color: var(--text-2);
 		}
-	}
-	.sticky {
-		position: sticky;
-		/* на телефоні — над нижніми табами */
-		bottom: calc(var(--tabs-h) + 8px + env(safe-area-inset-bottom));
-		padding-top: 4px;
-		z-index: 2;
-	}
-	@media (min-width: 860px) {
-		.sticky {
-			bottom: 8px;
-		}
-	}
-	.wide {
-		width: 100%;
 	}
 	.result {
 		padding: 14px;
@@ -263,26 +341,5 @@
 	}
 	.drop {
 		justify-self: start;
-	}
-	.link {
-		justify-self: start;
-		font-size: 12px;
-		text-decoration: underline;
-		text-underline-offset: 3px;
-	}
-	.log {
-		list-style: none;
-		display: grid;
-		gap: 6px;
-		font-size: 13px;
-		color: var(--text-2);
-		max-height: 320px;
-		overflow: auto;
-		border-left: 1px solid var(--line);
-		padding-left: 10px;
-		b {
-			color: var(--text);
-			font-weight: 600;
-		}
 	}
 </style>

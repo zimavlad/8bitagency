@@ -1,6 +1,6 @@
 <script lang="ts">
 	/** Власні svg-іконки 20×20, штрих 1.6. Emoji як іконки не вживаємо. */
-	type Name = 'inbox' | 'work' | 'team' | 'sun' | 'moon' | 'coffee' | 'x' | 'check' | 'edit' | 'send' | 'coin' | 'star' | 'flame' | 'bot' | 'plus' | 'reset';
+	type Name = 'inbox' | 'work' | 'team' | 'sun' | 'moon' | 'coffee' | 'x' | 'check' | 'edit' | 'send' | 'coin' | 'star' | 'flame' | 'bot' | 'plus' | 'reset' | 'pause' | 'play' | 'door';
 	let { name, size = 18 }: { name: Name; size?: number } = $props();
 	const P: Record<Name, string> = {
 		inbox: 'M3 11h4l1.5 2.5h3L13 11h4M3 11l2-6h10l2 6v5H3z',
@@ -18,7 +18,10 @@
 		flame: 'M10 17.5c3 0 5-2 5-4.8 0-3.2-2.6-4.6-3.4-8.2-1.8 1.4-2.6 3.2-2.6 4.8-.9-.7-1.5-1.7-1.7-2.8C5.8 8 5 9.8 5 12.7c0 2.8 2 4.8 5 4.8z',
 		bot: 'M4 7h12v8H4zM10 4v3M7.5 11h.01M12.5 11h.01M8 13.5h4M2 10v3M18 10v3',
 		plus: 'M10 4v12M4 10h12',
-		reset: 'M4 10a6 6 0 1 0 1.8-4.3M4 3.5v3h3'
+		reset: 'M4 10a6 6 0 1 0 1.8-4.3M4 3.5v3h3',
+		pause: 'M7 4.5v11M13 4.5v11',
+		play: 'M6.5 4.5l9 5.5-9 5.5z',
+		door: 'M5 17V3h9v14M3 17h14M11 10.5h.01'
 	};
 </script>
 

@@ -206,3 +206,68 @@ export const CAT = [
 	'..oooooooooooo.',
 	'...............'
 ].map((r) => r.padEnd(15, '.').slice(0, 15));
+
+/* ─────────── клієнти: стать і стиль з брифу ─────────── */
+
+export const CLIENT_F_BODY = [
+	'.....hhhhhh.....',
+	'....hHHHHHHh....',
+	'...hHHLHHHHHh...',
+	'..hHHHHHHHHHHh..',
+	'..hHHHHHHHHHHh..',
+	'..hHSSSSSSSSHh..',
+	'..hSSSSSSSSSSh..',
+	'..hSEESSSSEESh..',
+	'..hSSSSssSSSSh..',
+	'.hhSKSSSSSSKShh.',
+	'.hhSSSMMMMSSShh.',
+	'.hh.sSSSSSSs.hh.',
+	'.hh..sSSSSs..hh.',
+	'.hhA..sSSs..Ahh.',
+	'....CCCTTCCC....',
+	'...CCCCTTCCCC...',
+	'..CCCCCTTCCCCC..',
+	'..CCCCCTTCCCCC..',
+	'.SCCCCCTTCCCCCS.',
+	'.SCCCCCCCCCCCQS.',
+	'..cCCCCCCCCCCc..',
+	'...PPPPPPPPPP...',
+	'...PPPPPPPPPP...',
+	'...PPPPPPPPPP...',
+	'....PPPPPPPP....'
+];
+
+export const CLIENT_F_LEGS: [string[], string[]] = [
+	['.....SS..SS.....', '.....SS..SS.....', '.....SS..SS.....', '.....ss..ss.....', '.....SS..SS.....', '....BBB..BBB....', '.....b....b.....'],
+	['.....SS...SS....', '....SS....SS....', '....SS.....SS...', '....ss.....ss...', '...SS.......SS..', '..BBB.......BBB.', '...b.........b..']
+];
+
+type Look = 'leather' | 'suit' | 'casual' | 'creative' | 'farmer' | 'sport';
+
+/** Одяг за стилем: C — верх, c — тінь, T — центр (сорочка, краватка, принт), P — низ, B — взуття. */
+const LOOKS: Record<Look, Record<string, string>> = {
+	leather: { C: '#2a2a30', c: '#1d1d22', A: '#f0c23b', T: '#c8463a', P: '#2f3340', p: '#23262f', B: '#18181c', b: '#0e0e10' },
+	suit: { C: '#2f3f6a', c: '#22305a', A: '#d8d8d8', T: '#f2f2f2', P: '#2f3f6a', p: '#22305a', B: '#1c1414', b: '#100a0a' },
+	casual: { C: '#7a8f5a', c: '#5e7044', A: '#d8c8a0', T: '#e8e0cc', P: '#3f5a8a', p: '#2f4670', B: '#6a4a32', b: '#4a3020' },
+	creative: { C: '#d0486a', c: '#a8344f', A: '#9fe0ff', T: '#f0c23b', P: '#2a2a30', p: '#1d1d22', B: '#f2f2f2', b: '#c8c8c8' },
+	farmer: { C: '#a85a3a', c: '#7e3f28', A: '#e8d8b0', T: '#e8d8b0', P: '#4a5a3a', p: '#36442a', B: '#5a3a22', b: '#3a2414' },
+	sport: { C: '#2f6fae', c: '#22548a', A: '#ffffff', T: '#ffffff', P: '#2f6fae', p: '#22548a', B: '#f2f2f2', b: '#bdbdbd' }
+};
+
+const HAIR_F: Record<Look, [string, string, string]> = {
+	leather: ['#2a1a14', '#3d281e', '#5a3c2c'],
+	suit: ['#5a3a22', '#7a5032', '#a8784a'],
+	casual: ['#8a5a32', '#b07a44', '#d8a868'],
+	creative: ['#8a2a5a', '#c04a86', '#e88ab8'],
+	farmer: ['#6a4a2a', '#8a6a3a', '#b08a5a'],
+	sport: ['#c8a050', '#e8c070', '#fff0b0']
+};
+
+export function clientSprite(gender: 'm' | 'f', look: Look) {
+	const skin = { S: '#f0b98f', s: '#d39a72', K: '#f08a8a', E: '#2b2420' };
+	if (gender === 'f') {
+		const [h, H, L] = HAIR_F[look];
+		return { body: CLIENT_F_BODY, legs: CLIENT_F_LEGS, pal: { outline: '#22161a', ...skin, h, H, L, M: '#c8344a', Q: '#5a8fd8', ...LOOKS[look] } };
+	}
+	return { body: BODY.client, legs: LEGS.client, pal: { ...PALETTE.client, ...LOOKS[look] } };
+}

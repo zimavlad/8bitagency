@@ -1,9 +1,17 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ROLES, type Brief, type GameState, type RunState } from '$lib/types';
+import { ROLES, type Brief, type BriefForm, type GameState, type Ledger, type RunState } from '$lib/types';
+import { log } from '../log';
 import type { ModelClient } from '../model/client';
+import type { ImageModel } from '../model/images';
 import { customBrief, inboxFor } from './briefs';
 import { Run, type Models } from './run';
+
+/** Стартові баланси, які Влад назвав 04.10.2026; далі він вводить нові з консолей. */
+const START_LEDGER = (): Ledger => ({
+	claude: { usd: 2.2, at: '2026-10-04', spent: 0 },
+	gemini: { usd: 5, at: '2026-10-04', spent: 0 }
+});
 
 /** Зарплати трьох і оренда за день. */
 export const DAILY_COST = 6000;
@@ -20,7 +28,8 @@ export function newGame(): GameState {
 		inbox: inboxFor(1, START_REP),
 		history: [],
 		activeRun: null,
-		bankrupt: false
+		bankrupt: false,
+		ledger: START_LEDGER()
 	};
 }
 
@@ -36,7 +45,7 @@ export class Game {
 	private listeners = new Map<string, Set<Listener>>();
 	private counter = 0;
 
-	constructor(private o: { dataDir: string; model: ModelClient; models: Models }) {
+	constructor(private o: { dataDir: string; model: ModelClient; images: ImageModel; models: Models }) {
 		this.state = this.load();
 		// Бриф з минулого запуску сервера не відновлюється — звільняємо слот.
 		if (this.state.activeRun) {
@@ -49,13 +58,46 @@ export class Game {
 		return this.o.model.demo;
 	}
 
+	get imagesDemo() {
+		return this.o.images.demo;
+	}
+
+	/** Влад вводить залишок з консолі — від цієї миті витрати рахуються заново. */
+	setBalance(provider: 'claude' | 'gemini', usd: number): string | null {
+		if (!Number.isFinite(usd) || usd < 0 || usd > 100000) return 'Невірна сума.';
+		this.state.ledger[provider] = { usd: Math.round(usd * 100) / 100, at: new Date().toISOString().slice(0, 10), spent: 0 };
+		this.save();
+		return null;
+	}
+
+	private spend(provider: 'claude' | 'gemini', usd: number) {
+		if (!usd) return;
+		this.state.ledger[provider].spent += usd;
+		this.dirty = true;
+	}
+
+	private dirty = false;
+
+	/** Повний запис прогону: стан, усі запити й відповіді моделей — щоб розбирати, що агенти думали. */
+	private archive(run: Run) {
+		try {
+			const dir = join(this.o.dataDir, 'runs');
+			mkdirSync(dir, { recursive: true });
+			writeFileSync(join(dir, `${run.id}.json`), JSON.stringify({ saved: new Date().toISOString(), state: run.state, trace: run.trace }, null, 1));
+		} catch (e) {
+			log('error', 'archive_failed', { run: run.id, msg: String(e).slice(0, 200) });
+		}
+	}
+
 	private file() {
 		return join(this.o.dataDir, 'save.json');
 	}
 
 	private load(): GameState {
 		try {
-			return { ...newGame(), ...(JSON.parse(readFileSync(this.file(), 'utf8')) as GameState) };
+			const s = { ...newGame(), ...(JSON.parse(readFileSync(this.file(), 'utf8')) as GameState) };
+			s.ledger = { ...START_LEDGER(), ...(s.ledger ?? {}) };
+			return s;
 		} catch {
 			return newGame();
 		}
@@ -81,6 +123,10 @@ export class Game {
 
 	private notify(run: Run) {
 		for (const fn of this.listeners.get(run.id) ?? []) fn(run.state);
+		if (this.dirty) {
+			this.dirty = false;
+			this.save();
+		}
 	}
 
 	/** Хто з команди вигорів повністю — без відпочинку новий бриф не взяти. */
@@ -88,41 +134,50 @@ export class Game {
 		return ROLES.filter((r) => this.state.burnout[r] >= 100);
 	}
 
-	start(input: { briefId?: string; custom?: { text: string; business: string } }): { run?: Run; error?: string } {
+	start(input: { briefId?: string; custom?: BriefForm }): { run?: Run; error?: string } {
 		if (this.state.bankrupt) return { error: 'Агенція збанкрутувала. Почни нову гру.' };
 		if (this.state.activeRun && this.runs.get(this.state.activeRun)?.state.phase !== 'done') return { error: 'Спершу закінчи поточний бриф.' };
 		if (this.burnedOut().length) return { error: 'Хтось у команді вигорів. Дай людям вихідний.' };
 
 		let brief: Brief | undefined;
 		if (input.custom) {
-			const text = input.custom.text.trim();
-			if (text.length < 15) return { error: 'Бриф закороткий: напиши хоч речення, що за бізнес і що треба.' };
-			if (text.length > 1200) return { error: 'Бриф задовгий, до 1200 знаків.' };
-			brief = customBrief(text, input.custom.business.slice(0, 120), this.state.day);
+			const f = input.custom;
+			const total = Object.values(f).join('').trim().length;
+			if (f.business.trim().length < 3) return { error: 'Напиши, що за бізнес.' };
+			if (total < 25) return { error: 'Бриф закороткий: додай цілі або побажання.' };
+			if (total > 1500) return { error: 'Бриф задовгий, до 1500 знаків разом.' };
+			brief = customBrief(f, this.state.day);
 		} else brief = this.state.inbox.find((b) => b.id === input.briefId);
 		if (!brief) return { error: 'Такого брифу нема у вхідних.' };
 
 		const id = `r${Date.now().toString(36)}${(++this.counter).toString(36)}`;
 		const run = new Run(id, brief, {
 			model: this.o.model,
+			images: this.o.images,
 			models: this.o.models,
 			dataDir: this.o.dataDir,
 			burnout: { ...this.state.burnout },
 			onChange: (r) => this.notify(r),
-			onFinish: (r) => this.settle(r)
+			onFinish: (r) => this.settle(r),
+			onSpend: (p, usd) => this.spend(p, usd)
 		});
 		this.runs.set(id, run);
 		this.state.activeRun = id;
 		this.state.inbox = this.state.inbox.filter((b) => b.id !== brief!.id);
 		this.save();
+		log('info', 'run_start', { run: id, brief: brief.id, custom: !!brief.custom, client: brief.client.name, business: brief.client.business });
 		run.start();
 		return { run };
 	}
 
 	/** Підсумок брифу: гроші, репутація, втома, новий день. */
 	private settle(run: Run) {
+		this.archive(run);
 		const res = run.state.result;
-		if (!res) return;
+		if (!res) {
+			this.save();
+			return;
+		}
 		const s = this.state;
 		s.money += res.paid - DAILY_COST;
 		s.reputation = Math.max(0, Math.min(100, s.reputation + res.repDelta));

@@ -12,7 +12,7 @@ export function GET({ params, request }) {
 		start(c) {
 			const send = () => {
 				try {
-					c.enqueue(enc.encode(`data: ${JSON.stringify({ state: run.state, editsLeft: run.editsLeft() })}\n\n`));
+					c.enqueue(enc.encode(`data: ${JSON.stringify({ state: run.state })}\n\n`));
 				} catch {
 					off();
 				}

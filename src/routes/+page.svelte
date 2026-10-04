@@ -2,12 +2,13 @@
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { Live } from '$lib/live.svelte';
 	import type { Sky } from '$lib/scene/office';
-	import { ROLE_NAME } from '$lib/types';
+	import { ROLE_NAME, type Role } from '$lib/types';
 	import Icon from '$lib/components/Icon.svelte';
 	import Inbox from '$lib/components/Inbox.svelte';
 	import Num from '$lib/components/Num.svelte';
 	import Scene from '$lib/components/Scene.svelte';
 	import Team from '$lib/components/Team.svelte';
+	import Thoughts from '$lib/components/Thoughts.svelte';
 	import Work from '$lib/components/Work.svelte';
 
 	let { data } = $props();
@@ -18,6 +19,23 @@
 	let hour = $state(new Date().getHours() + new Date().getMinutes() / 60);
 	let sky = $state<Sky>('clear');
 	let wide = $state(true);
+	let away = $state(false);
+	let restNote = $state('');
+	let open = $state<Role | 'client' | null>(null);
+
+	/** Вихідний: усі виходять у двері, офіс порожніє, наступного ранку повертаються. */
+	async function dayOff() {
+		away = true;
+		restNote = 'Команда пішла на вихідний';
+		await new Promise((r) => setTimeout(r, 2600));
+		const ok = await live.gameAction({ action: 'rest' });
+		restNote = ok ? 'Офіс порожній. Ранок нового дня…' : '';
+		await new Promise((r) => setTimeout(r, 1800));
+		away = false;
+		restNote = ok ? 'Повернулись відпочилими' : '';
+		await new Promise((r) => setTimeout(r, 2200));
+		restNote = '';
+	}
 
 	// Коли береш бриф — одразу показуємо роботу.
 	$effect(() => {
@@ -71,13 +89,15 @@
 			<span class="kpi" title="День"><span class="faint dw">день</span> <span class="num">{g.day}</span></span>
 			<span class="kpi" title="Гроші"><Icon name="coin" size={16} /><Num value={g.money} width={7} suffix=" ₴" /></span>
 			<span class="kpi" title="Репутація в індустрії"><Icon name="star" size={16} /><Num value={g.reputation} width={3} /></span>
+			<span class="kpi bal" title="Орієнтовний залишок на рахунках API"><span class="faint">Claude</span> <span class="num">${Math.max(0, g.ledger.claude.usd - g.ledger.claude.spent).toFixed(2)}</span> <span class="faint">Gemini</span> <span class="num">${Math.max(0, g.ledger.gemini.usd - g.ledger.gemini.spent).toFixed(2)}</span></span>
 		</div>
 		<button class="btn ghost sm theme" onclick={toggleTheme} aria-label="Змінити тему"><Icon name={theme === 'dark' ? 'sun' : 'moon'} size={16} /></button>
 	</header>
 
 	<main class="main">
 		<div class="scene">
-			<Scene run={live.run} {hour} {sky} bubbles={wide} />
+			<Scene run={live.run} {hour} {sky} bubbles={wide} {away} onPick={(w) => (open = w)} />
+			{#if restNote}<div class="rest rise">{restNote}</div>{/if}
 		</div>
 		{#if !wide}
 			<div class="dialog" aria-live="polite">
@@ -102,7 +122,7 @@
 					<div class="panel bankrupt">
 						<h2>Агенція збанкрутувала</h2>
 						<p class="muted">Гроші скінчились. Таке буває навіть з чесними агенціями.</p>
-						<button class="btn primary" onclick={() => live.game_('reset')}>Нова гра</button>
+						<button class="btn primary" onclick={() => live.gameAction({ action: 'reset' })}>Нова гра</button>
 					</div>
 				{/if}
 				{#if tab === 'inbox'}
@@ -115,12 +135,14 @@
 						<button class="btn primary" onclick={() => (tab = 'inbox')}>До брифів</button>
 					{/if}
 				{:else}
-					<Team {live} />
+					<Team {live} onRest={dayOff} onOpen={(r) => (open = r)} />
 				{/if}
 				{#if live.error && tab !== 'work'}<p class="err">{live.error}</p>{/if}
 			</div>
 		</aside>
 	</main>
+
+	{#if open}<Thoughts who={open} run={live.run} onClose={() => (open = null)} />{/if}
 
 	{#if !wide}
 		<nav class="tabs-bottom">
@@ -179,7 +201,28 @@
 		display: grid;
 		grid-template-rows: auto auto 1fr;
 	}
+	.rest {
+		position: absolute;
+		left: 50%;
+		top: 12px;
+		transform: translateX(-50%);
+		padding: 6px 12px;
+		border-radius: 999px;
+		background: var(--surface-2);
+		border: 1px solid var(--line-hi);
+		font-size: 13px;
+		white-space: nowrap;
+	}
+	.bal {
+		gap: 4px;
+	}
+	@media (max-width: 640px) {
+		.bal {
+			display: none;
+		}
+	}
 	.scene {
+		position: relative;
 		height: min(calc((100vw - 32px) * 270 / 358), 46dvh);
 		min-height: 220px;
 		margin: 12px 16px 0;

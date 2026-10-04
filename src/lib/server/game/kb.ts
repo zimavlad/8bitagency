@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 import type { Role } from '$lib/types';
+import { log } from '../log';
 
 /**
  * База знань Джіпітенка. Файли лежать у <DATA_DIR>/knowledge/<роль>/ — PDF, MD, TXT.
@@ -100,12 +101,12 @@ export async function indexFor(dataDir: string, role: Role): Promise<Index> {
 		try {
 			chunks.push(...chunkText(await readAny(join(dir, f)), f));
 		} catch {
-			console.log(JSON.stringify({ ev: 'kb_file_failed', role, file: f }));
+			log('warn', 'kb_file_failed', { role, file: f });
 		}
 	}
 	const index = buildIndex(chunks, signature);
 	cache.set(dir, index);
-	console.log(JSON.stringify({ ev: 'kb_loaded', role, files: files.length, chunks: chunks.length }));
+	log('info', 'kb_loaded', { role, files: files.length, chunks: chunks.length });
 	return index;
 }
 

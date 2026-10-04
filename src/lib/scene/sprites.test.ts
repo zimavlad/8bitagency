@@ -14,3 +14,19 @@ describe('спрайти', () => {
 		}
 	});
 });
+
+import { clientSprite } from './sprites';
+
+describe('клієнти', () => {
+	it.each([['m', 'suit'], ['f', 'creative'], ['f', 'sport'], ['m', 'farmer']] as const)('%s/%s: 16×32 і всі кольори є', (g, look) => {
+		const c = clientSprite(g, look);
+		for (const legs of c.legs) {
+			const rows = [...c.body, ...legs];
+			expect(rows).toHaveLength(32);
+			for (const r of rows) {
+				expect(r).toHaveLength(16);
+				for (const ch of r) if (ch !== '.') expect((c.pal as Record<string, string>)[ch], `«${ch}»`).toBeTruthy();
+			}
+		}
+	});
+});
