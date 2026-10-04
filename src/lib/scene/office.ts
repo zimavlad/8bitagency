@@ -750,7 +750,7 @@ export class Office {
 		// Глибина столу — по його центру: хто стоїть спереду (клієнт, дизайнер), малюється поверх, хто ззаду — під ним.
 		add(2.2 + 3.6 + 1.2 + 0.8, () => this.meetingTable(2.2, 3.6));
 		add(6.5 + 3.9 + 1.4 + 1.05, () => this.coffeeCorner(6.5, 3.9));
-		add(2.9 + 5.05, () => this.cat(2.9, 5.05));
+		// кіт під столом прибраний: перемалюємо, коли буде нормальний спрайт
 		add(7.4 + 2.6, () => { this.shadowUnder(7.3, 2.35, 0.62, 0.62); this.box(7.3, 2.35, 0.62, 0.62, 13, '#d9b98c', '#b4936a', '#a17f58'); this.qH(7.3, 2.62, 7.92, 2.7, 13, '#c8a26a'); });
 		list.sort((a, b) => a.depth - b.depth).forEach((o) => o.fn());
 		if (this.input.gptFor) this.gptHologram(this.input.gptFor);
