@@ -126,6 +126,96 @@ export const BODY: Record<SpriteId, string[]> = {
 	]
 };
 
+/**
+ * Зі спини — коли сидять за столом обличчям до ноутбука. Ноги ховає спинка крісла, тому тільки тіло.
+ */
+export const BACK: Record<'strategist' | 'copywriter' | 'designer', string[]> = {
+	// хвостики, бузкове волосся, синій матроський комір з білою смужкою
+	strategist: [
+		'.....hhhhhh.....',
+		'...hhHHHHHHhh...',
+		'..hHHLLHHHHHHh..',
+		'..hHLHHHHHHHHh..',
+		'.hHHHHHHHHHHHHh.',
+		'hHhHHHHHHHHHHhHh',
+		'hHhHHHHHHHHHHhHh',
+		'hHhHHHHHHHHHHhHh',
+		'hHhHHHHHHHHHHhHh',
+		'hHhhHHHHHHHHhhHh',
+		'hHh.hHHHHHHh.hHh',
+		'.Hh..hhhhhh..hH.',
+		'.Hh...sSSs...hH.',
+		'.hh..AAAAAA..hh.',
+		'h..AAWWWWWWAA..h',
+		'...CAAAAAAAAC...',
+		'..CCCAAAAAACCC..',
+		'..SCCCAAAACCCS..',
+		'..SCCCCCCCCCCS..',
+		'..sCCCCCCCCccs..',
+		'..sCCCCCCCCccs..',
+		'...PPPPPPPPPP...',
+		'..PPpPPpPPpPPp..',
+		'..PpPPpPPpPPpP..',
+		'..PPPPPPPPPPPP..'
+	],
+	// гірчична біні, коротка потилиця, дужка навушників, бірюзовий кардиган
+	copywriter: [
+		'.....bbbbbb.....',
+		'....bBBBBBBb....',
+		'...bBBLBBBBBb...',
+		'...bBBBBBBBBb...',
+		'...rrrrrrrrrr...',
+		'...hhhhhhhhhh...',
+		'..WhhhhhhhhhhW..',
+		'...hhhhhhhhhh...',
+		'...ShhhhhhhhS...',
+		'...ShhhhhhhhS...',
+		'....hhhhhhhh....',
+		'....sSSSSSSs....',
+		'.....sSSSSs.....',
+		'......sSSs......',
+		'....CCCCCCCC....',
+		'..CCCCCCCCCCCC..',
+		'.CCCCCCCCCCCCCC.',
+		'.CCCCCCCCCCCCCc.',
+		'.SCCCCCCCCCCCcS.',
+		'.SCCCCCCCCCCCcS.',
+		'..cCCCCCCCCCcc..',
+		'...PPPPPPPPPP...',
+		'...PPPPppPPPP...',
+		'...PPPp..pPPP...',
+		'...PPP....PPP...'
+	],
+	// довге темне волосся на плечі, капюшон худі
+	designer: [
+		'.....hhhhhh.....',
+		'...hhHHHHHHhh...',
+		'..hHHLHHHHHHHh..',
+		'..hHLHHHHHHHHh..',
+		'.hHHHHHHHHHHHHh.',
+		'.hHHHHHHHHHHHHh.',
+		'.hHHHHHHHHHHHHh.',
+		'.hHHHHHHHHHHHHh.',
+		'.hHHHHHHHHHHHHh.',
+		'.hHHHHHHHHHHHHh.',
+		'.hHHHHHHHHHHHHh.',
+		'.hhHHHHHHHHHHhh.',
+		'.hhhHHHHHHHHhhh.',
+		'.hhhhhhhhhhhhhh.',
+		'.hhCCcHHHHcCChh.',
+		'.CCCCcchhccCCCC.',
+		'CCCCCCccccCCCCCC',
+		'CCCCCCCCCCCCCCCc',
+		'SCCCCCCCCCCCCCcS',
+		'SCCCCCCCCCCCCCcS',
+		'.cCCCCCCCCCCCCc.',
+		'..PPPPPPPPPPPP..',
+		'..PPpPPPPPPpPP..',
+		'..PPpPP..PPpPP..',
+		'...PPP....PPP...'
+	]
+};
+
 export const LEGS: Record<SpriteId, [string[], string[]]> = {
 	strategist: [
 		['....SS....SS....', '....SS....SS....', '....WW....WW....', '....WW....WW....', '....WW....WW....', '...BBB....BBB...', '...bbb....bbb...'],

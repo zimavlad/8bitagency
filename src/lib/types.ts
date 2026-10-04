@@ -232,7 +232,7 @@ export type RunPhase =
 	| 'done'
 	| 'failed';
 
-export type Spot = 'desk' | 'table' | 'board' | 'coffee' | 'away';
+export type Spot = 'desk' | 'table' | 'board' | 'coffee' | 'away' | 'armchair';
 
 export interface AgentView {
 	status: 'idle' | 'thinking' | 'gpt' | 'done' | 'tired';

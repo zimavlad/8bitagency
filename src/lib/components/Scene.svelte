@@ -80,8 +80,24 @@
 		return g && g.to ? g.to : null;
 	});
 
+	/**
+	 * Іноді хтось бере ноут і працює в кріслі біля вікна: на кожному кроці один з трьох (або ніхто),
+	 * лише той, хто зараз думає за своїм столом.
+	 */
+	const lounge = $derived.by((): Role | null => {
+		if (!run) return null;
+		const key = `${run.id}:${run.phase}:${run.task?.done ?? 0}`;
+		let h = 0;
+		for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+		const r = ([...ROLES, null, null] as (Role | null)[])[h % 5];
+		return r && run.agents[r].spot === 'desk' && run.agents[r].status === 'thinking' ? r : null;
+	});
+	const agents = $derived(
+		run ? (Object.fromEntries(ROLES.map((r) => [r, r === lounge ? { ...run!.agents[r], spot: 'armchair' as const } : run!.agents[r]])) as RunState['agents']) : null
+	);
+
 	const input = $derived<SceneInput>({
-		agents: run?.agents ?? {
+		agents: agents ?? {
 			strategist: { spot: 'desk', status: 'idle', burnout: 0 },
 			copywriter: { spot: 'desk', status: 'idle', burnout: 0 },
 			designer: { spot: 'desk', status: 'idle', burnout: 0 }
