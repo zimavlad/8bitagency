@@ -18,8 +18,8 @@ it.skipIf(!(process.env.LIVE_CLAUDE && process.env.ANTHROPIC_API_KEY))('повн
 	await wait(() => run.state.phase === 'player_core');
 	const tCore = Date.now() - t0;
 	expect(run.decide({ action: 'edit', notes: ['слоган сміливіше', '', 'щоб зрозумів пенсіонер'] })).toBeNull();
-	await wait(() => run.state.phase === 'player_core');
-	run.decide({ action: 'submit' });
+	await wait(() => run.state.phase === 'player_core' && !run.state.editAvailable);
+	expect(run.decide({ action: 'submit' })).toBeNull();
 	// клієнт: щоразу пробуємо ще коло, поки не скаже так або ні
 	for (;;) {
 		await wait(() => ['client_decision_core', 'client_decision_content', 'player_content', 'done'].includes(run.state.phase));
