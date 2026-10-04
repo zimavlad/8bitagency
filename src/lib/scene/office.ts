@@ -716,22 +716,32 @@ export class Office {
 		for (let gy = 3.35; gy < 5.7; gy += 0.12) { const p = s(5.1, gy); this.px(p.x, p.y, 2, 1, '#f2d9b0'); const q = s(1.9, gy); this.px(q.x - 2, q.y, 2, 1, '#f2d9b0'); }
 	}
 
-	private cushion(r: Role) {
-		return r === 'strategist' ? '#c76b9a' : r === 'copywriter' ? '#3f8f88' : '#5f6672';
+	/** Офісне крісло як у референсі: бузкові подушки з темним кантом, сірий газліфт, хрестовина з коліщатами. */
+	private chairSeat(_r: Role, cx: number, cy: number) {
+		const P = { pad: '#b9bff2', padHi: '#e2e5ff', padLo: '#7f86d6', metal: '#9aa0b4', metalLo: '#5f6578', ink: '#151a22' };
+		// хрестовина: чотири промені й коліщата
+		for (const [dx, dy] of [[-0.22, 0], [0.22, 0], [0, -0.2], [0, 0.2]] as const) {
+			this.line([at(cx, cy, 1), at(cx + dx, cy + dy, 1)], P.metalLo, 2);
+			const w = at(cx + dx, cy + dy, 0);
+			this.px(w.x - 1, w.y - 1, 3, 2, P.ink);
+		}
+		const pole = at(cx, cy, 1);
+		this.px(pole.x - 1, pole.y - 7, 2, 7, P.metal);
+		this.px(pole.x, pole.y - 7, 1, 7, P.metalLo);
+		// сидіння: тонка подушка
+		this.boxAt(cx - 0.2, cy - 0.18, 0.4, 0.36, 7, 9, P.pad, P.padLo, P.padLo, P.padHi, P.ink);
 	}
-	/** Офісне крісло перед столом: ніжка, сидіння (людина сідає зверху). */
-	private chairSeat(r: Role, cx: number, cy: number) {
-		const gx = cx - 0.22, gy = cy - 0.2;
-		this.box(gx + 0.18, gy + 0.16, 0.08, 0.08, 7, C.metalDk, C.metalDk, C.metalDk, false);
-		const f = at(gx + 0.22, gy + 0.2, 0);
-		this.px(f.x - 6, f.y, 13, 1, C.metalDk);
-		this.box(gx, gy, 0.44, 0.4, 8, this.cushion(r), C.woodDk, C.woodDkr);
-	}
-	/** Спинка крісла з нашого боку: ховає спину й ноги того, хто сидить. */
-	private chairBack(r: Role, cx: number, cy: number) {
-		const gx = cx - 0.22, gy = cy - 0.2;
-		this.box(gx + 0.19, gy + 0.38, 0.06, 0.06, 8, C.metalDk, C.metalDk, C.metalDk, false);
-		this.boxAt(gx + 0.04, gy + 0.36, 0.36, 0.07, 8, 14, this.cushion(r), C.woodDk, this.cushion(r), 'rgba(255,240,210,.35)', C.ink);
+	/** Спинка з нашого боку: овальна подушка на тонкій ніжці. */
+	private chairBack(_r: Role, cx: number, cy: number) {
+		const P = { pad: '#b9bff2', padHi: '#e2e5ff', padLo: '#7f86d6', metal: '#5f6578', ink: '#151a22' };
+		const st = at(cx, cy + 0.2, 9);
+		this.px(st.x - 1, st.y - 3, 2, 3, P.metal);
+		const gx = cx - 0.17, gy = cy + 0.2;
+		this.qFace(gx, gx + 0.34, gy, 11, 19, P.pad);
+		this.qFace(gx, gx + 0.04, gy, 11, 19, P.padHi);
+		this.qFace(gx + 0.28, gx + 0.34, gy, 11, 19, P.padLo);
+		this.qFace(gx, gx + 0.34, gy, 11, 12, P.padLo);
+		this.line([at(gx, gy, 11), at(gx, gy, 19), at(gx + 0.34, gy, 19), at(gx + 0.34, gy, 11)], P.ink, 1, true);
 	}
 
 	private desk(r: Role, gx: number, gy: number) {
