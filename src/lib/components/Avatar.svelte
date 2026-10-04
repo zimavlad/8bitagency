@@ -25,8 +25,7 @@
 	canvas {
 		image-rendering: pixelated;
 		background: var(--surface-3);
-		border: 1px solid var(--line);
-		border-radius: 8px;
+		border: 2px solid #120a06;
 		flex: 0 0 auto;
 	}
 </style>

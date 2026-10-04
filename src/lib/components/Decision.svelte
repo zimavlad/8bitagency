@@ -1,0 +1,317 @@
+<script lang="ts">
+	import { Live } from '$lib/live.svelte';
+	import { CONTENT, EDIT_SLOTS, ELEMENT_TITLE, MAX_CLIENT_ROUNDS, ROLE_NAME, ROLES, type ClientVerdict } from '$lib/types';
+	import Avatar from './Avatar.svelte';
+	import Bar from './Bar.svelte';
+	import Icon from './Icon.svelte';
+	import Modal from './Modal.svelte';
+	import PixelLogo from './PixelLogo.svelte';
+
+	/**
+	 * Вікна рішень гравця поверх офісу: вибір назви, зведення перед клієнтом, вердикт клієнта, оплата.
+	 * Вікно можна згорнути й подивитись на офіс — тоді над сценою кнопка «Твій хід».
+	 * Вердикт клієнта зʼявляється після його реплік над головою (talk мс), щоб їх встигнути прочитати.
+	 */
+	let { live, talk = 0, minimized = $bindable(false), waiting = $bindable(false), onDone }: { live: Live; talk?: number; minimized?: boolean; waiting?: boolean; onDone: () => void } = $props();
+	const run = $derived(live.run!);
+	const key = $derived(Live.key(run));
+	const phase = $derived(run.phase);
+	const v = $derived<ClientVerdict | undefined>(run.verdicts.at(-1));
+	const name = $derived(run.brief.client.name);
+
+	// Нове рішення — нове вікно: розгортаємо, скидаємо правки.
+	let lastKey = '';
+	let editing = $state(false);
+	let notes = $state<string[]>(Array(EDIT_SLOTS).fill(''));
+	let ready = $state(true);
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	$effect(() => {
+		if (key === lastKey) return;
+		lastKey = key;
+		minimized = false;
+		editing = false;
+		notes = Array(EDIT_SLOTS).fill('');
+		clearTimeout(timer);
+		const verdict = phase === 'client_decision_core' || phase === 'client_decision_content';
+		ready = !verdict || !talk;
+		if (!ready) timer = setTimeout(() => (ready = true), talk);
+	});
+
+	const sent = $derived(live.sent === key);
+	const kind = $derived(
+		phase === 'pick_name' ? 'pick' : phase === 'player_core' || phase === 'player_content' ? 'review' : phase === 'client_decision_core' || phase === 'client_decision_content' ? 'verdict' : phase === 'done' && run.result ? 'result' : null
+	);
+	const visible = $derived(!!kind && !sent && !minimized && (kind !== 'verdict' || ready));
+	$effect(() => {
+		waiting = !!kind && !sent && (kind !== 'verdict' || ready);
+	});
+
+	const s = $derived(run.strategy);
+	const e = $derived(run.elements);
+	const roundsLeft = $derived(v ? MAX_CLIENT_ROUNDS - v.round : 0);
+	const fmt = (n: number) => n.toLocaleString('uk-UA');
+	const sign = (n: number) => (n > 0 ? `+${n}` : `${n}`);
+
+	async function sendEdits() {
+		if (await live.act({ action: 'edit', notes })) editing = false;
+	}
+</script>
+
+{#if visible}
+	{#if kind === 'pick'}
+		<Modal title="Обери назву й слоган" onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
+			<p class="muted">Копірайтер приніс три варіанти. Під обраний дизайнер малюватиме знак. Решта лишаться в історії етапу.</p>
+			{#each run.options as o, i}
+				<button class="opt paper" disabled={live.busy} onclick={() => live.act({ action: 'pick', index: i })}>
+					<span class="on">{o.name}</span>
+					<span class="os">«{o.slogan}»</span>
+					<span class="ow">{o.why}</span>
+				</button>
+			{/each}
+		</Modal>
+	{:else if kind === 'review'}
+		<Modal title={phase === 'player_core' ? 'Зведення перед клієнтом' : 'Канали перед клієнтом'} wide onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
+			{#if !editing}
+				{#if phase === 'player_core'}
+					{#if s}
+						<section class="sum paper">
+							<h3>Стратегія</h3>
+							<dl>
+								<dt>Проблема</dt><dd>{s.problem}</dd>
+								<dt>Інсайт</dt><dd>{s.insight}</dd>
+								<dt>Перевага</dt><dd>{s.advantage}</dd>
+								<dt>Напрям</dt><dd>{s.direction}</dd>
+							</dl>
+						</section>
+					{/if}
+					{#if e.positioning}
+						<section class="sum paper">
+							<h3>Позиціонування</h3>
+							<p class="big">{e.positioning.text}</p>
+							<p class="small">{e.positioning.details.join(' · ')}</p>
+							{#if e.positioning.why}<p class="why">Чому так: {e.positioning.why}</p>{/if}
+						</section>
+					{/if}
+					<section class="sum paper brandrow">
+						{#if e.logo?.logo}<PixelLogo logo={e.logo.logo} size={104} />{/if}
+						<div>
+							<h3>{e.name?.text ?? '—'}</h3>
+							<p class="big">«{e.slogan?.text ?? '—'}»</p>
+							{#if e.name?.why}<p class="why">Назва й слоган: {e.name.why}</p>{/if}
+							{#if e.logo}<p class="why">Знак: {e.logo.text}</p>{/if}
+						</div>
+					</section>
+				{:else}
+					{#each CONTENT as id}
+						{@const c = e[id]}
+						{#if c}
+							<section class="sum paper">
+								<h3>{ELEMENT_TITLE[id]}</h3>
+								{#if c.image}<img src={c.image} alt={ELEMENT_TITLE[id]} />{/if}
+								<p class="big">{c.text}</p>
+								{#if c.details.length}<ul>{#each c.details as d}<li>{d}</li>{/each}</ul>{/if}
+							</section>
+						{/if}
+					{/each}
+				{/if}
+				<div class="actions">
+					{#if run.editAvailable}
+						<button class="btn human" disabled={live.busy} onclick={() => (editing = true)}><Icon name="edit" size={16} />Дати правки</button>
+					{:else}
+						<span class="faint small">Правки на цьому етапі вже були.</span>
+					{/if}
+					<button class="btn primary" disabled={live.busy} onclick={() => live.act({ action: 'submit' })}><Icon name="send" size={16} />Показати клієнту</button>
+				</div>
+			{:else}
+				<p class="muted">До трьох правок одразу. Порожнє поле — нічого не міняти. Команда перегляне все узгоджено: зміниться позиціонування — підтягнуться назва і знак.</p>
+				{#each notes as _, i}
+					<textarea rows="2" maxlength="280" placeholder="Правка {i + 1}" bind:value={notes[i]}></textarea>
+				{/each}
+				<div class="actions">
+					<button class="btn ghost" onclick={() => (editing = false)}><Icon name="back" size={16} />Назад</button>
+					<button class="btn human" disabled={live.busy || !notes.some((n) => n.trim())} onclick={sendEdits}><Icon name="send" size={16} />Віддати правки</button>
+				</div>
+			{/if}
+		</Modal>
+	{:else if kind === 'verdict' && v}
+		<Modal title={v.verdict === 'ok' ? `${name} приймає` : v.verdict === 'reject' ? `${name} відмовляється` : `${name} хоче правок`} onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
+			{#snippet head()}<Avatar who="client" client={run.brief.client} size={48} />{/snippet}
+			<p class="faint small">{v.stage === 'core' ? 'Основа бренду' : 'Канали'} · коло {v.round} з {MAX_CLIENT_ROUNDS}</p>
+			<Bar label="Настрій" value={v.mood} kind={v.mood >= 60 ? 'hp' : 'stress'} />
+			<section class="sum paper">
+				{#each v.lines as l}<p class="quote">«{l}»</p>{/each}
+				<p class="why">{v.reaction}</p>
+			</section>
+			{#if v.demands.length}
+				<section class="sum paper">
+					<h3>Що хоче змінити</h3>
+					<ul>{#each v.demands as d}<li>{d}</li>{/each}</ul>
+				</section>
+			{/if}
+			<div class="actions">
+				{#if v.verdict === 'rework'}
+					<button class="btn danger" disabled={live.busy} onclick={() => confirm(v.stage === 'core' ? 'Кинути проєкт? Клієнт нічого не заплатить.' : 'Кинути проєкт? Отримаєш лише 60% за основу.') && live.act({ action: 'giveup' })}><Icon name="x" size={16} />Кинути проєкт</button>
+					<button class="btn human" disabled={live.busy} onclick={() => live.act({ action: 'retry' })}><Icon name="reset" size={16} />Ще коло{roundsLeft === 1 ? ' (останнє)' : ''}</button>
+				{:else if v.verdict === 'ok' && v.stage === 'core'}
+					<button class="btn primary" disabled={live.busy} onclick={() => live.act({ action: 'continue' })}><Icon name="check" size={16} />Далі: канали</button>
+				{:else}
+					<button class="btn primary" disabled={live.busy} onclick={() => live.act({ action: 'continue' })}><Icon name="coin" size={16} />До розрахунку</button>
+				{/if}
+			</div>
+		</Modal>
+	{:else if kind === 'result' && run.result}
+		{@const r = run.result}
+		<Modal title={r.verdict === 'ok' ? 'Клієнт заплатив' : r.verdict === 'reject' ? (r.paid ? 'Канали не прийняли' : 'Клієнт пішов') : 'Проєкт кинуто'} onClose={onDone}>
+			<section class="sum paper">
+				<h3>Оплата</h3>
+				<p class="small">Чек {fmt(run.brief.fee)} ₴, передплата {fmt(run.brief.prepay)} ₴</p>
+				{#each r.pay as p}<div class="row"><span>{p.label}</span><span class="num">+{fmt(p.amount)} ₴</span></div>{/each}
+				<div class="row total"><span>Разом</span><span class="num">+{fmt(r.paid)} ₴</span></div>
+			</section>
+			<div class="kpis">
+				<div><span class="label">Репутація</span><span class="num big" class:neg={r.repDelta < 0}>{sign(r.repDelta)}</span></div>
+				<div><span class="label">Якість</span><span class="num big">{r.quality}</span></div>
+			</div>
+			<section class="sum paper">
+				<h3>Команда</h3>
+				{#each ROLES as role}
+					<div class="row"><span>{ROLE_NAME[role]}</span><span class="small">стрес {sign(r.burnoutDelta[role])} · мораль {sign(r.moraleDelta[role])}</span></div>
+				{/each}
+			</section>
+			{#if r.notes.length}<ul class="notes">{#each r.notes as n}<li><span class="dot bad"></span>{n}</li>{/each}</ul>{/if}
+			<p class="faint small">Наступний день: оренда й зарплати списуються щоранку.</p>
+			<div class="actions"><button class="btn primary" onclick={onDone}><Icon name="inbox" size={16} />До брифів</button></div>
+		</Modal>
+	{/if}
+{/if}
+
+<style lang="scss">
+	.opt {
+		display: grid;
+		gap: 2px;
+		text-align: left;
+		padding: 12px 14px;
+		transition: filter var(--t);
+		&:hover:not(:disabled) {
+			filter: brightness(1.05);
+			border-image: var(--frame-gold) 3 / 3px stretch;
+		}
+	}
+	.on {
+		font-family: var(--pixel);
+		font-size: 20px;
+		font-weight: 600;
+	}
+	.os {
+		font-size: 15px;
+	}
+	.ow {
+		font-size: 13px;
+		color: #6d5236;
+	}
+	.sum {
+		padding: 10px 12px;
+		display: grid;
+		gap: 6px;
+		h3 {
+			font-size: 15px;
+		}
+		img {
+			width: 100%;
+			display: block;
+			image-rendering: pixelated;
+			border: 2px solid #3a2414;
+		}
+		ul {
+			list-style: none;
+			display: grid;
+			gap: 3px;
+			font-size: 14px;
+			li::before {
+				content: '— ';
+			}
+		}
+	}
+	dl {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		gap: 4px 10px;
+		font-size: 14px;
+		dt {
+			font-family: var(--pixel);
+			color: #94785a;
+		}
+	}
+	.big {
+		font-size: 16px;
+		font-weight: 500;
+	}
+	.small {
+		font-size: 13px;
+	}
+	.why {
+		font-size: 13px;
+		color: #6d5236;
+	}
+	.quote {
+		font-size: 15px;
+	}
+	.brandrow {
+		grid-template-columns: auto 1fr;
+		align-items: center;
+		gap: 12px;
+		h3 {
+			font-size: 22px;
+		}
+	}
+	.actions {
+		display: flex;
+		gap: 8px;
+		justify-content: flex-end;
+		flex-wrap: wrap;
+		align-items: center;
+		position: sticky;
+		bottom: 0;
+		padding-top: 4px;
+		background: var(--surface-1);
+	}
+	.row {
+		display: flex;
+		justify-content: space-between;
+		gap: 10px;
+		font-size: 14px;
+		&.total {
+			font-weight: 600;
+			border-top: 2px dashed #d8c096;
+			padding-top: 4px;
+		}
+	}
+	.kpis {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 8px;
+		div {
+			display: grid;
+		}
+	}
+	.big.num {
+		font-size: 22px;
+		&.neg {
+			color: var(--bad);
+		}
+	}
+	.notes {
+		list-style: none;
+		display: grid;
+		gap: 4px;
+		font-size: 13px;
+		li {
+			display: flex;
+			gap: 8px;
+			align-items: center;
+		}
+	}
+	textarea {
+		font-size: 15px;
+	}
+</style>

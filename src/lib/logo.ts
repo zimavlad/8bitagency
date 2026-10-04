@@ -24,23 +24,28 @@ export function normalizeLogo(raw: unknown): LogoSpec | null {
 	const r = raw as { palette?: { a?: unknown; b?: unknown }; shapes?: unknown };
 	const a = typeof r.palette?.a === 'string' && HEX.test(r.palette.a) ? r.palette.a : '#d98a63';
 	const b = typeof r.palette?.b === 'string' && HEX.test(r.palette.b) ? r.palette.b : '#2b2420';
+	const rawBg = (r.palette as { bg?: unknown } | undefined)?.bg;
+	const bg = typeof rawBg === 'string' && HEX.test(rawBg) && rawBg.toLowerCase() !== a.toLowerCase() ? rawBg : autoBg(a, b);
 	const shapes: LogoShape[] = [];
 	for (const s of Array.isArray(r.shapes) ? r.shapes.slice(0, MAX_SHAPES) : []) {
 		if (!s || typeof s !== 'object') continue;
 		const o = s as Record<string, unknown>;
 		switch (o.type) {
 			case 'rect':
-				shapes.push({ type: 'rect', x: num(o.x), y: num(o.y), w: num(o.w), h: num(o.h), r: num(o.r, 0, 50), fill: fill(o.fill) });
+				if (num(o.w) >= 1 && num(o.h) >= 1) shapes.push({ type: 'rect', x: num(o.x), y: num(o.y), w: num(o.w), h: num(o.h), r: num(o.r, 0, 50), fill: fill(o.fill) });
 				break;
-			case 'circle':
-				shapes.push({ type: 'circle', cx: num(o.cx), cy: num(o.cy), r: num(o.r, 0, 50), fill: fill(o.fill) });
+			case 'circle': {
+				// Модель іноді пише rx замість r — беремо, що дала.
+				const rad = num(o.r ?? o.rx ?? o.ry, 0, 50);
+				if (rad >= 1) shapes.push({ type: 'circle', cx: num(o.cx), cy: num(o.cy), r: rad, fill: fill(o.fill) });
 				break;
+			}
 			case 'ellipse':
-				shapes.push({ type: 'ellipse', cx: num(o.cx), cy: num(o.cy), rx: num(o.rx, 0, 50), ry: num(o.ry, 0, 50), fill: fill(o.fill) });
+				if (num(o.rx ?? o.r, 0, 50) >= 1 && num(o.ry ?? o.r, 0, 50) >= 1) shapes.push({ type: 'ellipse', cx: num(o.cx), cy: num(o.cy), rx: num(o.rx ?? o.r, 0, 50), ry: num(o.ry ?? o.r, 0, 50), fill: fill(o.fill) });
 				break;
 			case 'polygon': {
 				const pts = Array.isArray(o.points) ? o.points.slice(0, 24).map((p) => num(p)) : [];
-				if (pts.length >= 6 && pts.length % 2 === 0) shapes.push({ type: 'polygon', points: pts, fill: fill(o.fill) });
+				if (pts.length >= 6 && pts.length % 2 === 0 && area(pts) >= 4) shapes.push({ type: 'polygon', points: pts, fill: fill(o.fill) });
 				break;
 			}
 			case 'path':
@@ -48,7 +53,26 @@ export function normalizeLogo(raw: unknown): LogoSpec | null {
 				break;
 		}
 	}
-	return shapes.length ? { palette: { a, b }, shapes } : null;
+	return shapes.length ? { palette: { a, b, bg }, shapes } : null;
+}
+
+function area(p: number[]): number {
+	let s = 0;
+	for (let i = 0; i < p.length; i += 2) {
+		const j = (i + 2) % p.length;
+		s += p[i] * p[j + 1] - p[j] * p[i + 1];
+	}
+	return Math.abs(s / 2);
+}
+
+const lum = (hex: string) => {
+	const n = parseInt(hex.slice(1), 16);
+	return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+};
+
+/** Тло, на якому видно обидва кольори: світле для темних, темне для світлих. */
+export function autoBg(a: string, b: string): string {
+	return Math.min(lum(a), lum(b)) > 0.55 ? '#2b2420' : Math.max(lum(a), lum(b)) < 0.45 ? '#f6efe2' : lum(a) > 0.5 ? '#2b2420' : '#f6efe2';
 }
 
 function shapeSvg(s: LogoShape, color: string): string {
@@ -71,5 +95,6 @@ export function buildSvg(raw: LogoSpec | unknown): string {
 	const spec = normalizeLogo(raw);
 	if (!spec) return '';
 	const body = spec.shapes.map((s) => shapeSvg(s, s.fill === 'b' ? spec.palette.b : spec.palette.a)).join('');
-	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Знак">${body}</svg>`;
+	const bg = spec.palette.bg ?? autoBg(spec.palette.a, spec.palette.b);
+	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Знак"><rect width="100" height="100" fill="${bg}"/>${body}</svg>`;
 }

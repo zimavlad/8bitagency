@@ -1,20 +1,16 @@
 <script lang="ts">
 	import type { Live } from '$lib/live.svelte';
-	import { ROLE_NAME, ROLES, type Role } from '$lib/types';
+	import { DAILY_COST, ROLE_NAME, ROLES, TIER_NAME, tierOf, type Role } from '$lib/types';
+	import { PROFILE } from '$lib/team';
 	import Avatar from './Avatar.svelte';
+	import Bar from './Bar.svelte';
 	import Icon from './Icon.svelte';
-	import Num from './Num.svelte';
 
 	let { live, onRest, onOpen }: { live: Live; onRest: () => void; onOpen: (r: Role) => void } = $props();
 	const g = $derived(live.game!);
-	const run = $derived(live.run && live.run.phase !== 'done' ? live.run : null);
+	const run = $derived(live.run && live.run.phase !== 'done' && live.run.phase !== 'failed' ? live.run : null);
+	const tier = $derived(tierOf(g.reputation));
 
-	const WHO: Record<Role, { look: string; method: string }> = {
-		strategist: { look: 'мила, як з аніме, але ріже банальність', method: 'проблема → інсайт «X — це Y» → позиціонування' },
-		copywriter: { look: 'хіпстер-технар у біні', method: 'назва з ролі бренду, слоган до 6 слів' },
-		designer: { look: 'бородатий, патлатий, мовчазний', method: 'одна сильна форма, два кольори' }
-	};
-	const mood = (b: number) => (b >= 100 ? 'вигорів' : b >= 80 ? 'на межі' : b >= 50 ? 'втомлений' : b >= 25 ? 'в ресурсі' : 'бадьорий');
 
 	let editing = $state<'claude' | 'gemini' | null>(null);
 	let amount = $state('');
@@ -25,42 +21,48 @@
 </script>
 
 <section class="wrap">
-	<h2>Керування</h2>
+	<h2>Пульт</h2>
 	<div class="controls">
 		{#if run}
-			<button class="btn" onclick={() => live.act({ action: 'pause', on: !run.paused })}><Icon name={run.paused ? 'play' : 'pause'} size={16} />{run.paused ? 'Продовжити' : 'Пауза'}</button>
+			<button class="btn" class:human={run.paused} onclick={() => live.act({ action: 'pause', on: !run.paused })}><Icon name={run.paused ? 'play' : 'pause'} size={16} />{run.paused ? 'Продовжити' : 'Пауза'}</button>
 		{/if}
-		<button class="btn" disabled={!!g.activeRun || live.busy || g.bankrupt} onclick={onRest}><Icon name="door" size={16} />Вихідний <span class="faint">−35% втоми · −6 000 ₴</span></button>
+		<button class="btn" disabled={!!g.activeRun || live.busy || g.bankrupt} onclick={onRest} title={g.activeRun ? 'Посеред брифу ніхто не піде' : ''}><Icon name="door" size={16} />Вихідний</button>
 	</div>
+	<p class="faint small">Рівень {tier}: {TIER_NAME[tier]} · щодня −{DAILY_COST[tier].toLocaleString('uk-UA')} ₴ · клікай на людей і предмети в офісі</p>
 
+	<h2 class="mt">Команда</h2>
+	{#each ROLES as r}
+		{@const a = run ? run.agents[r] : { burnout: g.burnout[r], morale: g.morale[r], hp: g.hp[r], doing: 'між брифами' }}
+		<button class="member panel" onclick={() => onOpen(r)}>
+			<Avatar who={r} size={52} />
+			<div class="mb">
+				<div class="top"><span class="name">{ROLE_NAME[r]}</span><span class="faint doing">{a.doing}</span></div>
+				<Bar label="Здоровʼя" value={a.hp} kind="hp" />
+				<Bar label="Стрес" value={a.burnout} kind="stress" />
+				<Bar label="Мораль" value={a.morale} kind="morale" />
+				<p class="small bio">{PROFILE[r].bio}</p>
+				<p class="faint small"><span class="k">Сильна сторона:</span> {PROFILE[r].strong}</p>
+				<p class="faint small"><span class="k">Слабке місце:</span> {PROFILE[r].weak}</p>
+				{#if live.kb && r !== 'designer' && live.kb[r]}<p class="faint small"><span class="k">Бібліотека:</span> {live.kb[r]} книжок у базі Джіпітенка</p>{/if}
+			</div>
+		</button>
+	{/each}
+
+	<h2 class="mt">Рахунки API</h2>
 	<div class="balances">
 		{#each ['claude', 'gemini'] as const as p}
 			<div class="bal panel">
 				<span class="label">{p === 'claude' ? 'Claude' : 'Gemini'}</span>
-				<span class="num">≈ $<Num value={left(p) * 100} width={5} />¢</span>
+				<span class="num">≈ ${left(p).toFixed(2)}</span>
 				<span class="faint small">з ${g.ledger[p].usd.toFixed(2)} на {g.ledger[p].at}, витрачено ${g.ledger[p].spent.toFixed(2)}</span>
 				{#if editing === p}
-					<div class="row"><input type="text" inputmode="decimal" placeholder="залишок з консолі, $" bind:value={amount} /><button class="btn sm primary" onclick={saveBalance}>Ок</button></div>
+					<div class="row"><input type="text" inputmode="decimal" placeholder="залишок, $" bind:value={amount} /><button class="btn sm primary" onclick={saveBalance}>Ок</button></div>
 				{:else}
 					<button class="link faint" onclick={() => { editing = p; amount = ''; }}>оновити з консолі</button>
 				{/if}
 			</div>
 		{/each}
 	</div>
-
-	<h2 class="mt">Команда</h2>
-	{#each ROLES as r}
-		{@const b = run ? run.agents[r].burnout : g.burnout[r]}
-		<button class="member panel" onclick={() => onOpen(r)}>
-			<Avatar who={r} size={48} />
-			<div class="mb">
-				<div class="top"><span class="name">{ROLE_NAME[r]}</span><span class="faint lvl">{mood(b)}</span></div>
-				<div class="doing">{run ? run.agents[r].doing : 'відпочиває між брифами'}</div>
-				<div class="bar" role="meter" aria-valuenow={b} aria-valuemin={0} aria-valuemax={100} aria-label="Вигорання"><i style:width="{b}%" class:hot={b >= 80}></i></div>
-				<p class="faint small">{WHO[r].look} · {WHO[r].method}{live.kb && r !== 'designer' && live.kb[r] ? ` · прочитав(ла) ${live.kb[r]} книжок` : ''}</p>
-			</div>
-		</button>
-	{/each}
 
 	<h2 class="mt">Історія</h2>
 	{#each g.history as h}
@@ -73,7 +75,6 @@
 	{:else}
 		<p class="faint small">Ще жодного брифу.</p>
 	{/each}
-	<button class="btn ghost sm reset" onclick={() => confirm('Почати нову гру? Прогрес зітреться.') && live.gameAction({ action: 'reset' })}><Icon name="reset" size={16} />Нова гра</button>
 </section>
 
 <style lang="scss">
@@ -82,8 +83,7 @@
 		gap: 10px;
 	}
 	h2 {
-		font-size: 17px;
-		font-weight: 600;
+		font-size: 18px;
 		&.mt {
 			margin-top: 8px;
 		}
@@ -99,11 +99,11 @@
 		gap: 8px;
 	}
 	.bal {
-		padding: 10px 12px;
+		padding: 8px 10px;
 		display: grid;
 		gap: 3px;
 		.num {
-			font-size: 16px;
+			font-size: 17px;
 		}
 		input {
 			padding: 6px 8px;
@@ -114,14 +114,11 @@
 		gap: 6px;
 	}
 	.member {
-		padding: 12px;
+		padding: 10px;
 		display: flex;
 		gap: 12px;
 		text-align: left;
-		transition: border-color var(--t) var(--ease);
-		&:hover {
-			border-color: var(--line-hi);
-		}
+		align-items: flex-start;
 	}
 	.mb {
 		flex: 1;
@@ -135,32 +132,24 @@
 		align-items: baseline;
 	}
 	.name {
+		font-family: var(--pixel);
 		font-weight: 600;
-	}
-	.lvl {
-		font-size: 13px;
-		margin-left: auto;
+		font-size: 16px;
 	}
 	.doing {
-		font-size: 14px;
-	}
-	.bar {
-		height: 6px;
-		border-radius: 3px;
-		background: var(--surface-3);
-		overflow: hidden;
-		i {
-			display: block;
-			height: 100%;
-			background: var(--warn);
-			transition: width 250ms var(--ease);
-			&.hot {
-				background: var(--bad);
-			}
-		}
+		font-size: 13px;
+		margin-left: auto;
+		text-align: right;
 	}
 	.small {
-		font-size: 12px;
+		font-size: 12.5px;
+	}
+	.bio {
+		color: var(--text-2);
+	}
+	.k {
+		font-family: var(--pixel);
+		color: var(--text-2);
 	}
 	.link {
 		justify-self: start;
@@ -180,8 +169,5 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-	}
-	.reset {
-		justify-self: start;
 	}
 </style>

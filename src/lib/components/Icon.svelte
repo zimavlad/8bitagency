@@ -1,6 +1,6 @@
 <script lang="ts">
 	/** Власні svg-іконки 20×20, штрих 1.6. Emoji як іконки не вживаємо. */
-	type Name = 'inbox' | 'work' | 'team' | 'sun' | 'moon' | 'coffee' | 'x' | 'check' | 'edit' | 'send' | 'coin' | 'star' | 'flame' | 'bot' | 'plus' | 'reset' | 'pause' | 'play' | 'door';
+	type Name = 'inbox' | 'work' | 'team' | 'sun' | 'moon' | 'coffee' | 'x' | 'check' | 'edit' | 'send' | 'coin' | 'star' | 'flame' | 'bot' | 'plus' | 'reset' | 'pause' | 'play' | 'door' | 'menu' | 'pizza' | 'heart' | 'eye' | 'back';
 	let { name, size = 18 }: { name: Name; size?: number } = $props();
 	const P: Record<Name, string> = {
 		inbox: 'M3 11h4l1.5 2.5h3L13 11h4M3 11l2-6h10l2 6v5H3z',
@@ -21,8 +21,13 @@
 		reset: 'M4 10a6 6 0 1 0 1.8-4.3M4 3.5v3h3',
 		pause: 'M7 4.5v11M13 4.5v11',
 		play: 'M6.5 4.5l9 5.5-9 5.5z',
-		door: 'M5 17V3h9v14M3 17h14M11 10.5h.01'
+		door: 'M5 17V3h9v14M3 17h14M11 10.5h.01',
+		menu: 'M3.5 5.5h13M3.5 10h13M3.5 14.5h13',
+		pizza: 'M3 4.5c4.5-1.6 9.5-1.6 14 0L10 17.5zM7.5 7.5h.01M11.5 9h.01M9.5 12h.01',
+		heart: 'M10 16.5S3 12.6 3 7.8A3.6 3.6 0 0 1 10 6a3.6 3.6 0 0 1 7 1.8c0 4.8-7 8.7-7 8.7z',
+		eye: 'M2 10s3-5.5 8-5.5 8 5.5 8 5.5-3 5.5-8 5.5S2 10 2 10zM10 12.3a2.3 2.3 0 1 0 0-4.6 2.3 2.3 0 0 0 0 4.6z',
+		back: 'M12.5 4.5L7 10l5.5 5.5'
 	};
 </script>
 
-<svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={P[name]} /></svg>
+<svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true"><path d={P[name]} /></svg>

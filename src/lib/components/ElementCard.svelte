@@ -1,11 +1,9 @@
 <script lang="ts">
-	import { buildSvg } from '$lib/logo';
 	import { ELEMENT_OWNER, ELEMENT_TITLE, ROLE_NAME, type ElementValue } from '$lib/types';
+	import PixelLogo from './PixelLogo.svelte';
 
 	let { el }: { el: ElementValue } = $props();
 	let showRejected = $state(false);
-	// Розмітку знака будує наш код з чисел і hex після перевірки — модель туди тексту не пише.
-	const svg = $derived(el.logo ? buildSvg(el.logo) : '');
 </script>
 
 <article class="card panel rise">
@@ -17,8 +15,9 @@
 	{#if el.image}
 		<a href={el.image} target="_blank" rel="noopener"><img src={el.image} alt={ELEMENT_TITLE[el.id]} loading="lazy" /></a>
 	{/if}
-	{#if svg}<div class="logo">{@html svg}</div>{/if}
+	{#if el.logo}<PixelLogo logo={el.logo} size={88} />{/if}
 	<p class="main">{el.text}</p>
+	{#if el.why && el.id !== 'slogan'}<p class="why">Чому: {el.why}</p>{/if}
 	{#if el.details.length}
 		<ul>{#each el.details as d}<li>{d}</li>{/each}</ul>
 	{/if}
@@ -32,12 +31,13 @@
 
 <style lang="scss">
 	.card {
-		padding: 12px 14px;
+		padding: 10px 12px;
 		display: grid;
-		gap: 8px;
-		&:hover {
-			border-color: var(--line-hi);
-		}
+		gap: 6px;
+	}
+	.why {
+		font-size: 13px;
+		color: var(--text-2);
 	}
 	header {
 		display: flex;
@@ -46,6 +46,7 @@
 		flex-wrap: wrap;
 	}
 	.title {
+		font-family: var(--pixel);
 		font-weight: 600;
 	}
 	.owner {
@@ -54,8 +55,8 @@
 	.tag {
 		font-size: 11px;
 		padding: 1px 7px;
-		border-radius: 999px;
-		border: 1px solid var(--human);
+		font-family: var(--pixel);
+		border: 2px solid var(--human);
 		color: var(--human);
 	}
 	.main {
@@ -73,23 +74,9 @@
 	}
 	img {
 		width: 100%;
-		border-radius: var(--r-sm);
-		border: 1px solid var(--line);
+		border: 2px solid #120a06;
 		image-rendering: pixelated;
 		display: block;
-	}
-	.logo {
-		width: 84px;
-		height: 84px;
-		padding: 8px;
-		border: 1px solid var(--line);
-		border-radius: var(--r-sm);
-		background: #fbfaf8;
-		:global(svg) {
-			width: 100%;
-			height: 100%;
-			display: block;
-		}
 	}
 	.link {
 		justify-self: start;

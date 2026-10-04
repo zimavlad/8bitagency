@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Office, type SceneInput, type Sky } from '$lib/scene/office';
+	import { Office, type SceneInput, type Sky, type Thing } from '$lib/scene/office';
 	import { ROLE_NAME, ROLES, type Role, type RunState, type Speaker, type Speech } from '$lib/types';
 
-	let { run, hour, sky, bubbles = true, away = false, onPick }: { run: RunState | null; hour: number; sky: Sky; bubbles?: boolean; away?: boolean; onPick?: (who: Role | 'client') => void } = $props();
+	type Target = Role | 'client' | Thing;
+	let { run, hour, sky, bubbles = true, away = false, frozen = false, onPick }: { run: RunState | null; hour: number; sky: Sky; bubbles?: boolean; away?: boolean; frozen?: boolean; onPick?: (what: Target, x: number, y: number) => void } = $props();
 
 	let stage: HTMLDivElement;
 	let canvas: HTMLCanvasElement;
@@ -13,14 +14,18 @@
 
 	/**
 	 * Бабли йдуть чергою по кожному мовцю: репліка висить стільки, скільки треба її прочитати
-	 * (2,2 с + 55 мс на знак, від 3 до 9 с), наступна чекає своєї черги — нічого не проскакує.
+	 * (1,8 с + 45 мс на знак, від 2,4 до 6,5 с). Якщо черга росте — поточна поступається раніше (після 1,6 с),
+	 * а найстаріші зайві відкидаються: бабли не відстають від того, що реально відбувається.
+	 * На паузі (і коли відкрите меню) бабли стоять.
 	 */
-	type Shown = Speech & { until: number };
+	type Shown = Speech & { until: number; at: number };
 	let shown = $state<Partial<Record<Speaker, Shown>>>({});
 	const queue: Partial<Record<Speaker, Speech[]>> = {};
 	let lastSeq = 0;
 	let now = $state(Date.now());
-	const dur = (t: string) => Math.min(9000, Math.max(3000, 2200 + t.length * 55));
+	const dur = (t: string) => Math.min(6500, Math.max(2400, 1800 + t.length * 45));
+	const MIN_SHOWN = 1600;
+	let frozenAt = 0;
 
 	$effect(() => {
 		const sp = run?.speech ?? [];
@@ -34,15 +39,29 @@
 	});
 
 	function advance(t: number) {
+		if (frozen || run?.paused) {
+			frozenAt ||= t;
+			return;
+		}
+		if (frozenAt) {
+			// після паузи кожен бабл досиджує свій залишок часу
+			const d = t - frozenAt;
+			frozenAt = 0;
+			const next = { ...shown };
+			for (const k of Object.keys(next) as Speaker[]) next[k] = { ...next[k]!, until: next[k]!.until + d, at: next[k]!.at + d };
+			shown = next;
+			return;
+		}
 		let changed = false;
 		const next = { ...shown };
 		for (const who of new Set([...Object.keys(queue), ...Object.keys(shown)]) as Set<Speaker>) {
 			const cur = next[who];
-			if (cur && cur.until > t) continue;
 			const q = queue[who];
+			if (q && q.length > 2) q.splice(0, q.length - 2);
+			if (cur && cur.until > t && !(q?.length && t - cur.at > MIN_SHOWN)) continue;
 			if (q?.length) {
 				const s = q.shift()!;
-				next[who] = { ...s, until: t + dur(s.text) };
+				next[who] = { ...s, at: t, until: t + dur(s.text) };
 				changed = true;
 			} else if (cur) {
 				delete next[who];
@@ -142,11 +161,12 @@
 <div class="stage" bind:this={stage}>
 	<canvas
 		bind:this={canvas}
-		aria-label="Офіс агенції. Торкнись персонажа, щоб прочитати його думки."
+		aria-label="Офіс агенції. Торкнись персонажа або предмета, щоб побачити, що можна зробити."
 		onclick={(e) => {
 			const r = canvas.getBoundingClientRect();
-			const who = office?.hit(e.clientX - r.left, e.clientY - r.top);
-			if (who && onPick) onPick(who);
+			const x = e.clientX - r.left, y = e.clientY - r.top;
+			const what = office?.hit(x, y) ?? office?.thing(x, y);
+			if (what && onPick) onPick(what, x, y);
 		}}
 	></canvas>
 	{#if bubbles}
@@ -182,9 +202,9 @@
 		top: 0;
 		max-width: min(230px, 64%);
 		padding: 7px 10px 8px;
-		background: var(--surface-2);
-		border: 1px solid var(--line-hi);
-		border-radius: var(--r-sm);
+		background: var(--paper);
+		color: var(--paper-ink);
+		border: 2px solid #3a2414;
 		font-size: 12.5px;
 		line-height: 1.4;
 		opacity: 0;
@@ -198,38 +218,47 @@
 			left: calc(var(--tail, 50%) - 6px);
 			width: 10px;
 			height: 10px;
-			background: var(--surface-2);
-			border-right: 1px solid var(--line-hi);
-			border-bottom: 1px solid var(--line-hi);
+			background: var(--paper);
+			border-right: 2px solid #3a2414;
+			border-bottom: 2px solid #3a2414;
 			transform: rotate(45deg);
 		}
 		&.gpt {
-			border-color: #2fae95;
+			border-color: #1f8f7a;
+			background: #dff7ef;
+			&::after {
+				background: #dff7ef;
+			}
 			.who {
-				color: #5ee6c8;
+				color: #1f8f7a;
 			}
 			&::after {
-				border-color: #2fae95;
+				border-color: #1f8f7a;
 			}
 		}
 		&.client {
-			border-color: var(--bad);
+			border-color: #a3392b;
+			background: #fde6dc;
+			&::after {
+				background: #fde6dc;
+			}
 			.who {
-				color: var(--bad);
+				color: #a3392b;
 			}
 			&::after {
-				border-color: var(--bad);
+				border-color: #a3392b;
 			}
 		}
 		&.sys .text {
-			color: var(--text-2);
+			color: #6d5236;
 			font-style: italic;
 		}
 	}
 	.who {
 		display: block;
-		font-size: 11px;
-		color: var(--text-3);
+		font-family: var(--pixel);
+		font-size: 12px;
+		color: #94785a;
 		margin-bottom: 2px;
 	}
 </style>

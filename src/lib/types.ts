@@ -51,7 +51,8 @@ export type LogoShape =
 	| { type: 'path'; d: string; fill: 'a' | 'b' };
 
 export interface LogoSpec {
-	palette: { a: string; b: string };
+	/** a — головна форма, b — друга, bg — тло плитки знака. */
+	palette: { a: string; b: string; bg?: string };
 	shapes: LogoShape[];
 }
 
@@ -81,16 +82,43 @@ export interface Brief {
 	id: string;
 	client: Client;
 	text: string;
-	/** Гонорар у гривнях, якщо клієнт прийме. */
+	/** Чек у гривнях: 60% за прийняту основу, 40% за прийняті канали. */
 	fee: number;
+	/** Передплата: на першому рівні її нема ніколи. */
+	prepay: number;
+	/** Рівень клієнта: 1 — дрібний бізнес, 2 — середній, 3 — великий. */
+	tier: number;
 	custom?: boolean;
 }
+
+/** Частка чеку за основу; решта — за канали. */
+export const CORE_SHARE = 0.6;
+
+export const TIER_NAME: Record<number, string> = { 1: 'дрібний бізнес', 2: 'середній бізнес', 3: 'великі гроші' };
+
+/** Рівень агенції за репутацією: від нього залежать клієнти, чеки й витрати. */
+export function tierOf(reputation: number): number {
+	return reputation >= 70 ? 3 : reputation >= 40 ? 2 : 1;
+}
+
+/** Щоденні витрати (оренда, зарплати) за рівнем. */
+export const DAILY_COST: Record<number, number> = { 1: 1500, 2: 4000, 3: 9000 };
 
 export interface Burnout {
 	strategist: number;
 	copywriter: number;
 	designer: number;
 }
+
+/** Що можна зробити для команди раз на день. */
+export interface Perks {
+	day: number;
+	coffee: boolean;
+	pizza: boolean;
+	praised: Role[];
+}
+
+export const PIZZA_COST = 400;
 
 export interface HistoryEntry {
 	day: number;
@@ -118,7 +146,13 @@ export interface GameState {
 	day: number;
 	money: number;
 	reputation: number;
+	/** Стрес (колишнє вигорання): росте від роботи й правок. */
 	burnout: Burnout;
+	/** Мораль: падає, коли клієнт незадоволений; росте від перемог, похвали, піци. */
+	morale: Burnout;
+	/** Здоровʼя: поки завжди 100 — на наступних рівнях тривоги й обстріли. */
+	hp: Burnout;
+	perks: Perks;
 	inbox: Brief[];
 	history: HistoryEntry[];
 	activeRun: string | null;
@@ -141,6 +175,8 @@ export interface ElementValue {
 	/** Картинка від Gemini (банер, розкадровка). */
 	image?: string;
 	rejected?: { text: string; reason: string }[];
+	/** Чому так — коротко, для зведення перед клієнтом. */
+	why?: string;
 	/** Скільки разів переробляли (правки гравця й клієнта). */
 	reworks: number;
 }
@@ -171,6 +207,8 @@ export interface AgentView {
 	status: 'idle' | 'thinking' | 'gpt' | 'done' | 'tired';
 	spot: Spot;
 	burnout: number;
+	morale: number;
+	hp: number;
 	/** Що робить зараз — коротко, для панелі команди. */
 	doing: string;
 }
@@ -195,6 +233,8 @@ export interface ClientVerdict {
 	stage: 'core' | 'content';
 	round: number;
 	reaction: string;
+	/** Короткі репліки-доїбки над головою, до 60 знаків. */
+	lines: string[];
 	demands: string[];
 	verdict: 'ok' | 'rework' | 'reject';
 	mood: number;
@@ -203,10 +243,30 @@ export interface ClientVerdict {
 export interface RunResult {
 	verdict: 'ok' | 'reject' | 'dropped';
 	paid: number;
+	/** Розшифровка оплати: за що саме гроші. */
+	pay: { label: string; amount: number }[];
 	repDelta: number;
 	quality: number;
 	notes: string[];
 	burnoutDelta: Burnout;
+	moraleDelta: Burnout;
+}
+
+/** Розбір брифу стратегинею (Four Points). */
+export interface Strategy {
+	problem: string;
+	insight: string;
+	advantage: string;
+	direction: string;
+}
+
+export type StepKey = 'strategy' | 'name' | 'logo' | 'you_core' | 'client_core' | 'content' | 'you_content' | 'client_content' | 'done';
+
+/** Що сталося на етапі — щоб можна було повернутись і переглянути. */
+export interface StepRecord {
+	key: StepKey;
+	lines: string[];
+	logos?: LogoSpec[];
 }
 
 export interface RunState {
@@ -218,6 +278,8 @@ export interface RunState {
 	agents: Record<Role, AgentView>;
 	clientInOffice: boolean;
 	elements: Partial<Record<ElementId, ElementValue>>;
+	strategy: Strategy | null;
+	steps: StepRecord[];
 	/** Варіанти назви й слогана, з яких обирає гравець. */
 	options: NamingOption[];
 	/** Чи ще можна дати раунд правок на поточному етапі. */

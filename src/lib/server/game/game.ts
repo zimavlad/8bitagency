@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ROLES, type Brief, type BriefForm, type GameState, type Ledger, type RunState } from '$lib/types';
+import { DAILY_COST, PIZZA_COST, ROLES, tierOf, type Brief, type BriefForm, type GameState, type Ledger, type Perks, type Role, type RunState } from '$lib/types';
 import { log } from '../log';
 import type { ModelClient } from '../model/client';
 import type { ImageModel } from '../model/images';
@@ -13,11 +13,15 @@ const START_LEDGER = (): Ledger => ({
 	gemini: { usd: 5, at: '2026-10-04', spent: 0 }
 });
 
-/** Зарплати трьох і оренда за день. */
-export const DAILY_COST = 6000;
-const START_MONEY = 30000;
-const START_REP = 40;
+const START_MONEY = 12000;
+const START_REP = 15;
 const REST = 35;
+const REST_MORALE = 10;
+const perksFor = (day: number): Perks => ({ day, coffee: false, pizza: false, praised: [] });
+const clamp = (n: number) => Math.max(0, Math.min(100, n));
+
+/** Витрати за день на поточному рівні агенції. */
+export const dailyCost = (reputation: number) => DAILY_COST[tierOf(reputation)];
 
 export function newGame(): GameState {
 	return {
@@ -25,6 +29,9 @@ export function newGame(): GameState {
 		money: START_MONEY,
 		reputation: START_REP,
 		burnout: { strategist: 10, copywriter: 15, designer: 5 },
+		morale: { strategist: 75, copywriter: 65, designer: 70 },
+		hp: { strategist: 100, copywriter: 100, designer: 100 },
+		perks: perksFor(1),
 		inbox: inboxFor(1, START_REP),
 		history: [],
 		activeRun: null,
@@ -97,6 +104,9 @@ export class Game {
 		try {
 			const s = { ...newGame(), ...(JSON.parse(readFileSync(this.file(), 'utf8')) as GameState) };
 			s.ledger = { ...START_LEDGER(), ...(s.ledger ?? {}) };
+			// Сейви до рівнів: брифи без рівня перегенеровуємо.
+			if (s.inbox.some((b) => !b.tier)) s.inbox = inboxFor(s.day, s.reputation);
+			if (!s.perks || s.perks.day !== s.day) s.perks = perksFor(s.day);
 			return s;
 		} catch {
 			return newGame();
@@ -146,7 +156,7 @@ export class Game {
 			if (f.business.trim().length < 3) return { error: 'Напиши, що за бізнес.' };
 			if (total < 25) return { error: 'Бриф закороткий: додай цілі або побажання.' };
 			if (total > 1500) return { error: 'Бриф задовгий, до 1500 знаків разом.' };
-			brief = customBrief(f, this.state.day);
+			brief = customBrief(f, this.state.day, this.state.reputation);
 		} else brief = this.state.inbox.find((b) => b.id === input.briefId);
 		if (!brief) return { error: 'Такого брифу нема у вхідних.' };
 
@@ -157,6 +167,7 @@ export class Game {
 			models: this.o.models,
 			dataDir: this.o.dataDir,
 			burnout: { ...this.state.burnout },
+			morale: { ...this.state.morale },
 			onChange: (r) => this.notify(r),
 			onFinish: (r) => this.settle(r),
 			onSpend: (p, usd) => this.spend(p, usd)
@@ -179,9 +190,12 @@ export class Game {
 			return;
 		}
 		const s = this.state;
-		s.money += res.paid - DAILY_COST;
-		s.reputation = Math.max(0, Math.min(100, s.reputation + res.repDelta));
-		for (const r of ROLES) s.burnout[r] = Math.max(0, Math.min(100, s.burnout[r] + res.burnoutDelta[r]));
+		s.money += res.paid - dailyCost(s.reputation);
+		s.reputation = clamp(s.reputation + res.repDelta);
+		for (const r of ROLES) {
+			s.burnout[r] = clamp(s.burnout[r] + res.burnoutDelta[r]);
+			s.morale[r] = clamp(s.morale[r] + res.moraleDelta[r]);
+		}
 		s.history = [
 			{
 				day: s.day,
@@ -195,6 +209,7 @@ export class Game {
 			...s.history
 		].slice(0, 50);
 		s.day += 1;
+		s.perks = perksFor(s.day);
 		s.inbox = inboxFor(s.day, s.reputation);
 		s.activeRun = null;
 		s.bankrupt = s.money < 0;
@@ -208,11 +223,46 @@ export class Game {
 		if (this.state.activeRun) return 'Спершу закінчи бриф.';
 		if (this.state.bankrupt) return 'Агенція збанкрутувала.';
 		const s = this.state;
-		for (const r of ROLES) s.burnout[r] = Math.max(0, s.burnout[r] - REST);
-		s.money -= DAILY_COST;
+		for (const r of ROLES) {
+			s.burnout[r] = Math.max(0, s.burnout[r] - REST);
+			s.morale[r] = clamp(s.morale[r] + REST_MORALE);
+		}
+		s.money -= dailyCost(s.reputation);
 		s.day += 1;
+		s.perks = perksFor(s.day);
 		s.inbox = inboxFor(s.day, s.reputation);
 		s.bankrupt = s.money < 0;
+		this.save();
+		return null;
+	}
+
+	/** Кава всім (раз на день, −6 стресу), піца (раз на день, +8 моралі, 400 ₴), похвала (раз на день кожному, +6 моралі). */
+	perk(kind: 'coffee' | 'pizza' | 'praise', role?: Role): string | null {
+		const s = this.state;
+		if (s.bankrupt) return 'Агенція збанкрутувала.';
+		if (s.perks.day !== s.day) s.perks = perksFor(s.day);
+		if (kind === 'coffee' && s.perks.coffee) return 'Кава сьогодні вже була. Кавоварка теж втомилась.';
+		if (kind === 'pizza' && s.perks.pizza) return 'Піца сьогодні вже була.';
+		if (kind === 'pizza' && s.money < PIZZA_COST) return 'Нема грошей на піцу.';
+		if (kind === 'praise' && (!role || !ROLES.includes(role))) return 'Кого хвалимо?';
+		if (kind === 'praise' && s.perks.praised.includes(role!)) return 'Сьогодні вже хвалив — вдруге звучить підозріло.';
+		const run = s.activeRun ? this.runs.get(s.activeRun) : undefined;
+		const live = run && run.state.phase !== 'done' && run.state.phase !== 'failed' ? run : undefined;
+		if (kind === 'coffee') {
+			s.perks.coffee = true;
+			if (live) live.perk('coffee');
+			else for (const r of ROLES) s.burnout[r] = Math.max(0, s.burnout[r] - 6);
+		} else if (kind === 'pizza') {
+			s.perks.pizza = true;
+			s.money -= PIZZA_COST;
+			if (live) live.perk('pizza');
+			else for (const r of ROLES) s.morale[r] = clamp(s.morale[r] + 8);
+		} else {
+			s.perks.praised = [...s.perks.praised, role!];
+			if (live) live.perk('praise', role);
+			else s.morale[role!] = clamp(s.morale[role!] + 6);
+		}
+		log('info', 'perk', { kind, role });
 		this.save();
 		return null;
 	}

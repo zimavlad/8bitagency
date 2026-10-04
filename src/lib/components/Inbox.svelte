@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Live } from '$lib/live.svelte';
+	import { TIER_NAME, tierOf } from '$lib/types';
 	import Avatar from './Avatar.svelte';
 	import Icon from './Icon.svelte';
 	import Num from './Num.svelte';
@@ -35,9 +36,10 @@
 					<div class="client">{b.client.name}</div>
 					<div class="faint biz">{b.client.business}</div>
 				</div>
-				<div class="fee"><Num value={b.fee} width={7} suffix=" ₴" /></div>
+				<div class="fee"><Num value={b.fee} width={6} suffix=" ₴" /></div>
 			</header>
 			<p>«{b.text}»</p>
+			<p class="terms faint">Передплата {b.prepay} ₴ · чек {b.fee.toLocaleString('uk-UA')} ₴: 60% за основу, 40% за канали · {TIER_NAME[b.tier]}</p>
 			<button class="btn primary" disabled={locked || live.busy} onclick={() => live.start({ briefId: b.id })}>Взяти бриф</button>
 		</article>
 	{:else}
@@ -60,12 +62,16 @@
 				<button class="btn ghost" onclick={() => (custom = false)}>Скасувати</button>
 				<button class="btn primary" disabled={locked || live.busy || form.business.trim().length < 3} onclick={async () => { if (await live.start({ custom: form })) { custom = false; form = empty(); } }}>Взяти</button>
 			</div>
-			<p class="faint small">Гонорар за свій бриф — 20 000 ₴. Клієнта-персонажа вигадаємо під твій бізнес.</p>
+			<p class="faint small">Чек за свій бриф на твоєму рівні — {[0, 4000, 15000, 45000][tierOf(g.reputation)].toLocaleString('uk-UA')} ₴, передплата 0. Клієнта-персонажа вигадаємо під твій бізнес.</p>
 		{/if}
 	</article>
 </section>
 
 <style lang="scss">
+	.terms {
+		font-size: 12.5px;
+		font-family: var(--pixel);
+	}
 	.wrap {
 		display: grid;
 		gap: 10px;
@@ -76,16 +82,12 @@
 		align-items: baseline;
 	}
 	h2 {
-		font-size: 17px;
-		font-weight: 600;
+		font-size: 18px;
 	}
 	.brief {
 		padding: 12px 14px;
 		display: grid;
 		gap: 10px;
-		&:hover {
-			border-color: var(--line-hi);
-		}
 	}
 	header {
 		display: flex;
@@ -97,14 +99,17 @@
 		min-width: 0;
 	}
 	.client {
+		font-family: var(--pixel);
 		font-weight: 600;
+		font-size: 16px;
 	}
 	.biz {
 		font-size: 13px;
 	}
 	.fee {
-		color: var(--text);
-		font-size: 14px;
+		color: var(--human);
+		font-family: var(--pixel);
+		font-size: 17px;
 		white-space: nowrap;
 	}
 	p {

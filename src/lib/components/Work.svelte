@@ -1,41 +1,33 @@
 <script lang="ts">
 	import type { Live } from '$lib/live.svelte';
-	import { CONTENT, CORE, EDIT_SLOTS, MAX_CLIENT_ROUNDS, ROLE_NAME, type ClientVerdict, type RunPhase } from '$lib/types';
+	import { CONTENT, CORE, TIER_NAME, type RunPhase, type StepKey } from '$lib/types';
 	import Avatar from './Avatar.svelte';
 	import ElementCard from './ElementCard.svelte';
 	import Icon from './Icon.svelte';
+	import Modal from './Modal.svelte';
 	import Num from './Num.svelte';
+	import PixelLogo from './PixelLogo.svelte';
 
-	let { live, onNext }: { live: Live; onNext: () => void } = $props();
+	let { live, waiting, onOpen }: { live: Live; waiting: boolean; onOpen: () => void } = $props();
 	const run = $derived(live.run!);
 
-	const STEPS: { label: string; phases: RunPhase[]; you?: boolean }[] = [
-		{ label: 'Стратегія', phases: ['read', 'huddle', 'position'] },
-		{ label: 'Назва', phases: ['naming', 'pick_name'] },
-		{ label: 'Лого', phases: ['logo'] },
-		{ label: 'Ти', phases: ['player_core', 'rework_core'], you: true },
-		{ label: 'Клієнт', phases: ['client_core', 'client_decision_core'] },
-		{ label: 'Канали', phases: ['content', 'images'] },
-		{ label: 'Ти', phases: ['player_content', 'rework_content'], you: true },
-		{ label: 'Клієнт', phases: ['client_content', 'client_decision_content'] },
-		{ label: 'Оплата', phases: ['done'] }
+	const STEPS: { label: string; title: string; key: StepKey; phases: RunPhase[]; you?: boolean }[] = [
+		{ label: 'Стратегія', title: 'Стратегія: розбір і порада колег', key: 'strategy', phases: ['read', 'huddle', 'position'] },
+		{ label: 'Назва', title: 'Назва: усі варіанти', key: 'name', phases: ['naming', 'pick_name'] },
+		{ label: 'Лого', title: 'Лого: усі версії', key: 'logo', phases: ['logo'] },
+		{ label: 'Ти', title: 'Твої правки до основи', key: 'you_core', phases: ['player_core', 'rework_core'], you: true },
+		{ label: 'Клієнт', title: 'Клієнт про основу', key: 'client_core', phases: ['client_core', 'client_decision_core'] },
+		{ label: 'Канали', title: 'Канали', key: 'content', phases: ['content', 'images'] },
+		{ label: 'Ти', title: 'Твої правки до каналів', key: 'you_content', phases: ['player_content', 'rework_content'], you: true },
+		{ label: 'Клієнт', title: 'Клієнт про канали', key: 'client_content', phases: ['client_content', 'client_decision_content'] },
+		{ label: 'Оплата', title: 'Оплата', key: 'done', phases: ['done'] }
 	];
 	const stepIdx = $derived(STEPS.findIndex((s) => s.phases.includes(run.phase)));
-	const playerTurn = $derived(run.phase === 'player_core' || run.phase === 'player_content');
-	const deciding = $derived(run.phase === 'client_decision_core' || run.phase === 'client_decision_content');
-	const waitingYou = $derived(playerTurn || deciding || run.phase === 'pick_name');
 	const coreIds = $derived(CORE.filter((id) => run.elements[id]));
 	const contentIds = $derived(CONTENT.filter((id) => run.elements[id]));
-	const lastVerdict = $derived<ClientVerdict | undefined>(run.verdicts.at(-1));
-
-	let editing = $state(false);
-	let notes = $state<string[]>(Array(EDIT_SLOTS).fill(''));
-	async function sendEdits() {
-		if (await live.act({ action: 'edit', notes })) {
-			editing = false;
-			notes = Array(EDIT_SLOTS).fill('');
-		}
-	}
+	const busy = $derived(run.phase !== 'done' && run.phase !== 'failed' && !waiting);
+	let view = $state<StepKey | null>(null);
+	const rec = $derived(view ? run.steps.find((s) => s.key === view) : undefined);
 </script>
 
 <section class="wrap">
@@ -45,116 +37,55 @@
 			<div class="client">{run.brief.client.name}</div>
 			<div class="faint biz">{run.brief.client.business}</div>
 		</div>
-		<div class="fee"><Num value={run.brief.fee} width={7} suffix=" ₴" /></div>
+		<div class="fee">
+			<span class="num"><Num value={run.brief.fee} width={6} suffix=" ₴" /></span>
+			<span class="faint tiny">передплата {run.brief.prepay} ₴</span>
+		</div>
 	</header>
 	<p class="muted quote">«{run.brief.text}»</p>
+	<p class="faint tiny">Рівень {run.brief.tier}: {TIER_NAME[run.brief.tier]} · 60% чеку за основу, 40% за канали</p>
 
 	<ol class="steps" aria-label="Етапи брифу">
 		{#each STEPS as s, i}
-			<li class:done={i < stepIdx} class:now={i === stepIdx} class:you={s.you}>{s.label}</li>
+			{@const has = run.steps.some((r) => r.key === s.key)}
+			<li>
+				<button class:done={i < stepIdx} class:now={i === stepIdx} class:you={s.you} disabled={!has} title={has ? 'Переглянути, що було' : ''} onclick={() => (view = s.key)}>{s.label}</button>
+			</li>
 		{/each}
 	</ol>
 
-	<div class="status panel" class:you={waitingYou} aria-live="polite">
-		{#if run.paused}<Icon name="pause" size={16} />{:else if !waitingYou && run.phase !== 'done' && run.phase !== 'failed'}<span class="spin"></span>{/if}
-		<span>{run.paused ? 'Пауза — читай спокійно' : run.status}</span>
+	<div class="status panel" class:gold={waiting} aria-live="polite">
+		{#if run.paused}<Icon name="pause" size={16} />{:else if busy}<span class="spin" aria-hidden="true"></span>{/if}
+		<span>{run.paused ? 'Пауза: читай спокійно' : run.status}</span>
 	</div>
+	{#if waiting}<button class="btn human wide" onclick={onOpen}><Icon name="play" size={16} />Твій хід</button>{/if}
 	{#if run.error}<p class="err">{run.error}</p>{/if}
 	{#if live.error}<p class="err">{live.error}</p>{/if}
-
-	{#if run.phase === 'pick_name'}
-		<div class="pick rise">
-			<p class="label">Копірайтер пропонує три варіанти. Обери один — під нього дизайнер малюватиме знак.</p>
-			{#each run.options as o, i}
-				<button class="option panel" disabled={live.busy} onclick={() => live.act({ action: 'pick', index: i })}>
-					<span class="oname">{o.name}</span>
-					<span class="oslogan">«{o.slogan}»</span>
-					<span class="faint owhy">{o.why}</span>
-				</button>
-			{/each}
-		</div>
-	{/if}
 
 	{#if coreIds.length}
 		<h3>Основа бренду</h3>
 		{#each coreIds as id (id)}<ElementCard el={run.elements[id]!} />{/each}
 	{/if}
-
-	{#each run.verdicts.filter((v) => v.stage === 'core') as v}
-		{@render verdict(v)}
-	{/each}
-
 	{#if contentIds.length}
 		<h3>Канали</h3>
 		{#each contentIds as id (id)}<ElementCard el={run.elements[id]!} />{/each}
 	{/if}
 
-	{#each run.verdicts.filter((v) => v.stage === 'content') as v}
-		{@render verdict(v)}
-	{/each}
-
-	{#if playerTurn}
-		<div class="act panel rise">
-			{#if editing}
-				<p class="label">До трьох правок одразу. Порожнє поле — нічого не міняти. Команда перегляне все узгоджено: якщо зміниться позиціонування, підтягнуться і назва, і знак.</p>
-				{#each notes as _, i}
-					<textarea rows="2" maxlength="280" placeholder="Правка {i + 1}" bind:value={notes[i]}></textarea>
-				{/each}
-				<div class="row">
-					<button class="btn ghost" onclick={() => (editing = false)}>Скасувати</button>
-					<button class="btn primary" disabled={live.busy || !notes.some((n) => n.trim())} onclick={sendEdits}><Icon name="send" size={16} />Віддати правки</button>
-				</div>
-			{:else}
-				<button class="btn primary wide" disabled={live.busy} onclick={() => live.act({ action: 'submit' })}><Icon name="send" size={16} />Показати клієнту</button>
-				{#if run.editAvailable}
-					<button class="btn human wide" onclick={() => (editing = true)}><Icon name="edit" size={16} />Дати правки</button>
-				{:else}
-					<p class="faint small">Раунд правок на цьому етапі використано.</p>
-				{/if}
-			{/if}
-		</div>
+	{#if !run.result}
+		<button class="btn ghost sm drop" onclick={() => confirm(run.phase === 'failed' ? 'Закрити бриф?' : 'Кинути проєкт? Клієнт нічого не заплатить, репутація трохи впаде, мораль теж.') && live.act({ action: 'drop' })}><Icon name="x" size={14} />{run.phase === 'failed' ? 'Закрити бриф' : 'Кинути проєкт'}</button>
 	{/if}
 
-	{#if deciding && lastVerdict}
-		<div class="act panel rise">
-			<p class="label">Клієнт хоче правок. Коло {lastVerdict.round} з {MAX_CLIENT_ROUNDS}: команда переробить усе узгоджено з його вимогами, або можна здатися.</p>
-			<div class="row">
-				<button class="btn ghost" disabled={live.busy} onclick={() => live.act({ action: 'giveup' })}><Icon name="x" size={16} />Здатися</button>
-				<button class="btn primary" disabled={live.busy} onclick={() => live.act({ action: 'retry' })}><Icon name="reset" size={16} />Ще коло</button>
-			</div>
-		</div>
-	{/if}
-
-	{#if run.result}
-		<article class="result panel rise">
-			<h3>{run.result.verdict === 'ok' ? 'Клієнт заплатив' : run.result.verdict === 'reject' ? 'Клієнт пішов' : 'Бриф закрито'}</h3>
-			<div class="kpis">
-				<div><span class="label">Гроші</span><span class="num big">+<Num value={run.result.paid} width={6} /> ₴</span></div>
-				<div><span class="label">Репутація</span><span class="num big" class:neg={run.result.repDelta < 0}>{run.result.repDelta >= 0 ? '+' : ''}{run.result.repDelta}</span></div>
-				<div><span class="label">Якість</span><span class="num big"><Num value={run.result.quality} width={3} /></span></div>
-			</div>
-			{#if run.result.notes.length}
-				<ul class="notes">{#each run.result.notes as n}<li><span class="dot bad"></span>{n}</li>{/each}</ul>
-			{:else}
-				<p class="small"><span class="dot ok"></span> Перевірки пройдено: чиста робота.</p>
-			{/if}
-			<p class="faint small">Втома: {Object.entries(run.result.burnoutDelta).map(([r, d]) => `${ROLE_NAME[r as keyof typeof ROLE_NAME].toLowerCase()} +${d}`).join(', ')}. Щодня −6 000 ₴ на зарплати й оренду.</p>
-			<button class="btn primary" onclick={onNext}>До вхідних брифів</button>
-		</article>
-	{:else}
-		<button class="btn ghost sm drop" onclick={() => confirm(run.phase === 'failed' ? 'Закрити бриф?' : 'Кинути бриф? Репутація трохи впаде, втома лишиться.') && live.act({ action: 'drop' })}><Icon name="x" size={16} />{run.phase === 'failed' ? 'Закрити бриф' : 'Кинути бриф'}</button>
-	{/if}
-
-	<p class="faint small">{run.demo ? 'Демо: відповідає підставна модель, грошей не коштує.' : `Claude · викликів ${run.calls} · $${run.costUsd.toFixed(3)}${run.imagesUsd ? ` · картинки $${run.imagesUsd.toFixed(2)}` : ''}`}</p>
+	<p class="faint tiny">{run.demo ? 'Демо: відповідає підставна модель, грошей не коштує.' : `Claude · викликів ${run.calls} · $${run.costUsd.toFixed(3)}${run.imagesUsd ? ` · картинки $${run.imagesUsd.toFixed(2)}` : ''}`}</p>
 </section>
 
-{#snippet verdict(v: ClientVerdict)}
-	<article class="verdict panel rise">
-		<div class="vh"><span class="dot" class:ok={v.verdict === 'ok'} class:bad={v.verdict === 'reject'} class:warn={v.verdict === 'rework'}></span>{run.brief.client.name} · {v.stage === 'core' ? 'основа' : 'канали'}, коло {v.round}</div>
-		<p>«{v.reaction}»</p>
-		{#each v.demands as d}<p class="small faint">— {d}</p>{/each}
-	</article>
-{/snippet}
+{#if view && rec}
+	<Modal title={STEPS.find((s) => s.key === view)!.title} onClose={() => (view = null)}>
+		{#if rec.logos?.length}
+			<div class="logos">{#each rec.logos as l, i}<figure><PixelLogo logo={l} size={88} /><figcaption class="faint tiny">версія {i + 1}</figcaption></figure>{/each}</div>
+		{/if}
+		<ul class="rec paper">{#each rec.lines as l}<li class:chosen={l.startsWith('Обрано')}>{l}</li>{/each}</ul>
+	</Modal>
+{/if}
 
 <style lang="scss">
 	.wrap {
@@ -171,12 +102,15 @@
 		min-width: 0;
 	}
 	.client {
+		font-family: var(--pixel);
 		font-weight: 600;
-		font-size: 17px;
+		font-size: 18px;
 	}
-	.biz,
-	.small {
+	.biz {
 		font-size: 13px;
+	}
+	.tiny {
+		font-size: 12px;
 	}
 	.quote {
 		font-size: 14px;
@@ -184,10 +118,13 @@
 	}
 	.fee {
 		white-space: nowrap;
+		display: grid;
+		justify-items: end;
+		font-family: var(--pixel);
+		font-size: 17px;
 	}
 	h3 {
-		font-size: 14px;
-		font-weight: 600;
+		font-size: 15px;
 		color: var(--text-2);
 		margin-top: 6px;
 	}
@@ -196,15 +133,22 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 4px;
-		li {
-			font-size: 12px;
-			padding: 3px 8px;
-			border-radius: 999px;
-			border: 1px solid var(--line);
+		button {
+			font-family: var(--pixel);
+			font-size: 13px;
+			padding: 2px 8px 3px;
+			border: 2px solid var(--line);
+			background: #1f150f;
 			color: var(--text-3);
-			transition: all var(--t) var(--ease);
 			&.done {
 				color: var(--text-2);
+				border-color: var(--line-hi);
+			}
+			&:not(:disabled):hover {
+				color: var(--text);
+			}
+			&:disabled {
+				cursor: default;
 			}
 			&.now {
 				border-color: var(--accent);
@@ -220,126 +164,45 @@
 		display: flex;
 		gap: 10px;
 		align-items: center;
-		padding: 10px 12px;
+		padding: 9px 12px;
 		font-size: 14px;
-		&.you {
-			border-color: var(--human);
-		}
 	}
 	.spin {
 		width: 10px;
 		height: 10px;
-		border: 1.5px solid var(--accent);
-		border-right-color: transparent;
-		border-radius: 50%;
-		animation: spin 0.9s linear infinite;
+		background: var(--accent);
+		animation: blink 0.8s steps(2) infinite;
 	}
-	@keyframes spin {
-		to {
-			transform: rotate(360deg);
+	@keyframes blink {
+		50% {
+			opacity: 0.2;
 		}
 	}
 	.err {
 		color: var(--bad);
 		font-size: 14px;
 	}
-	.pick {
-		display: grid;
-		gap: 8px;
-	}
-	.option {
-		display: grid;
-		gap: 2px;
-		text-align: left;
-		padding: 12px 14px;
-		transition: border-color var(--t) var(--ease);
-		&:hover:not(:disabled) {
-			border-color: var(--human);
-		}
-	}
-	.oname {
-		font-weight: 600;
-		font-size: 16px;
-	}
-	.oslogan {
-		font-size: 14px;
-	}
-	.owhy {
-		font-size: 12px;
-	}
-	.act {
-		padding: 12px;
-		display: grid;
-		gap: 8px;
-		position: sticky;
-		bottom: calc(var(--tabs-h) + 8px + env(safe-area-inset-bottom));
-		z-index: 2;
-		border-color: var(--human);
-	}
-	@media (min-width: 860px) {
-		.act {
-			bottom: 8px;
-		}
-	}
-	.row {
-		display: flex;
-		gap: 8px;
-		justify-content: flex-end;
-		flex-wrap: wrap;
-	}
-	.wide {
-		width: 100%;
-	}
-	.verdict {
-		padding: 12px 14px;
-		display: grid;
-		gap: 6px;
-		border-color: color-mix(in srgb, var(--bad) 35%, var(--line));
-		.vh {
-			display: flex;
-			gap: 8px;
-			align-items: center;
-			font-size: 13px;
-			color: var(--text-2);
-		}
-	}
-	.result {
-		padding: 14px;
-		display: grid;
-		gap: 10px;
-		h3 {
-			color: var(--text);
-			font-size: 17px;
-			margin: 0;
-		}
-	}
-	.kpis {
-		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		gap: 8px;
-		div {
-			display: grid;
-			gap: 2px;
-		}
-	}
-	.big {
-		font-size: 18px;
-		&.neg {
-			color: var(--bad);
-		}
-	}
-	.notes {
-		list-style: none;
-		display: grid;
-		gap: 4px;
-		font-size: 13px;
-		li {
-			display: flex;
-			gap: 8px;
-			align-items: center;
-		}
-	}
 	.drop {
 		justify-self: start;
+	}
+	.logos {
+		display: flex;
+		gap: 10px;
+		flex-wrap: wrap;
+		figure {
+			display: grid;
+			gap: 2px;
+			justify-items: center;
+		}
+	}
+	.rec {
+		list-style: none;
+		padding: 10px 12px;
+		display: grid;
+		gap: 6px;
+		font-size: 14px;
+		li.chosen {
+			font-weight: 600;
+		}
 	}
 </style>

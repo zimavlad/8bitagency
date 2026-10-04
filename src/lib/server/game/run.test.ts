@@ -20,7 +20,7 @@ async function until(f: () => boolean, ms = 4000) {
 const brief = inboxFor(1, 40)[0];
 const mk = (model = new FakeModel(), images = new FakeImages()) => {
 	const dataDir = mkdtempSync(join(tmpdir(), 'run-'));
-	const run = new Run('rtest1', brief, { model, images, models: MODELS, dataDir, burnout: { strategist: 0, copywriter: 0, designer: 0 } });
+	const run = new Run('rtest1', brief, { model, images, models: MODELS, dataDir, burnout: { strategist: 0, copywriter: 0, designer: 0 }, morale: { strategist: 70, copywriter: 70, designer: 70 } });
 	return { run, model, images, dataDir };
 };
 const text = (p: unknown) => JSON.stringify(p);
@@ -52,22 +52,37 @@ describe('бриф від початку до оплати', () => {
 		expect(run.decide({ action: 'submit' })).toBeNull();
 		await until(() => run.state.phase === 'client_decision_core');
 		expect(run.state.verdicts.at(-1)?.verdict).toBe('rework');
+		expect(run.decide({ action: 'continue' })).toMatch(/ще коло/);
 		expect(run.decide({ action: 'retry' })).toBeNull();
+		await until(() => run.state.phase === 'client_decision_core' && run.state.verdicts.length === 2);
+		// після «так» гра чекає гравця: спершу репліки клієнта й поп-ап, потім канали
+		expect(run.state.verdicts.at(-1)?.lines.length).toBeGreaterThan(0);
+		expect(run.decide({ action: 'retry' })).toMatch(/далі/);
+		expect(run.decide({ action: 'continue' })).toBeNull();
 		await until(() => run.state.phase === 'player_content');
 		expect(run.state.verdicts.filter((v) => v.stage === 'core').map((v) => v.verdict)).toEqual(['rework', 'ok']);
 		// канали коротко, банер і розкадровка намальовані
 		expect(Object.keys(run.state.elements)).toEqual(expect.arrayContaining(['threads', 'instagram', 'reels', 'youtube']));
 		expect(run.state.elements.instagram?.image).toMatch(/^\/api\/images\/rtest1\/instagram-/);
 		expect(run.state.elements.youtube?.image).toMatch(/youtube-/);
+		expect(images.prompts.find((p) => p.includes('thumbnail'))).toBeTruthy();
+		// кожен етап можна переглянути: варіанти назви, знак, кола клієнта
+		expect(run.state.steps.find((x) => x.key === 'name')?.lines).toHaveLength(3);
+		expect(run.state.steps.find((x) => x.key === 'logo')?.logos?.length).toBeGreaterThan(1);
+		expect(run.state.strategy?.insight).toBeTruthy();
 		expect(images.prompts[0]).toContain('Stardew Valley');
 		expect(readdirSync(join(dataDir, 'images', 'rtest1'))).toHaveLength(2);
 
 		run.decide({ action: 'submit' });
 		await until(() => run.state.phase === 'client_decision_content');
 		run.decide({ action: 'retry' });
+		await until(() => run.state.phase === 'client_decision_content' && run.state.verdicts.length === 4);
+		run.decide({ action: 'continue' });
 		await until(() => run.state.phase === 'done');
 		expect(run.state.result?.verdict).toBe('ok');
-		expect(run.state.result?.paid).toBeGreaterThan(0);
+		// чек повністю: 60% за основу і 40% за канали
+		expect(run.state.result?.paid).toBe(brief.fee);
+		expect(run.state.result?.pay.map((p) => p.amount)).toEqual([brief.fee * 0.6, brief.fee * 0.4]);
 		expect(run.trace.length).toBe(model.requests.length + 4);
 	});
 
@@ -88,7 +103,20 @@ describe('бриф від початку до оплати', () => {
 		expect(text(naming.params.messages)).not.toMatch(/shapes|palette/);
 	});
 
-	it('здатися: клієнт не заплатив, бриф закрито', async () => {
+	it('порожній знак: дизайнер перемальовує один раз', async () => {
+		let n = 0;
+		const model = new FakeModel();
+		const { run } = mk(model);
+		const orig = model.call.bind(model);
+		model.call = (p, o) => orig(p, o.purpose === 'core' && o.who.endsWith('designer') && n++ === 0 ? { ...o, fake: () => ({ thought: '', concept: 'x', palette: { a: '#000000', b: '#ffffff' }, shapes: [{ type: 'circle', cx: 50, cy: 50, r: 0, fill: 'a' }] }) } : o);
+		run.start();
+		await until(() => run.state.phase === 'pick_name');
+		run.decide({ action: 'pick', index: 0 });
+		await until(() => run.state.phase === 'player_core');
+		expect(run.state.elements.logo?.logo?.shapes.length).toBeGreaterThan(1);
+	});
+
+	it('кинути проєкт після правок клієнта: основу не прийняли — 0 ₴', async () => {
 		const { run } = mk();
 		run.start();
 		await until(() => run.state.phase === 'pick_name');
@@ -100,6 +128,8 @@ describe('бриф від початку до оплати', () => {
 		await until(() => run.state.phase === 'done');
 		expect(run.state.result?.verdict).toBe('reject');
 		expect(run.state.result?.paid).toBe(0);
+		expect(run.state.result?.pay[0].label).toMatch(/не прийнято/);
+		expect(run.state.agents.strategist.morale).toBeLessThan(70);
 	});
 
 	it('пауза зупиняє команду між кроками, продовження — відпускає', async () => {
@@ -139,13 +169,20 @@ describe('гра', () => {
 		run!.decide({ action: 'submit' });
 		await until(() => run!.state.phase === 'client_decision_core');
 		run!.decide({ action: 'retry' });
+		await until(() => run!.state.phase === 'client_decision_core' && run!.state.verdicts.length === 2);
+		run!.decide({ action: 'continue' });
 		await until(() => run!.state.phase === 'player_content');
+		expect(g.perk('pizza')).toBeNull();
+		expect(g.perk('pizza')).toMatch(/вже/);
 		run!.decide({ action: 'submit' });
 		await until(() => run!.state.phase === 'client_decision_content');
 		run!.decide({ action: 'retry' });
+		await until(() => run!.state.phase === 'client_decision_content' && run!.state.verdicts.length === 4);
+		run!.decide({ action: 'continue' });
 		await until(() => run!.state.phase === 'done' && g.state.activeRun === null);
 		expect(g.state.day).toBe(2);
-		expect(g.state.money).toBe(money + run!.state.result!.paid - 6000);
+		expect(g.state.money).toBe(money + run!.state.result!.paid - 1500 - 400);
+		expect(g.state.inbox.every((b) => b.tier === 1 && b.fee <= 5000 && b.prepay === 0)).toBe(true);
 		expect(g.state.history).toHaveLength(1);
 		expect(g.state.ledger.claude.usd).toBe(2.2);
 		expect(g.setBalance('gemini', 4.5)).toBeNull();

@@ -78,6 +78,16 @@ const obj = (properties: Record<string, unknown>, required = Object.keys(propert
 const list = (items: unknown, description?: string) => ({ type: 'array', items, ...(description ? { description } : {}) });
 
 const THOUGHT = S('репліка в баблі, до 90 знаків');
+const N = { type: 'number' };
+const FILL = { type: 'string', enum: ['a', 'b'] };
+const kind = (t: string) => ({ type: 'string', enum: [t] });
+/** Кожна фігура — свій набір обовʼязкових полів: інакше модель «забуває» радіус і знак виходить порожнім. */
+const SHAPE = {
+	circle: obj({ type: kind('circle'), fill: FILL, cx: N, cy: N, r: N }),
+	rect: obj({ type: kind('rect'), fill: FILL, x: N, y: N, w: N, h: N, r: N }),
+	ellipse: obj({ type: kind('ellipse'), fill: FILL, cx: N, cy: N, rx: N, ry: N }),
+	polygon: obj({ type: kind('polygon'), fill: FILL, points: list(N) })
+};
 const VERDICT = { type: 'string', enum: ['keep', 'rejected'] };
 
 export const SCHEMA = {
@@ -108,20 +118,8 @@ export const SCHEMA = {
 	logo: obj({
 		thought: THOUGHT,
 		concept: S('ідея знака, одне речення до 16 слів'),
-		palette: obj({ a: S('основний колір, hex #rrggbb'), b: S('другий колір, hex #rrggbb') }),
-		shapes: list(
-			obj(
-				{
-					type: { type: 'string', enum: ['rect', 'circle', 'ellipse', 'polygon', 'path'] },
-					fill: { type: 'string', enum: ['a', 'b'] },
-					x: { type: 'number' }, y: { type: 'number' }, w: { type: 'number' }, h: { type: 'number' }, r: { type: 'number' },
-					cx: { type: 'number' }, cy: { type: 'number' }, rx: { type: 'number' }, ry: { type: 'number' },
-					points: list({ type: 'number' }), d: S('контур path, лише команди й числа')
-				},
-				['type', 'fill']
-			),
-			'до 6 фігур на полотні 100×100'
-		)
+		palette: obj({ a: S('колір головної форми, hex #rrggbb'), b: S('другий колір, hex #rrggbb'), bg: S('тло плитки знака, hex #rrggbb; має контрастувати з a і b') }),
+		shapes: list({ anyOf: [SHAPE.circle, SHAPE.rect, SHAPE.ellipse, SHAPE.polygon] }, 'від 2 до 6 фігур на полотні 100×100, по порядку знизу вгору; кожна фігура видима (радіус і розміри не менше 6)')
 	}),
 	/** Узгоджена переробка: стратегиня вирішує, чи міняти позиціонування. */
 	reposition: obj({
@@ -142,10 +140,11 @@ export const SCHEMA = {
 	threads: obj({ thought: THOUGHT, voice: S('голос бренду одним реченням до 12 слів'), posts: list(S('пост для Threads до 120 знаків'), 'рівно 2') }),
 	instagram: obj({ thought: THOUGHT, headline: S('заголовок на банері, до 6 слів'), visual: S('що на картинці, до 16 слів') }),
 	reels: obj({ thought: THOUGHT, hooks: list(S('ідея Reels одним рядком до 12 слів'), 'рівно 3') }),
-	youtube: obj({ thought: THOUGHT, title: S('назва ролика до 5 слів'), scenes: list(S('сцена до 10 слів'), 'рівно 4') }),
+	youtube: obj({ thought: THOUGHT, title: S('назва ролика до 5 слів'), cover: S('що на обкладинці ролика, одне речення до 14 слів'), scenes: list(S('сцена до 10 слів'), 'рівно 3') }),
 	gpt: obj({ answer: S('порада до 300 знаків'), source: S('назва файлу з бази або «загальні знання»') }),
 	client: obj({
-		reaction: S('що кажеш уголос, 1–2 речення'),
+		lines: list(S('коротка репліка вголос до 60 знаків: жарт-доїбка або похвала про конкретну річ з роботи'), 'рівно 3, від найголовнішого'),
+		reaction: S('підсумок одним-двома реченнями'),
 		verdict: { type: 'string', enum: ['ok', 'rework', 'reject'] },
 		mood: { type: 'integer' },
 		demands: list(S('вимога до 12 слів'), 'до 3, якщо rework')
@@ -189,7 +188,7 @@ export const prompt = {
 		`Дай 3 різні варіанти «назва + слоган» — різними прийомами. Керівник агенції обере один перед показом клієнту.${advice(gpt)}`,
 
 	logo: (pos: Pos, name: string, slogan: string) =>
-		`Позиціонування: «${pos.positioning}». Роль бренду: ${pos.role}. Ворог: ${pos.enemy}.\nОбрана назва: «${name}». Слоган: «${slogan}».\n\nНамалюй знак під цю назву: одна сильна форма, два кольори, до 6 фігур, без тексту.`,
+		`Позиціонування: «${pos.positioning}». Роль бренду: ${pos.role}. Ворог: ${pos.enemy}.\nОбрана назва: «${name}». Слоган: «${slogan}».\n\nНамалюй знак під цю назву: одна сильна форма, два кольори на контрастному тлі, від 2 до 6 фігур, без тексту. Знак показуємо піксельним 32×32, тож дрібні деталі зникнуть — форма має бути крупна й проста.`,
 
 	/** Узгоджена переробка основи: правки гравця або клієнта, кожен вирішує свою частину. */
 	reposition: (who: 'керівник агенції' | 'клієнт', notes: string[], cur: Pos) =>
@@ -205,7 +204,7 @@ export const prompt = {
 
 	relogo: (who: 'керівник агенції' | 'клієнт', notes: string[], pos: Pos, name: string) =>
 		`${who === 'клієнт' ? 'Клієнт' : 'Керівник агенції'} дав правки:\n${notes.map((n, i) => `${i + 1}. ${n}`).join('\n')}\n\n` +
-		`Позиціонування: «${pos.positioning}». Назва: «${name}».\nПеремалюй знак з урахуванням правок і назви. Якщо правки не про знак — лиши ту саму форму, можна уточнити кольори.`,
+		`Позиціонування: «${pos.positioning}». Назва: «${name}».\nПеремалюй знак з урахуванням правок і назви. Якщо правки не про знак — лиши ту саму форму, можна уточнити кольори. Знак піксельний 32×32: крупна проста форма, від 2 до 6 видимих фігур.`,
 
 	content: (id: ContentElement, pack: string) => `Клієнт затвердив основу:\n${pack}\n\nТепер ${CONTENT_TASK[id]} Дуже коротко, без пояснень.`,
 
@@ -218,6 +217,7 @@ export const prompt = {
 		(chunks.length ? `Уривки з бази знань:\n${chunks.map((c, i) => `[${i + 1}] (${c.source}) ${c.text}`).join('\n\n')}` : 'Уривків з бази знань нема.'),
 
 	client: (items: ElementValue[], round: number, last: boolean, extra?: string) =>
+		'Спершу скажи 3 короткі репліки вголос (lines): про конкретні речі з того, що бачиш, твоїми словами — жартом або доїбкою, якщо не подобається, похвалою, якщо подобається. Потім підсумок і рішення.\n\n' +
 		`Агенція показує${round > 1 ? ` (коло ${round}, після твоїх правок)` : ''}:\n${items.map((e) => `- ${ELEMENT_TITLE[e.id]}: ${e.text}${e.details.length ? ' (' + e.details.slice(0, 4).join('; ') + ')' : ''}`).join('\n')}` +
 		(extra ? `\n\n${extra}` : '') +
 		(last ? '\n\nЦе остання подивка: або "ok", або "reject".' : ''),
@@ -231,7 +231,7 @@ const CONTENT_TASK: Record<ContentElement, string> = {
 	threads: 'голос бренду для Threads одним реченням і 2 пости (до 120 знаків).',
 	instagram: 'банер для Instagram: заголовок до 6 слів і що на картинці одним реченням.',
 	reels: '3 ідеї для Reels — по одному рядку до 12 слів.',
-	youtube: 'дорогий іміджевий ролик для YouTube: назва і 4 сцени по одному рядку до 10 слів.'
+	youtube: 'дорогий іміджевий ролик для YouTube: назва, що на обкладинці (одна сцена, яку видно з першого погляду), і 3 сцени по одному рядку до 10 слів.'
 };
 
 export const GPT_QUESTION = {
@@ -259,7 +259,7 @@ export function normPositioning(j: Record<string, unknown>) {
 	const c = arr(j.candidates).slice(0, 3).map((x) => { const o = (x ?? {}) as Record<string, unknown>; return { text: str(o.text, 300), keep: o.verdict === 'keep', reason: str(o.reason, 120) }; }).filter((x) => x.text);
 	if (!c.length) throw new StepError('стратегиня не дала позиціонування');
 	const keep = c.find((x) => x.keep) ?? c[0];
-	return { thought: str(j.thought, 120), positioning: keep.text, rejected: c.filter((x) => x !== keep).map((x) => ({ text: x.text, reason: x.reason })), role: str(j.role, 40), enemy: str(j.enemy, 40) };
+	return { thought: str(j.thought, 120), positioning: keep.text, why: keep.reason, rejected: c.filter((x) => x !== keep).map((x) => ({ text: x.text, reason: x.reason })), role: str(j.role, 40), enemy: str(j.enemy, 40) };
 }
 
 export function normNaming(j: Record<string, unknown>): { thought: string; options: NamingOption[]; gptTake: string } {
@@ -270,7 +270,7 @@ export function normNaming(j: Record<string, unknown>): { thought: string; optio
 
 export function normLogo(j: Record<string, unknown>): { thought: string; concept: string; logo: LogoSpec } {
 	const logo = normalizeLogo(j);
-	if (!logo) throw new StepError('дизайнер не намалював знак');
+	if (!logo || logo.shapes.length < 2) throw new StepError('дизайнер не намалював знак');
 	return { thought: str(j.thought, 120), concept: str(j.concept, 200), logo };
 }
 
@@ -294,7 +294,7 @@ export function normContent(id: ContentElement, j: Record<string, unknown>): { t
 		case 'reels':
 			return { thought, text: 'Три ідеї', details: strs(j.hooks, 3, 140) };
 		case 'youtube':
-			return { thought, text: str(j.title, 80), details: strs(j.scenes, 4, 120) };
+			return { thought, text: str(j.title, 80), details: [str(j.cover, 160), ...strs(j.scenes, 3, 120)].filter(Boolean) };
 	}
 }
 
@@ -308,7 +308,8 @@ export function normClient(j: Record<string, unknown>, last: boolean) {
 	if (last && verdict === 'rework') verdict = 'reject';
 	if (verdict === 'rework' && !demands.length) verdict = 'ok';
 	const mood = Math.max(0, Math.min(100, Math.round(Number(j.mood) || 50)));
-	return { reaction: str(j.reaction, 300), verdict, mood, demands: verdict === 'rework' ? demands : [] };
+	const lines = strs(j.lines, 3, 90);
+	return { reaction: str(j.reaction, 300), lines: lines.length ? lines : [str(j.reaction, 90)].filter(Boolean), verdict, mood, demands: verdict === 'rework' ? demands : [] };
 }
 
 export function normPersona(j: Record<string, unknown>) {

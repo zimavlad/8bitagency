@@ -79,7 +79,10 @@ const SPOTS: Record<Role, Record<Spot, { gx: number; gy: number }>> = {
 	designer: { desk: { gx: 6.25, gy: 0.6 }, table: { gx: 5.3, gy: 4.95 }, board: { gx: 2.72, gy: 0.62 }, coffee: { gx: 7.5, gy: 5.75 }, away: { gx: 0.3, gy: 5.1 } }
 };
 const CLIENT_DOOR = { gx: 0.35, gy: 5.15 };
-const CLIENT_TABLE = { gx: 3.45, gy: 5.8 };
+const CLIENT_TABLE = { gx: 3.45, gy: 5.85 };
+
+/** Предмети, з якими можна взаємодіяти кліком. */
+export type Thing = 'coffee' | 'pizza' | 'door';
 
 export class Office {
 	private ctx: CanvasRenderingContext2D;
@@ -171,6 +174,32 @@ export class Office {
 		const c = this.pos[k];
 		const p = s(c.gx, c.gy);
 		return { x: this.TX + p.x * this.S, y: this.TY + (p.y - SPRITE_H - 6) * this.S };
+	}
+
+	/** Полотно арту з одним кадром для заданого стану (без анімації) — для поляроїдів меню. */
+	static still(input: SceneInput, t = 1.3): HTMLCanvasElement {
+		const cv = document.createElement('canvas');
+		const o = new Office(cv, document.createElement('div'), { ...input, reducedMotion: true });
+		o.destroy();
+		o.t = t;
+		o.draw();
+		return o.art;
+	}
+
+	/** Предмет під курсором: кавоварка, коробка піци на столі, двері. */
+	thing(x: number, y: number): Thing | null {
+		const ax = (x - this.TX) / this.S, ay = (y - this.TY) / this.S;
+		const inBox = (pts: P[]) => ax >= Math.min(...pts.map((p) => p.x)) && ax <= Math.max(...pts.map((p) => p.x)) && ay >= Math.min(...pts.map((p) => p.y)) && ay <= Math.max(...pts.map((p) => p.y));
+		if (inBox([at(6.5, 3.9, 34), at(7.9, 3.9, 34), at(7.9, 4.95, 0), at(6.5, 4.95, 0)])) return 'coffee';
+		if (inBox([at(3.3, 4.05, 22), at(4.1, 4.05, 22), at(4.1, 4.85, 14), at(3.3, 4.85, 14)])) return 'pizza';
+		if (inBox([wL(4.5, 0), wL(5.75, 0), wL(4.5, 52), wL(5.75, 52)])) return 'door';
+		return null;
+	}
+
+	/** Точка на екрані (CSS-пікселі) для клітинки підлоги — щоб ставити поп-ап біля предмета. */
+	screenOf(gx: number, gy: number, h = 0): P {
+		const p = at(gx, gy, h);
+		return { x: this.TX + p.x * this.S, y: this.TY + p.y * this.S };
 	}
 
 	/** Хто під пальцем/курсором (CSS-пікселі в межах сцени). */
@@ -644,7 +673,8 @@ export class Office {
 			if (k !== 'client' && this.input.away && Math.hypot(c.gx - SPOTS.strategist.away.gx, c.gy - SPOTS.strategist.away.gy) < 0.25) continue;
 			add(c.gx + c.gy, () => this.sprite(k));
 		}
-		add(2.2 + 3.6 + 2.4 + 1.6, () => this.meetingTable(2.2, 3.6));
+		// Глибина столу — по його центру: хто стоїть спереду (клієнт, дизайнер), малюється поверх, хто ззаду — під ним.
+		add(2.2 + 3.6 + 1.2 + 0.8, () => this.meetingTable(2.2, 3.6));
 		add(6.5 + 3.9 + 1.4 + 1.05, () => this.coffeeCorner(6.5, 3.9));
 		add(2.9 + 5.05, () => this.cat(2.9, 5.05));
 		add(7.4 + 2.6, () => { this.shadowUnder(7.3, 2.35, 0.62, 0.62); this.box(7.3, 2.35, 0.62, 0.62, 13, '#d9b98c', '#b4936a', '#a17f58'); this.qH(7.3, 2.62, 7.92, 2.7, 13, '#c8a26a'); });

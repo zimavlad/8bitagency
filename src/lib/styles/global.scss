@@ -1,58 +1,43 @@
-/* Токени обгортки. Сцена має свою палітру в src/lib/scene — тут лише інтерфейс. */
-:root,
-[data-theme='dark'] {
-	--bg: #121316;
-	--surface-1: #18191d;
-	--surface-2: #1f2025;
-	--surface-3: #282a30;
-	--line: #2e3037;
-	--line-hi: #4a4d57;
-	--text: #ecebe8;
-	--text-2: #a9a8a3;
-	--text-3: #74736f;
-	/* два акценти: дія/прогрес і людина (твоє: бриф, правки) */
-	--accent: #6aa7ff;
-	--accent-ink: #0d1626;
-	--human: #e8a93b;
-	--human-ink: #24180a;
-	/* станові — лише точками */
-	--ok: #6fcf8f;
-	--bad: #ef6f6f;
-	--warn: #e8c75a;
-	--scene-bg: #0f1013;
-	color-scheme: dark;
-}
-
-[data-theme='light'] {
-	--bg: #f4f2ee;
-	--surface-1: #fbfaf8;
-	--surface-2: #ffffff;
-	--surface-3: #efece6;
-	--line: #e0dcd4;
-	--line-hi: #b9b3a8;
-	--text: #1d1c1a;
-	--text-2: #5c5a55;
-	--text-3: #8b8882;
-	--accent: #2f6fd6;
-	--accent-ink: #ffffff;
-	--human: #b8780f;
-	--human-ink: #ffffff;
-	--ok: #2f9a55;
-	--bad: #d04545;
-	--warn: #b8901a;
-	--scene-bg: #e9e5de;
-	color-scheme: light;
-}
-
+/* Інтерфейс у стилі гри: темне дерево, піксельні рамки, піксельний шрифт для всього «ігрового». */
 :root {
-	--r: 12px;
-	--r-sm: 10px;
-	--t: 200ms;
+	--bg: #1a120d;
+	--surface-1: #2a1c14;
+	--surface-2: #36251a;
+	--surface-3: #47311f;
+	--line: #5c3f27;
+	--line-hi: #8a6038;
+	--text: #f5e6cc;
+	--text-2: #cbb391;
+	--text-3: #92785a;
+	/* дія / прогрес — зелений; людина (твій хід, твої правки) — золото */
+	--accent: #7cc65c;
+	--accent-ink: #11200b;
+	--human: #f2b544;
+	--human-ink: #2a1a05;
+	--ok: #7cc65c;
+	--bad: #e5674f;
+	--warn: #f2b544;
+	--hp: #6fcf5a;
+	--stress: #e98a3c;
+	--morale: #5aa9e6;
+	--scene-bg: #120c09;
+	--paper: #f8ecd2;
+	--paper-ink: #3a2414;
+	--frame: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='7' shape-rendering='crispEdges'%3E%3Crect x='1' y='0' width='1' height='1' fill='%23120a06'/%3E%3Crect x='2' y='0' width='1' height='1' fill='%23120a06'/%3E%3Crect x='3' y='0' width='1' height='1' fill='%23120a06'/%3E%3Crect x='4' y='0' width='1' height='1' fill='%23120a06'/%3E%3Crect x='5' y='0' width='1' height='1' fill='%23120a06'/%3E%3Crect x='0' y='1' width='1' height='1' fill='%23120a06'/%3E%3Crect x='1' y='1' width='1' height='1' fill='%23120a06'/%3E%3Crect x='2' y='1' width='1' height='1' fill='%23a87346'/%3E%3Crect x='3' y='1' width='1' height='1' fill='%23a87346'/%3E%3Crect x='4' y='1' width='1' height='1' fill='%23a87346'/%3E%3Crect x='5' y='1' width='1' height='1' fill='%23120a06'/%3E%3Crect x='6' y='1' width='1' height='1' fill='%23120a06'/%3E%3Crect x='0' y='2' width='1' height='1' fill='%23120a06'/%3E%3Crect x='1' y='2' width='1' height='1' fill='%23a87346'/%3E%3Crect x='2' y='2' width='1' height='1' fill='%235c3a22'/%3E%3Crect x='3' y='2' width='1' height='1' fill='%235c3a22'/%3E%3Crect x='4' y='2' width='1' height='1' fill='%235c3a22'/%3E%3Crect x='5' y='2' width='1' height='1' fill='%23a87346'/%3E%3Crect x='6' y='2' width='1' height='1' fill='%23120a06'/%3E%3Crect x='0' y='3' width='1' height='1' fill='%23120a06'/%3E%3Crect x='1' y='3' width='1' height='1' fill='%23a87346'/%3E%3Crect x='2' y='3' width='1' height='1' fill='%235c3a22'/%3E%3Crect x='4' y='3' width='1' height='1' fill='%235c3a22'/%3E%3Crect x='5' y='3' width='1' height='1' fill='%23a87346'/%3E%3Crect x='6' y='3' width='1' height='1' fill='%23120a06'/%3E%3Crect x='0' y='4' width='1' height='1' fill='%23120a06'/%3E%3Crect x='1' y='4' width='1' height='1' fill='%23a87346'/%3E%3Crect x='2' y='4' width='1' height='1' fill='%235c3a22'/%3E%3Crect x='3' y='4' width='1' height='1' fill='%235c3a22'/%3E%3Crect x='4' y='4' width='1' height='1' fill='%235c3a22'/%3E%3Crect x='5' y='4' width='1' height='1' fill='%23a87346'/%3E%3Crect x='6' y='4' width='1' height='1' fill='%23120a06'/%3E%3Crect x='0' y='5' width='1' height='1' fill='%23120a06'/%3E%3Crect x='1' y='5' width='1' height='1' fill='%23120a06'/%3E%3Crect x='2' y='5' width='1' height='1' fill='%23a87346'/%3E%3Crect x='3' y='5' width='1' height='1' fill='%23a87346'/%3E%3Crect x='4' y='5' width='1' height='1' fill='%23a87346'/%3E%3Crect x='5' y='5' width='1' height='1' fill='%23120a06'/%3E%3Crect x='6' y='5' width='1' height='1' fill='%23120a06'/%3E%3Crect x='1' y='6' width='1' height='1' fill='%23120a06'/%3E%3Crect x='2' y='6' width='1' height='1' fill='%23120a06'/%3E%3Crect x='3' y='6' width='1' height='1' fill='%23120a06'/%3E%3Crect x='4' y='6' width='1' height='1' fill='%23120a06'/%3E%3Crect x='5' y='6' width='1' height='1' fill='%23120a06'/%3E%3C/svg%3E");
+	--frame-gold: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='7' shape-rendering='crispEdges'%3E%3Crect x='1' y='0' width='1' height='1' fill='%23120a06'/%3E%3Crect x='2' y='0' width='1' height='1' fill='%23120a06'/%3E%3Crect x='3' y='0' width='1' height='1' fill='%23120a06'/%3E%3Crect x='4' y='0' width='1' height='1' fill='%23120a06'/%3E%3Crect x='5' y='0' width='1' height='1' fill='%23120a06'/%3E%3Crect x='0' y='1' width='1' height='1' fill='%23120a06'/%3E%3Crect x='1' y='1' width='1' height='1' fill='%23120a06'/%3E%3Crect x='2' y='1' width='1' height='1' fill='%23f2c35a'/%3E%3Crect x='3' y='1' width='1' height='1' fill='%23f2c35a'/%3E%3Crect x='4' y='1' width='1' height='1' fill='%23f2c35a'/%3E%3Crect x='5' y='1' width='1' height='1' fill='%23120a06'/%3E%3Crect x='6' y='1' width='1' height='1' fill='%23120a06'/%3E%3Crect x='0' y='2' width='1' height='1' fill='%23120a06'/%3E%3Crect x='1' y='2' width='1' height='1' fill='%23f2c35a'/%3E%3Crect x='2' y='2' width='1' height='1' fill='%239a6a1c'/%3E%3Crect x='3' y='2' width='1' height='1' fill='%239a6a1c'/%3E%3Crect x='4' y='2' width='1' height='1' fill='%239a6a1c'/%3E%3Crect x='5' y='2' width='1' height='1' fill='%23f2c35a'/%3E%3Crect x='6' y='2' width='1' height='1' fill='%23120a06'/%3E%3Crect x='0' y='3' width='1' height='1' fill='%23120a06'/%3E%3Crect x='1' y='3' width='1' height='1' fill='%23f2c35a'/%3E%3Crect x='2' y='3' width='1' height='1' fill='%239a6a1c'/%3E%3Crect x='4' y='3' width='1' height='1' fill='%239a6a1c'/%3E%3Crect x='5' y='3' width='1' height='1' fill='%23f2c35a'/%3E%3Crect x='6' y='3' width='1' height='1' fill='%23120a06'/%3E%3Crect x='0' y='4' width='1' height='1' fill='%23120a06'/%3E%3Crect x='1' y='4' width='1' height='1' fill='%23f2c35a'/%3E%3Crect x='2' y='4' width='1' height='1' fill='%239a6a1c'/%3E%3Crect x='3' y='4' width='1' height='1' fill='%239a6a1c'/%3E%3Crect x='4' y='4' width='1' height='1' fill='%239a6a1c'/%3E%3Crect x='5' y='4' width='1' height='1' fill='%23f2c35a'/%3E%3Crect x='6' y='4' width='1' height='1' fill='%23120a06'/%3E%3Crect x='0' y='5' width='1' height='1' fill='%23120a06'/%3E%3Crect x='1' y='5' width='1' height='1' fill='%23120a06'/%3E%3Crect x='2' y='5' width='1' height='1' fill='%23f2c35a'/%3E%3Crect x='3' y='5' width='1' height='1' fill='%23f2c35a'/%3E%3Crect x='4' y='5' width='1' height='1' fill='%23f2c35a'/%3E%3Crect x='5' y='5' width='1' height='1' fill='%23120a06'/%3E%3Crect x='6' y='5' width='1' height='1' fill='%23120a06'/%3E%3Crect x='1' y='6' width='1' height='1' fill='%23120a06'/%3E%3Crect x='2' y='6' width='1' height='1' fill='%23120a06'/%3E%3Crect x='3' y='6' width='1' height='1' fill='%23120a06'/%3E%3Crect x='4' y='6' width='1' height='1' fill='%23120a06'/%3E%3Crect x='5' y='6' width='1' height='1' fill='%23120a06'/%3E%3C/svg%3E");
+	--frame-paper: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='7' shape-rendering='crispEdges'%3E%3Crect x='1' y='0' width='1' height='1' fill='%233a2414'/%3E%3Crect x='2' y='0' width='1' height='1' fill='%233a2414'/%3E%3Crect x='3' y='0' width='1' height='1' fill='%233a2414'/%3E%3Crect x='4' y='0' width='1' height='1' fill='%233a2414'/%3E%3Crect x='5' y='0' width='1' height='1' fill='%233a2414'/%3E%3Crect x='0' y='1' width='1' height='1' fill='%233a2414'/%3E%3Crect x='1' y='1' width='1' height='1' fill='%233a2414'/%3E%3Crect x='2' y='1' width='1' height='1' fill='%23f8ecd2'/%3E%3Crect x='3' y='1' width='1' height='1' fill='%23f8ecd2'/%3E%3Crect x='4' y='1' width='1' height='1' fill='%23f8ecd2'/%3E%3Crect x='5' y='1' width='1' height='1' fill='%233a2414'/%3E%3Crect x='6' y='1' width='1' height='1' fill='%233a2414'/%3E%3Crect x='0' y='2' width='1' height='1' fill='%233a2414'/%3E%3Crect x='1' y='2' width='1' height='1' fill='%23f8ecd2'/%3E%3Crect x='2' y='2' width='1' height='1' fill='%23d8c096'/%3E%3Crect x='3' y='2' width='1' height='1' fill='%23d8c096'/%3E%3Crect x='4' y='2' width='1' height='1' fill='%23d8c096'/%3E%3Crect x='5' y='2' width='1' height='1' fill='%23f8ecd2'/%3E%3Crect x='6' y='2' width='1' height='1' fill='%233a2414'/%3E%3Crect x='0' y='3' width='1' height='1' fill='%233a2414'/%3E%3Crect x='1' y='3' width='1' height='1' fill='%23f8ecd2'/%3E%3Crect x='2' y='3' width='1' height='1' fill='%23d8c096'/%3E%3Crect x='4' y='3' width='1' height='1' fill='%23d8c096'/%3E%3Crect x='5' y='3' width='1' height='1' fill='%23f8ecd2'/%3E%3Crect x='6' y='3' width='1' height='1' fill='%233a2414'/%3E%3Crect x='0' y='4' width='1' height='1' fill='%233a2414'/%3E%3Crect x='1' y='4' width='1' height='1' fill='%23f8ecd2'/%3E%3Crect x='2' y='4' width='1' height='1' fill='%23d8c096'/%3E%3Crect x='3' y='4' width='1' height='1' fill='%23d8c096'/%3E%3Crect x='4' y='4' width='1' height='1' fill='%23d8c096'/%3E%3Crect x='5' y='4' width='1' height='1' fill='%23f8ecd2'/%3E%3Crect x='6' y='4' width='1' height='1' fill='%233a2414'/%3E%3Crect x='0' y='5' width='1' height='1' fill='%233a2414'/%3E%3Crect x='1' y='5' width='1' height='1' fill='%233a2414'/%3E%3Crect x='2' y='5' width='1' height='1' fill='%23f8ecd2'/%3E%3Crect x='3' y='5' width='1' height='1' fill='%23f8ecd2'/%3E%3Crect x='4' y='5' width='1' height='1' fill='%23f8ecd2'/%3E%3Crect x='5' y='5' width='1' height='1' fill='%233a2414'/%3E%3Crect x='6' y='5' width='1' height='1' fill='%233a2414'/%3E%3Crect x='1' y='6' width='1' height='1' fill='%233a2414'/%3E%3Crect x='2' y='6' width='1' height='1' fill='%233a2414'/%3E%3Crect x='3' y='6' width='1' height='1' fill='%233a2414'/%3E%3Crect x='4' y='6' width='1' height='1' fill='%233a2414'/%3E%3Crect x='5' y='6' width='1' height='1' fill='%233a2414'/%3E%3C/svg%3E");
+	--frame-dim: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='7' shape-rendering='crispEdges'%3E%3Crect x='1' y='0' width='1' height='1' fill='%23120a06'/%3E%3Crect x='2' y='0' width='1' height='1' fill='%23120a06'/%3E%3Crect x='3' y='0' width='1' height='1' fill='%23120a06'/%3E%3Crect x='4' y='0' width='1' height='1' fill='%23120a06'/%3E%3Crect x='5' y='0' width='1' height='1' fill='%23120a06'/%3E%3Crect x='0' y='1' width='1' height='1' fill='%23120a06'/%3E%3Crect x='1' y='1' width='1' height='1' fill='%23120a06'/%3E%3Crect x='2' y='1' width='1' height='1' fill='%236b4a2e'/%3E%3Crect x='3' y='1' width='1' height='1' fill='%236b4a2e'/%3E%3Crect x='4' y='1' width='1' height='1' fill='%236b4a2e'/%3E%3Crect x='5' y='1' width='1' height='1' fill='%23120a06'/%3E%3Crect x='6' y='1' width='1' height='1' fill='%23120a06'/%3E%3Crect x='0' y='2' width='1' height='1' fill='%23120a06'/%3E%3Crect x='1' y='2' width='1' height='1' fill='%236b4a2e'/%3E%3Crect x='2' y='2' width='1' height='1' fill='%233d2817'/%3E%3Crect x='3' y='2' width='1' height='1' fill='%233d2817'/%3E%3Crect x='4' y='2' width='1' height='1' fill='%233d2817'/%3E%3Crect x='5' y='2' width='1' height='1' fill='%236b4a2e'/%3E%3Crect x='6' y='2' width='1' height='1' fill='%23120a06'/%3E%3Crect x='0' y='3' width='1' height='1' fill='%23120a06'/%3E%3Crect x='1' y='3' width='1' height='1' fill='%236b4a2e'/%3E%3Crect x='2' y='3' width='1' height='1' fill='%233d2817'/%3E%3Crect x='4' y='3' width='1' height='1' fill='%233d2817'/%3E%3Crect x='5' y='3' width='1' height='1' fill='%236b4a2e'/%3E%3Crect x='6' y='3' width='1' height='1' fill='%23120a06'/%3E%3Crect x='0' y='4' width='1' height='1' fill='%23120a06'/%3E%3Crect x='1' y='4' width='1' height='1' fill='%236b4a2e'/%3E%3Crect x='2' y='4' width='1' height='1' fill='%233d2817'/%3E%3Crect x='3' y='4' width='1' height='1' fill='%233d2817'/%3E%3Crect x='4' y='4' width='1' height='1' fill='%233d2817'/%3E%3Crect x='5' y='4' width='1' height='1' fill='%236b4a2e'/%3E%3Crect x='6' y='4' width='1' height='1' fill='%23120a06'/%3E%3Crect x='0' y='5' width='1' height='1' fill='%23120a06'/%3E%3Crect x='1' y='5' width='1' height='1' fill='%23120a06'/%3E%3Crect x='2' y='5' width='1' height='1' fill='%236b4a2e'/%3E%3Crect x='3' y='5' width='1' height='1' fill='%236b4a2e'/%3E%3Crect x='4' y='5' width='1' height='1' fill='%236b4a2e'/%3E%3Crect x='5' y='5' width='1' height='1' fill='%23120a06'/%3E%3Crect x='6' y='5' width='1' height='1' fill='%23120a06'/%3E%3Crect x='1' y='6' width='1' height='1' fill='%23120a06'/%3E%3Crect x='2' y='6' width='1' height='1' fill='%23120a06'/%3E%3Crect x='3' y='6' width='1' height='1' fill='%23120a06'/%3E%3Crect x='4' y='6' width='1' height='1' fill='%23120a06'/%3E%3Crect x='5' y='6' width='1' height='1' fill='%23120a06'/%3E%3C/svg%3E");
+	--r: 0;
+	--r-sm: 0;
+	--t: 160ms;
 	--ease: cubic-bezier(0.2, 0.7, 0.2, 1);
 	--font: 'Onest', system-ui, sans-serif;
-	--mono: 'JetBrains Mono', ui-monospace, monospace;
+	--pixel: 'Tiny5', 'Onest', system-ui, sans-serif;
+	--title: 'Press Start 2P', 'Tiny5', monospace;
+	--mono: 'Tiny5', 'JetBrains Mono', ui-monospace, monospace;
 	--top-h: 56px;
 	--tabs-h: 60px;
+	color-scheme: dark;
 }
 
 *,
@@ -73,6 +58,17 @@ body {
 	font: 400 15px/1.5 var(--font);
 	min-height: 100dvh;
 	-webkit-font-smoothing: antialiased;
+	/* Tiny5 має одну вагу: фальшивий жирний розмазує пікселі. */
+	font-synthesis: none;
+}
+
+h1,
+h2,
+h3,
+h4 {
+	font-family: var(--pixel);
+	font-weight: 600;
+	letter-spacing: 0.01em;
 }
 
 button,
@@ -89,7 +85,7 @@ button {
 }
 
 :focus-visible {
-	outline: 2px solid var(--accent);
+	outline: 2px solid var(--human);
 	outline-offset: 2px;
 }
 
@@ -98,56 +94,104 @@ button {
 	font-variant-numeric: tabular-nums;
 }
 
+.px {
+	font-family: var(--pixel);
+}
+
+/* Рамка з дерева: 3 пікселі, зрізані кути. */
+.panel {
+	background: var(--surface-1);
+	background-clip: padding-box;
+	border: 3px solid transparent;
+	border-image: var(--frame) 3 / 3px stretch;
+	transition: border-image var(--t) var(--ease);
+	&.gold {
+		border-image: var(--frame-gold) 3 / 3px stretch;
+	}
+	&.dim {
+		border-image: var(--frame-dim) 3 / 3px stretch;
+	}
+}
+
+/* Папірець: світла картка з текстом (зведення, брифи, поляроїди). */
+.paper {
+	background: var(--paper);
+	background-clip: padding-box;
+	color: var(--paper-ink);
+	border: 3px solid transparent;
+	border-image: var(--frame-paper) 3 / 3px stretch;
+	--text-2: #6d5236;
+	--text-3: #94785a;
+}
+
+/* Піксельна кнопка: обведення, світлий верх, темний низ; натиск опускає її на піксель. */
 .btn {
+	--b: var(--surface-3);
+	--b-hi: #5b3f28;
+	--b-lo: #2b1c12;
+	--b-ink: var(--text);
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	gap: 8px;
 	min-height: 40px;
-	padding: 0 14px;
-	border-radius: var(--r-sm);
-	border: 1px solid var(--line);
-	background: var(--surface-2);
+	padding: 0 14px 2px;
+	border: 2px solid #120a06;
+	background: linear-gradient(to bottom, var(--b-hi) 0 2px, var(--b) 2px calc(100% - 4px), var(--b-lo) calc(100% - 4px));
+	color: var(--b-ink);
+	font-family: var(--pixel);
 	font-weight: 500;
-	transition: border-color var(--t) var(--ease), background var(--t) var(--ease), opacity var(--t);
+	font-size: 15px;
+	clip-path: polygon(2px 0, calc(100% - 2px) 0, 100% 2px, 100% calc(100% - 2px), calc(100% - 2px) 100%, 2px 100%, 0 calc(100% - 2px), 0 2px);
+	transition: filter var(--t), transform 60ms;
 	&:hover:not(:disabled) {
-		border-color: var(--line-hi);
+		filter: brightness(1.12);
+	}
+	&:active:not(:disabled) {
+		transform: translateY(1px);
+		background: linear-gradient(to bottom, var(--b-lo) 0 2px, var(--b) 2px);
 	}
 	&:disabled {
-		opacity: 0.4;
+		filter: grayscale(0.7) brightness(0.7);
 		cursor: default;
 	}
 	&.primary {
-		background: var(--accent);
-		border-color: var(--accent);
-		color: var(--accent-ink);
+		--b: #5fae43;
+		--b-hi: #9be07a;
+		--b-lo: #3b7a2a;
+		--b-ink: #10200a;
 	}
 	&.human {
-		border-color: var(--human);
-		color: var(--human);
+		--b: #e2a233;
+		--b-hi: #ffd780;
+		--b-lo: #9a6a1c;
+		--b-ink: #2a1a05;
+	}
+	&.danger {
+		--b: #b94a3a;
+		--b-hi: #e9806d;
+		--b-lo: #7a2a20;
+		--b-ink: #fff3e6;
 	}
 	&.ghost {
-		background: transparent;
+		--b: var(--surface-1);
+		--b-hi: var(--surface-2);
+		--b-lo: #1f150f;
 	}
 	&.sm {
 		min-height: 32px;
-		padding: 0 10px;
+		padding: 0 10px 2px;
 		font-size: 13px;
 	}
-}
-
-.panel {
-	background: var(--surface-1);
-	border: 1px solid var(--line);
-	border-radius: var(--r);
-	transition: border-color var(--t) var(--ease);
+	&.wide {
+		width: 100%;
+	}
 }
 
 .dot {
 	display: inline-block;
 	width: 8px;
 	height: 8px;
-	border-radius: 50%;
 	flex: 0 0 auto;
 	&.ok {
 		background: var(--ok);
@@ -172,7 +216,8 @@ button {
 }
 
 .label {
-	font-size: 12px;
+	font-family: var(--pixel);
+	font-size: 13px;
 	color: var(--text-3);
 	letter-spacing: 0.02em;
 }
@@ -180,9 +225,8 @@ button {
 textarea,
 input[type='text'] {
 	width: 100%;
-	background: var(--surface-2);
-	border: 1px solid var(--line);
-	border-radius: var(--r-sm);
+	background: #1f150f;
+	border: 2px solid var(--line);
 	padding: 10px 12px;
 	resize: vertical;
 	transition: border-color var(--t) var(--ease);
@@ -203,8 +247,23 @@ input[type='text'] {
 	}
 }
 
+@keyframes pop {
+	from {
+		opacity: 0;
+		transform: scale(0.94);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
 .rise {
 	animation: rise var(--t) var(--ease) both;
+}
+
+.pop {
+	animation: pop 140ms steps(4) both;
 }
 
 @media (prefers-reduced-motion: reduce) {

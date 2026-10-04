@@ -1,9 +1,9 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-	CONTENT, CORE, EDIT_SLOTS, ELEMENT_OWNER, ELEMENT_TITLE, MAX_CLIENT_ROUNDS, ROLE_NAME, ROLES,
-	type Brief, type Burnout, type ClientVerdict, type ContentElement, type ElementId, type ElementValue,
-	type Role, type RunPhase, type RunResult, type RunState, type Speaker, type Spot
+	CONTENT, CORE, CORE_SHARE, EDIT_SLOTS, ELEMENT_OWNER, ELEMENT_TITLE, MAX_CLIENT_ROUNDS, ROLE_NAME, ROLES,
+	type Brief, type Burnout, type ClientVerdict, type ContentElement, type ElementId, type ElementValue, type LogoSpec,
+	type Role, type RunPhase, type RunResult, type RunState, type Speaker, type Spot, type StepKey
 } from '$lib/types';
 import { errFields, log } from '../log';
 import { isAbortError, type CallPurpose, type ModelClient } from '../model/client';
@@ -33,6 +33,7 @@ export interface RunDeps {
 	models: Models;
 	dataDir: string;
 	burnout: Burnout;
+	morale: Burnout;
 	onChange?: (run: Run) => void;
 	onFinish?: (run: Run) => void;
 	onSpend?: (provider: 'claude' | 'gemini', usd: number) => void;
@@ -44,7 +45,8 @@ export type Decision =
 	| { action: 'submit' }
 	| { action: 'edit'; notes: string[] }
 	| { action: 'retry' }
-	| { action: 'giveup' };
+	| { action: 'giveup' }
+	| { action: 'continue' };
 
 /** Запис одного виклику моделі — для архіву прогону (бачити, що агенти думали насправді). */
 export interface TraceEntry {
@@ -104,7 +106,9 @@ export class Run {
 	private resume: (() => void) | null = null;
 	private seq = 0;
 	private coreAccepted = false;
+	private contentAccepted = false;
 	readonly burnoutDelta: Burnout = { strategist: 0, copywriter: 0, designer: 0 };
+	readonly moraleDelta: Burnout = { strategist: 0, copywriter: 0, designer: 0 };
 
 	constructor(readonly id: string, brief: Brief, private deps: RunDeps) {
 		this.state = {
@@ -114,12 +118,14 @@ export class Run {
 			status: 'Команда відкриває бриф',
 			paused: false,
 			agents: {
-				strategist: { status: 'idle', spot: 'desk', burnout: deps.burnout.strategist, doing: 'на місці' },
-				copywriter: { status: 'idle', spot: 'desk', burnout: deps.burnout.copywriter, doing: 'на місці' },
-				designer: { status: 'idle', spot: 'desk', burnout: deps.burnout.designer, doing: 'на місці' }
+				strategist: { status: 'idle', spot: 'desk', burnout: deps.burnout.strategist, morale: deps.morale.strategist, hp: 100, doing: 'на місці' },
+				copywriter: { status: 'idle', spot: 'desk', burnout: deps.burnout.copywriter, morale: deps.morale.copywriter, hp: 100, doing: 'на місці' },
+				designer: { status: 'idle', spot: 'desk', burnout: deps.burnout.designer, morale: deps.morale.designer, hp: 100, doing: 'на місці' }
 			},
 			clientInOffice: false,
 			elements: {},
+			strategy: null,
+			steps: [],
 			options: [],
 			editAvailable: false,
 			clientRound: 0,
@@ -174,7 +180,38 @@ export class Run {
 	}
 
 	private burnoutOf(r: Role) {
-		return Math.min(100, this.deps.burnout[r] + this.burnoutDelta[r]);
+		return Math.max(0, Math.min(100, this.deps.burnout[r] + this.burnoutDelta[r]));
+	}
+
+	private moraleOf(r: Role) {
+		return Math.max(0, Math.min(100, this.deps.morale[r] + this.moraleDelta[r]));
+	}
+
+	/** Мораль: мінус — клієнт незадоволений, плюс — перемоги, похвала, піца. */
+	private cheer(n: number, roles: Role[] = ROLES) {
+		for (const r of roles) {
+			this.moraleDelta[r] += n;
+			this.state.agents[r].morale = this.moraleOf(r);
+		}
+	}
+
+	/** Дії керівника для команди під час брифу (кава, піца, похвала). Гроші за піцу знімає гра. */
+	perk(kind: 'coffee' | 'pizza' | 'praise', role?: Role) {
+		if (kind === 'coffee') for (const r of ROLES) { this.burnoutDelta[r] -= 6; this.state.agents[r].burnout = this.burnoutOf(r); }
+		if (kind === 'pizza') this.cheer(8);
+		if (kind === 'praise' && role) this.cheer(6, [role]);
+		this.emit();
+	}
+
+	/** Запис етапу: що сталося, щоб гравець міг повернутись і переглянути. */
+	private record(key: StepKey, lines: string[], logo?: LogoSpec) {
+		const steps = [...this.state.steps];
+		const i = steps.findIndex((x) => x.key === key);
+		const cur = i >= 0 ? steps[i] : { key, lines: [] };
+		const next = { ...cur, lines: [...cur.lines, ...lines.filter(Boolean)], ...(logo ? { logos: [...(cur.logos ?? []), logo] } : {}) };
+		if (i >= 0) steps[i] = next;
+		else steps.push(next);
+		this.state.steps = steps;
 	}
 
 	private alive() {
@@ -229,7 +266,7 @@ export class Run {
 	private ask(role: Role, purpose: CallPurpose, user: string, schema: Record<string, unknown>, fakeFn: () => unknown): Promise<Record<string, unknown>> {
 		const job = this.locks[role].catch(() => undefined).then(async () => {
 			const messages: Msg[] = [...this.history[role], { role: 'user', content: user + guide(schema) }];
-			const r = await this.call({ purpose, who: role, model: this.deps.models.agent, system: systemFor(role, this.burnoutOf(role)), messages, schema, fake: fakeFn });
+			const r = await this.call({ purpose, who: role, model: this.deps.models.agent, system: systemFor(role, this.burnoutOf(role), this.moraleOf(role)), messages, schema, fake: fakeFn });
 			this.history[role] = [...messages, { role: 'assistant', content: r.content }];
 			this.tire(role, 3);
 			return parseJson(r.text);
@@ -284,8 +321,11 @@ export class Run {
 			if (notes.length > EDIT_SLOTS) return `Не більше ${EDIT_SLOTS} правок.`;
 			if (notes.some((n) => n.length > NOTE_MAX)) return `Кожна правка — до ${NOTE_MAX} знаків.`;
 			d = { action: 'edit', notes };
-		} else if (d.action === 'retry' || d.action === 'giveup') {
+		} else if (d.action === 'retry' || d.action === 'giveup' || d.action === 'continue') {
 			if (p !== 'client_decision_core' && p !== 'client_decision_content') return 'Зараз клієнт не чекає відповіді.';
+			const v = this.state.verdicts.at(-1)?.verdict;
+			if (d.action === 'continue' && v === 'rework') return 'Клієнт чекає: ще коло чи кидаємо проєкт?';
+			if (d.action !== 'continue' && v !== 'rework') return 'Тут лише «далі».';
 		}
 		this.waiter = null;
 		w.resolve(d);
@@ -320,6 +360,8 @@ export class Run {
 		const gpt = await this.maybeGpt('strategist', 'read');
 		this.read = normRead(await this.ask('strategist', 'read', prompt.read(b, gpt), SCHEMA.read, () => fake.read(b, !!gpt)));
 		this.say('strategist', this.read.thought, 'thought', undefined, readText(this.read).split('\n'));
+		this.state.strategy = { problem: this.read.problem, insight: this.read.insight, advantage: this.read.advantage, direction: this.read.direction };
+		this.record('strategy', readText(this.read).split('\n'));
 		if (this.read.gptTake) this.note(`Стратегиня про Джіпітенка: ${this.read.gptTake}`);
 
 		// 2. радиться з колегами
@@ -339,6 +381,7 @@ export class Run {
 			this.agent(r, 'done', h.ok ? 'погодився' : 'має сумнів');
 			return { role: r as Role, text: `${h.ok ? 'ок' : 'сумнів'} — ${h.note}` };
 		}));
+		this.record('strategy', notes.map((n) => `${ROLE_NAME[n.role]}: ${n.text}`));
 
 		// 3. позиціонування
 		await this.gate();
@@ -346,7 +389,8 @@ export class Run {
 		this.agent('strategist', 'thinking', 'пише позиціонування');
 		const p = normPositioning(await this.ask('strategist', 'core', prompt.positioning(notes), SCHEMA.positioning, () => fake.positioning(b)));
 		this.pos = { positioning: p.positioning, role: p.role, enemy: p.enemy };
-		this.setEl('positioning', p.positioning, [`Роль: ${p.role}`, `Ворог: ${p.enemy}`], { rejected: p.rejected });
+		this.setEl('positioning', p.positioning, [`Роль: ${p.role}`, `Ворог: ${p.enemy}`], { rejected: p.rejected, why: p.why });
+		this.record('strategy', [`Позиціонування: ${p.positioning}`, ...p.rejected.map((r) => `Відкинула: ${r.text} — ${r.reason}`)]);
 		this.say('strategist', p.thought, 'thought', undefined, [p.positioning, ...p.rejected.map((r) => `відкинула: ${r.text} — ${r.reason}`)]);
 		this.agent('strategist', 'done', 'позиціонування готове');
 
@@ -363,8 +407,9 @@ export class Run {
 		this.phase('pick_name', 'Обери назву й слоган — із цим піде дизайнер', { copywriter: 'table', strategist: 'table' });
 		const pick = (await this.wait(['pick_name'])) as { action: 'pick'; index: number };
 		const chosen = this.state.options[pick.index];
-		this.setEl('name', chosen.name, [chosen.why].filter(Boolean), { rejected: this.state.options.filter((_, i) => i !== pick.index).map((o) => ({ text: o.name, reason: o.slogan })) });
-		this.setEl('slogan', chosen.slogan, []);
+		this.setEl('name', chosen.name, [], { why: chosen.why, rejected: this.state.options.filter((_, i) => i !== pick.index).map((o) => ({ text: o.name, reason: o.slogan })) });
+		this.setEl('slogan', chosen.slogan, [], { why: chosen.why });
+		this.record('name', this.state.options.map((o, i) => `${i === pick.index ? 'Обрано' : 'Варіант'}: ${o.name} — «${o.slogan}» (${o.why})`));
 		this.note(`Ти обрав: ${chosen.name} — «${chosen.slogan}»`);
 		this.history.copywriter.push({ role: 'user', content: `Керівник обрав варіант: ${chosen.name} — «${chosen.slogan}».` }, { role: 'assistant', content: '{"ok":true}' });
 
@@ -372,8 +417,9 @@ export class Run {
 		await this.gate();
 		this.phase('logo', 'Дизайнер малює знак', { designer: 'desk', copywriter: 'desk' });
 		this.agent('designer', 'thinking', 'малює знак');
-		const lg = normLogo(await this.ask('designer', 'core', prompt.logo(this.pos, chosen.name, chosen.slogan), SCHEMA.logo, () => fake.logo()));
-		this.setEl('logo', lg.concept, [], { logo: lg.logo });
+		const lg = await this.drawLogo('core', prompt.logo(this.pos, chosen.name, chosen.slogan));
+		this.setEl('logo', lg.concept, [], { logo: lg.logo, why: lg.thought });
+		this.record('logo', [lg.concept], lg.logo);
 		this.say('designer', lg.thought, 'thought', undefined, [lg.concept]);
 		this.agent('designer', 'done', 'знак готовий');
 
@@ -386,8 +432,19 @@ export class Run {
 		this.phase('content', 'Команда робить ідеї для каналів', { strategist: 'desk', copywriter: 'desk', designer: 'desk' });
 		await Promise.all(CONTENT.map((id) => this.contentStep(id)));
 		await this.images();
-		const ok = await this.stage('content');
-		this.finish(ok ? 'ok' : 'reject');
+		this.contentAccepted = await this.stage('content');
+		this.finish(this.contentAccepted ? 'ok' : 'reject');
+	}
+
+	/** Знак з однією повторною спробою: порожній або невидимий знак дизайнер перемальовує. */
+	private async drawLogo(purpose: 'core' | 'rework', text: string) {
+		try {
+			return normLogo(await this.ask('designer', purpose, text, SCHEMA.logo, () => fake.logo()));
+		} catch (e) {
+			if (!(e instanceof StepError)) throw e;
+			log('warn', 'logo_retry', { run: this.id });
+			return normLogo(await this.ask('designer', purpose, 'Знак вийшов порожнім: фігури без розміру або злились із тлом. Перемалюй: від 2 до 6 видимих фігур, радіуси й розміри не менше 6, кольори a і b контрастні до bg.', SCHEMA.logo, () => fake.logo()));
+		}
 	}
 
 	private async persona() {
@@ -415,24 +472,30 @@ export class Run {
 		const ids: ElementId[] = stage === 'core' ? CORE : CONTENT;
 		const playerPhase: RunPhase = stage === 'core' ? 'player_core' : 'player_content';
 		const decisionPhase: RunPhase = stage === 'core' ? 'client_decision_core' : 'client_decision_content';
+		const you: StepKey = stage === 'core' ? 'you_core' : 'you_content';
+		const them: StepKey = stage === 'core' ? 'client_core' : 'client_content';
+		const name = this.state.brief.client.name;
 
 		this.state.editAvailable = true;
 		for (;;) {
-			this.phase(playerPhase, this.state.editAvailable ? 'Твоє слово: показати клієнту або дати до трьох правок' : 'Правки враховано. Показуємо клієнту?', { strategist: 'table', copywriter: 'table', designer: 'table' });
+			this.phase(playerPhase, this.state.editAvailable ? 'Твоє слово: глянь зведення, покажи клієнту або дай правки' : 'Правки враховано. Показуємо клієнту?', { strategist: 'table', copywriter: 'table', designer: 'table' });
 			for (const r of ROLES) this.agent(r, 'idle', 'чекає твого рішення');
 			const d = await this.wait([playerPhase]);
 			if (d.action !== 'edit') break;
 			this.state.editAvailable = false;
+			this.record(you, d.notes.map((n) => `Твоя правка: ${n}`));
 			this.note('Твої правки', d.notes);
 			await this.rework(stage, 'керівник агенції', d.notes);
 		}
 		this.state.editAvailable = false;
+		this.record(you, ['Показав клієнту']);
 
 		this.state.clientInOffice = true;
 		for (let round = 1; round <= MAX_CLIENT_ROUNDS; round++) {
-			await this.gate();
 			this.state.clientRound = round;
-			this.phase(stage === 'core' ? 'client_core' : 'client_content', `${this.state.brief.client.name} дивиться роботу${round > 1 ? ` (коло ${round})` : ''}`);
+			this.phase(stage === 'core' ? 'client_core' : 'client_content', `${name} дивиться роботу${round > 1 ? ` (коло ${round})` : ''}`, { strategist: 'table', copywriter: 'table', designer: 'table' });
+			for (const r of ROLES) this.agent(r, 'idle', 'нервово чекає');
+			await this.gate();
 			const last = round === MAX_CLIENT_ROUNDS;
 			const items = ids.map((id) => this.state.elements[id]).filter((e): e is ElementValue => !!e);
 			const c = normClient(await this.once({
@@ -441,22 +504,26 @@ export class Run {
 				schema: SCHEMA.client, fake: () => fake.client(round, stage)
 			}), last);
 			const v: ClientVerdict = { stage, round, ...c };
+			for (const line of c.lines) this.say('client', line, 'client');
 			this.state.verdicts = [...this.state.verdicts, v];
-			this.say('client', c.reaction, 'client', undefined, c.demands);
-			if (c.verdict === 'ok') {
-				this.note(`${this.state.brief.client.name} приймає.`);
-				this.state.clientInOffice = false;
-				return true;
-			}
-			if (c.verdict === 'reject') {
-				this.note(`${this.state.brief.client.name} відмовляється.`);
-				this.state.clientInOffice = false;
-				return false;
-			}
-			this.phase(decisionPhase, `${this.state.brief.client.name} хоче правок. Ще коло чи здаємось?`);
+			this.record(them, [`Коло ${round}: ${c.lines.join(' / ')}`, `Підсумок: ${c.reaction}`, ...c.demands.map((x) => `Вимога: ${x}`)]);
+			if (c.verdict === 'ok') this.cheer(stage === 'core' ? 6 : 8);
+			else if (c.verdict === 'reject') this.cheer(-14);
+			else this.cheer(-5);
+
+			const word = c.verdict === 'ok' ? `${name} приймає` : c.verdict === 'reject' ? `${name} відмовляється` : `${name} хоче правок`;
+			this.note(word, [c.reaction, ...c.demands]);
+			this.phase(decisionPhase, c.verdict === 'rework' ? `${word}. Ще коло чи кидаємо проєкт?` : word);
+			for (const r of ROLES) this.agent(r, 'idle', c.verdict === 'ok' ? 'видихає' : c.verdict === 'reject' ? 'засмучений(а)' : 'зітхає');
 			const d = await this.wait([decisionPhase]);
+			if (c.verdict !== 'rework') {
+				this.state.clientInOffice = false;
+				return c.verdict === 'ok';
+			}
 			if (d.action === 'giveup') {
-				this.note('Ти вирішив здатися.');
+				this.note('Ти кинув проєкт.');
+				this.record(them, ['Ти кинув проєкт']);
+				this.cheer(-6);
 				this.state.clientInOffice = false;
 				return false;
 			}
@@ -495,8 +562,9 @@ export class Run {
 
 			await this.gate();
 			this.agent('designer', 'thinking', 'переглядає знак');
-			const lg = normLogo(await this.ask('designer', 'rework', prompt.relogo(who, notes, this.pos, this.state.elements.name?.text ?? ''), SCHEMA.logo, () => fake.logo()));
-			this.setEl('logo', lg.concept, [], { logo: lg.logo });
+			const lg = await this.drawLogo('rework', prompt.relogo(who, notes, this.pos, this.state.elements.name?.text ?? ''));
+			this.setEl('logo', lg.concept, [], { logo: lg.logo, why: lg.thought });
+			this.record('logo', [`Після правок (${who}): ${lg.concept}`], lg.logo);
 			this.bump('logo');
 			this.say('designer', lg.thought, 'thought', undefined, [lg.concept]);
 			this.agent('designer', 'done', 'оновив знак');
@@ -529,27 +597,30 @@ export class Run {
 		const out = normContent(id, await this.ask(r, 'content', prompt.content(id, this.pack()), SCHEMA[id], () => fake.content(id)));
 		this.setEl(id, out.text, out.details);
 		this.say(r, out.thought, 'thought', undefined, [out.text, ...out.details]);
+		this.record('content', [`${ELEMENT_TITLE[id]}: ${[out.text, ...out.details].join(' · ')}`]);
 		this.agent(r, 'done', `${ELEMENT_TITLE[id]} готово`);
 	}
 
-	/** Банер і розкадровка в піксельному стилі гри (Gemini). Без ключа — заглушки; збій картинки бриф не валить. */
+	/** Банер Instagram і обкладинка YouTube у піксельному стилі гри (Gemini). Без ключа — заглушки; збій картинки бриф не валить. */
 	private async images() {
 		await this.gate();
-		this.phase('images', 'Дизайнер малює банер і розкадровку', { designer: 'desk' });
-		this.agent('designer', 'thinking', 'малює банер і розкадровку');
+		this.phase('images', 'Дизайнер малює банер і обкладинку ролика', { designer: 'desk' });
+		this.agent('designer', 'thinking', 'малює банер і обкладинку');
 		const e = this.state.elements;
 		const logoPng = e.logo?.logo ? rasterLogo(e.logo.logo, 256) : null;
 		const refs = logoPng ? [{ mime: 'image/png', data: logoPng }] : [];
-		const STYLE = 'Pixel art in the cozy style of Stardew Valley: chunky visible pixels, warm saturated palette, dark coloured outlines (not black), soft dithering, no photorealism, no gradients like 3D render.';
+		const STYLE = 'Pixel art in the cozy style of Stardew Valley: chunky visible pixels, warm saturated palette, dark coloured outlines (not black), soft dithering, no photorealism, no 3D-render gradients.';
 		const brand = `Brand name: «${e.name?.text ?? ''}». Slogan (Ukrainian, keep exactly): «${e.slogan?.text ?? ''}».`;
+		const mark = logoPng ? 'Place the provided pixel logo (first image) as the brand mark, keep its shapes and colours exactly.' : '';
+		const colours = `Use the brand colours ${e.logo?.logo?.palette.a ?? ''} and ${e.logo?.logo?.palette.b ?? ''}. All text must be crisp pixel text, spelled exactly, nothing else written.`;
 		const jobs: { id: 'instagram' | 'youtube'; prompt: string; aspect: '1:1' | '16:9' }[] = [
 			{
 				id: 'instagram', aspect: '1:1',
-				prompt: `${STYLE}\nA square Instagram ad banner. ${brand}\nHeadline in big pixel font (Ukrainian, keep exactly): «${e.instagram?.text ?? ''}».\nScene: ${e.instagram?.details[0] ?? ''}.\n${logoPng ? 'Place the provided logo image (first image) as the brand mark in a corner, keep its shapes and colours.' : ''}\nUse the brand colours ${e.logo?.logo?.palette.a ?? ''} and ${e.logo?.logo?.palette.b ?? ''}. All text must be crisp pixel text, spelled exactly.`
+				prompt: `${STYLE}\nA square Instagram ad banner. ${brand}\nHeadline in big pixel font (Ukrainian, keep exactly): «${e.instagram?.text ?? ''}».\nScene: ${e.instagram?.details[0] ?? ''}.\n${mark} Put it in a corner.\n${colours}`
 			},
 			{
 				id: 'youtube', aspect: '16:9',
-				prompt: `${STYLE}\nA storyboard sheet for a premium brand video: a 2×2 grid of four pixel-art frames, each numbered 1–4 with a very short Ukrainian caption under it.\nTitle at the top: «${e.youtube?.text ?? ''}». ${brand}\nFrames:\n${(e.youtube?.details ?? []).map((s, i) => `${i + 1}. ${s}`).join('\n')}\n${logoPng ? 'Show the provided logo (first image) in the last frame.' : ''}`
+				prompt: `${STYLE}\nA YouTube video thumbnail (cover) for a premium brand film, one single scene, cinematic composition, readable at small size.\nVideo title in big pixel font (Ukrainian, keep exactly): «${e.youtube?.text ?? ''}». ${brand}\nScene on the cover: ${e.youtube?.details[0] ?? ''}.\n${mark} Small, in a corner.\n${colours}`
 			}
 		];
 		await Promise.all(jobs.map(async (j) => {
@@ -568,6 +639,7 @@ export class Run {
 				if (cur) this.setEl(j.id, cur.text, cur.details, { image: `/api/images/${this.id}/${file}` });
 			} catch (err) {
 				if (isAbortError(err)) throw err;
+				log('warn', 'image_failed', { run: this.id, id: j.id, msg: String((err as Error).message).slice(0, 200) });
 				this.note(`Картинка «${ELEMENT_TITLE[j.id]}» не вийшла: ${(err as Error).message.slice(0, 120)}`);
 			}
 		}));
@@ -588,31 +660,35 @@ export class Run {
 	private finish(verdict: 'ok' | 'reject' | 'dropped', free = false) {
 		const elements = Object.values(this.state.elements).filter((e): e is ElementValue => !!e);
 		const { quality, notes, performanceHits } = qualityOf(elements);
-		const last = this.state.verdicts.at(-1);
 		const fee = this.state.brief.fee;
-		let paid = 0;
-		if (verdict === 'ok') paid = Math.round((fee * (0.6 + ((last?.mood ?? 50) / 100) * 0.6)) / 100) * 100;
-		else if (verdict === 'reject' && this.coreAccepted) paid = Math.round((fee * 0.4) / 100) * 100;
+		const coreFee = Math.round((fee * CORE_SHARE) / 100) * 100;
+		const pay: RunResult['pay'] = [];
+		if (this.state.brief.prepay) pay.push({ label: 'Передплата', amount: this.state.brief.prepay });
+		pay.push({ label: this.coreAccepted ? 'Основу прийнято (60% чеку)' : 'Основу не прийнято', amount: this.coreAccepted ? coreFee : 0 });
+		if (this.coreAccepted) pay.push({ label: this.contentAccepted ? 'Канали прийнято (40% чеку)' : 'Канали не прийнято', amount: this.contentAccepted ? fee - coreFee : 0 });
+		const paid = pay.reduce((n, p) => n + p.amount, 0);
 		if (verdict === 'reject') for (const r of ROLES) this.tire(r, 8);
+		if (verdict === 'dropped' && !free) this.cheer(-6);
 		const repDelta = free ? 0 : reputationDelta(quality, verdict);
 		const result: RunResult = {
-			verdict, paid, repDelta, quality,
+			verdict, paid, pay, repDelta, quality,
 			notes: [
 				...notes.filter((n) => !n.ok).map((n) => `${ELEMENT_TITLE[n.element]}: ${n.text}`),
-				...(performanceHits ? ['Клієнт протягнув перфоманс-штампи — індустрія це бачить.'] : []),
-				...(verdict === 'reject' && this.coreAccepted ? ['Основу клієнт оплатив частково, від каналів відмовився.'] : [])
+				...(performanceHits ? ['Клієнт протягнув перфоманс-штампи — індустрія це бачить.'] : [])
 			],
-			burnoutDelta: { ...this.burnoutDelta }
+			burnoutDelta: { ...this.burnoutDelta },
+			moraleDelta: { ...this.moraleDelta }
 		};
 		this.state.result = result;
 		this.state.clientInOffice = false;
 		this.state.paused = false;
+		this.record('done', pay.map((p) => `${p.label}: ${p.amount.toLocaleString('uk-UA')} ₴`));
 		for (const r of ROLES) {
 			this.state.agents[r].status = this.burnoutOf(r) >= 85 ? 'tired' : 'idle';
 			this.state.agents[r].spot = 'coffee';
-			this.state.agents[r].doing = 'пʼє каву';
+			this.state.agents[r].doing = verdict === 'ok' ? 'святкує з кавою' : 'пʼє каву мовчки';
 		}
-		const word = verdict === 'ok' ? 'Клієнт заплатив' : verdict === 'reject' ? 'Клієнт пішов' : 'Бриф закрито';
+		const word = verdict === 'ok' ? 'Клієнт заплатив' : verdict === 'reject' ? (this.coreAccepted ? 'Канали не прийняли' : 'Клієнт пішов') : 'Проєкт кинуто';
 		this.phase('done', `${word}: +${paid.toLocaleString('uk-UA')} ₴, репутація ${repDelta >= 0 ? '+' : ''}${repDelta}`);
 		log('info', 'run_done', { run: this.id, verdict, paid, repDelta, quality, calls: this.state.calls, usd: Number(this.state.costUsd.toFixed(4)), images_usd: this.state.imagesUsd });
 		this.deps.onFinish?.(this);

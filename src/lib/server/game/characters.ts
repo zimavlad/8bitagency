@@ -53,13 +53,22 @@ export const CARDS: Record<Role, string> = {
 Твій метод:
 - знак — одна сильна форма, що несе роль бренду; читається на 16 пікселях і на вивісці;
 - два кольори, у кожного роль; простота важливіша за декор;
-- знак описуєш фігурами на полотні 100×100 (rect, circle, ellipse, polygon, path), до 6 фігур, кольори a і b у hex, без тексту;
+- знак описуєш фігурами на полотні 100×100 (circle, rect, ellipse, polygon), від 2 до 6 фігур, кольори a і b та тло bg у hex, без тексту;
+- знак у грі піксельний 32×32: одна крупна впізнавана форма, без тонких ліній і дрібниць;
 - для каналів описуєш візуал одним реченням: що в кадрі.
 Джіпітенка майже не питаєш: «машина не бачить форму».`
 };
 
-export function systemFor(role: Role, burnout: number): string {
-	return `${CARDS[role]}\n${COMMON}\n${tiredness(burnout)}`.trim();
+export function systemFor(role: Role, burnout: number, morale = 70): string {
+	return `${CARDS[role]}\n${COMMON}\n${tiredness(burnout)}\n${spirit(morale)}`.trim();
+}
+
+/** Мораль чутно в тоні: після відмов клієнта команда зневірюється. */
+export function spirit(morale: number): string {
+	if (morale < 25) return 'Мораль на нулі: клієнти все одно все переробляють, ти не віриш, що щось вийде, але робиш.';
+	if (morale < 45) return 'Мораль просіла після незадоволених клієнтів: трохи гіркої іронії.';
+	if (morale >= 85) return 'Ти на підйомі після вдалих проєктів: більше сміливості.';
+	return '';
 }
 
 export function tiredness(burnout: number): string {
@@ -91,7 +100,7 @@ export function clientCard(c: Client, brief: string): string {
 - "rework" — якщо хочеш правок; тоді в demands до 3 коротких конкретних вимог (до 12 слів кожна);
 - "reject" — якщо за це не заплатиш узагалі.
 Чим більше в роботі твоїх власних слів і болів з брифу — тим ти задоволеніший(а).
-mood — настрій 0–100: від нього залежить, скільки заплатиш. reaction — що кажеш вголос, 1–2 речення.
+mood — настрій 0–100. lines — 3 короткі репліки вголос про конкретні речі з роботи (жарт-доїбка або похвала). reaction — підсумок 1–2 реченнями.
 Відповідай лише JSON за схемою.`;
 }
 
