@@ -462,6 +462,48 @@ export class Office {
 	}
 
 	/** Вікно: година доби й погода, глибокі відкоси, підвіконня з вазонами, штори зі складками. */
+	/**
+	 * Місто з високого поверху: дальній план у серпанку, ближчі дахи нижче горизонту, телевежа.
+	 * Усе малюється в площині стіни (wL/qL), тож будинки скошуються разом з ізометрією вікна.
+	 */
+	private cityView(d1: number, d2: number, h1: number, n: number) {
+		const night = n > 0.5;
+		const far = night ? '#2a3352' : '#a3b6c9', farTop = night ? '#323c60' : '#b9c9d8';
+		const near = night ? '#1a2036' : '#6f8499', nearTop = night ? '#232a44' : '#8297ab', nearSide = night ? '#141a2c' : '#5d7186';
+		// серпанок над горизонтом
+		if (!night) this.qL(d1, d2, h1 + 10, h1 + 16, 'rgba(255,240,220,.25)');
+		// дальній план
+		let d = d1, i = 0;
+		while (d < d2) {
+			const w = 0.1 + hash(i, 41) * 0.14, top = h1 + 11 + Math.floor(hash(i, 42) * 11);
+			this.qL(d, d + w, h1, top, far);
+			this.qL(d, d + w, top - 1, top, farTop);
+			d += w + 0.01; i++;
+		}
+		// телевежа на горизонті
+		const tw = d1 + (d2 - d1) * 0.72;
+		this.qL(tw, tw + 0.02, h1, h1 + 30, night ? '#3a4466' : '#8a9db2');
+		this.qL(tw - 0.04, tw + 0.06, h1 + 20, h1 + 22, night ? '#3a4466' : '#8a9db2');
+		if (night && Math.sin(this.t * 3) > 0) { const p = wL(tw + 0.01, h1 + 31); this.px(p.x, p.y, 1, 1, '#ff5a4a'); }
+		// ближній план: дахи нижче за горизонт, вікна рядами
+		d = d1; i = 0;
+		while (d < d2) {
+			const w = 0.18 + hash(i, 51) * 0.2, top = h1 + 3 + Math.floor(hash(i, 52) * 9);
+			this.qL(d, d + w, h1, top, near);
+			this.qL(d, d + 0.03, h1, top, nearSide);
+			this.qL(d, d + w, top - 1, top, nearTop);
+			for (let y = h1 + 2; y < top - 2; y += 3)
+				for (let x = d + 0.05; x < d + w - 0.03; x += 0.07) {
+					const lit = hash(Math.round(x * 100), y + i * 7) > (night ? 0.45 : 0.7);
+					const p = wL(x, y);
+					this.px(p.x, p.y - 1, 1, 1, night ? (lit ? '#ffd27a' : '#2a3150') : lit ? '#c8d8e6' : '#5a6e82');
+				}
+			// антена на даху
+			if (hash(i, 53) > 0.6) { const p = wL(d + w / 2, top); this.px(p.x, p.y - 3, 1, 3, nearSide); }
+			d += w + 0.02; i++;
+		}
+	}
+
 	private windowView() {
 		const d1 = 1.15, d2 = 3.45, h1 = 30, h2 = 68;
 		const o = this.o;
@@ -476,9 +518,6 @@ export class Office {
 		this.qL(d1, d2, h1, h2, top);
 		this.qL(d1, d2, h1, h1 + 14, bottom);
 		const sky = this.input.sky, n = this.night(), t = this.t;
-		// дальні пагорби й дерева
-		this.poly([wL(d1, h1), wL(d1, h1 + 9), wL(d1 + 0.6, h1 + 12), wL(1.9, h1 + 9), wL(2.6, h1 + 13), wL(d2, h1 + 8), wL(d2, h1)], n > 0.5 ? '#26304a' : '#7fae6a');
-		for (let i = 0; i < 5; i++) { const p = wL(d1 + 0.2 + i * 0.48, h1 + 6 + (i % 2) * 3); this.px(p.x - 2, p.y - 4, 4, 5, n > 0.5 ? '#1c2438' : '#4f8a4a'); }
 		if (n > 0.5 && (sky === 'clear' || sky === 'clouds')) {
 			for (let i = 0; i < 14; i++) {
 				const p = wL(d1 + ((i * 0.37) % 1) * (d2 - d1), h1 + 18 + ((i * 7.3) % 18));
@@ -490,6 +529,7 @@ export class Office {
 			const sp = wL(d2 - 0.5, h2 - 10);
 			this.px(sp.x - 3, sp.y - 3, 6, 6, '#ffe39a'); this.px(sp.x - 2, sp.y - 2, 4, 4, '#fff3c4');
 		}
+		this.cityView(d1, d2, h1, n);
 		const clouds = sky === 'clear' ? 2 : sky === 'fog' ? 0 : 5;
 		const cc = n > 0.5 ? 'rgba(170,180,210,.55)' : sky === 'storm' || sky === 'rain' ? 'rgba(200,205,215,.95)' : '#ffffff';
 		for (let i = 0; i < clouds; i++) {
