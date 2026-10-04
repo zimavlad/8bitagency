@@ -53,6 +53,7 @@
 	const e = $derived(run.elements);
 	const fmt = (n: number) => n.toLocaleString('uk-UA');
 	const isNew = (id: string) => (run.changed as string[]).includes(id);
+	const hasNotes = $derived(notes.some((n) => n.trim()));
 	const sign = (n: number) => (n > 0 ? `+${n}` : `${n}`);
 
 	async function sendEdits() {
@@ -115,12 +116,13 @@
 				<p class="muted">Три кола правок минуло. Тепер тільки «беру».</p>
 			{/if}
 			<div class="actions">
-				{#if run.clientRound <= 3}<button class="btn human" disabled={live.busy || !notes.some((n) => n.trim())} onclick={() => live.act({ action: 'feedback', notes })}><Icon name="reset" size={16} />Повернути з правками</button>{/if}
-				<button class="btn primary" disabled={live.busy} onclick={() => live.act({ action: 'continue' })}><Icon name="check" size={16} />Беру</button>
+				<!-- Написав правки — головна дія «повернути»; «беру» тоді питає, чи викинути написане. -->
+				<button class="btn" class:primary={!hasNotes} disabled={live.busy} onclick={() => (!hasNotes || confirm('Ти вписав правки. Взяти роботу без них?')) && live.act({ action: 'continue' })}><Icon name="check" size={16} />{hasNotes ? 'Беру без правок' : 'Беру'}</button>
+				{#if run.clientRound <= 3}<button class="btn human" disabled={live.busy || !hasNotes} onclick={() => live.act({ action: 'feedback', notes })}><Icon name="reset" size={16} />Повернути з правками</button>{/if}
 			</div>
 		</Modal>
 	{:else if kind === 'verdict' && v}
-		<Modal wide={v.verdict === 'ok' && v.stage === 'content'} title={v.verdict === 'ok' ? `${name} у захваті` : `${name} хоче правок`} onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
+		<Modal title={v.verdict === 'ok' ? `${name} у захваті` : `${name} хоче правок`} onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
 			{#snippet head()}<Avatar who="client" client={run.brief.client} size={48} />{/snippet}
 			<p class="faint small">{v.stage === 'core' ? 'Бренд-платформа' : 'Комунікація'} · коло {v.round}</p>
 			<Bar label="Настрій" value={v.mood} kind={v.mood >= 60 ? 'hp' : 'stress'} />
@@ -128,10 +130,6 @@
 				{#each v.lines as l}<p class="quote">«{l}»</p>{/each}
 				<p class="why">{v.reaction}</p>
 			</section>
-			{#if v.verdict === 'ok' && v.stage === 'content'}
-				<h3 class="cbh">Кейс-борд</h3>
-				<CaseBoard c={caseOf(run)} />
-			{/if}
 			{#if v.demands.length}
 				<section class="sum paper">
 					<h3>Що хоче змінити</h3>
@@ -149,9 +147,16 @@
 				{/if}
 			</div>
 		</Modal>
+		{#if v.verdict === 'ok' && v.stage === 'content'}
+			<!-- кейс-борд окремим невеликим вікном поруч -->
+			<aside class="side-board panel pop" aria-label="Кейс-борд">
+				<h3>Кейс-борд</h3>
+				<CaseBoard c={caseOf(run)} compact />
+			</aside>
+		{/if}
 	{:else if kind === 'result' && run.result}
 		{@const r = run.result}
-		<Modal wide={r.verdict === 'ok'} title={r.verdict === 'ok' ? 'Клієнт заплатив усе' : 'Проєкт кинуто'} onClose={onDone}>
+		<Modal title={r.verdict === 'ok' ? 'Клієнт заплатив усе' : 'Проєкт кинуто'} onClose={onDone}>
 			<section class="sum paper">
 				<h3>Оплата</h3>
 				<p class="small">Чек {fmt(run.brief.fee)} ₴</p>
@@ -169,7 +174,6 @@
 				{/each}
 			</section>
 			{#if r.notes.length}<ul class="notes">{#each r.notes as n}<li><span class="dot bad"></span>{n}</li>{/each}</ul>{/if}
-			{#if r.verdict === 'ok'}<CaseBoard c={caseOf(run)} />{/if}
 			<div class="actions"><button class="btn primary" onclick={onDone}><Icon name="inbox" size={16} />До брифів</button></div>
 		</Modal>
 	{/if}
@@ -239,8 +243,32 @@
 		vertical-align: 2px;
 		font-family: var(--pixel);
 	}
-	.cbh {
-		font-size: 15px;
+	.side-board {
+		position: fixed;
+		z-index: 32;
+		top: 50%;
+		left: calc(50% + 252px);
+		transform: translateY(-50%);
+		width: min(340px, calc(50vw - 270px));
+		max-height: calc(100dvh - 40px);
+		overflow: auto;
+		padding: 10px 12px 12px;
+		display: grid;
+		gap: 8px;
+		h3 {
+			font-size: 15px;
+		}
+	}
+	@media (max-width: 1180px) {
+		.side-board {
+			left: auto;
+			right: 12px;
+			top: auto;
+			bottom: 12px;
+			transform: none;
+			width: min(320px, calc(100vw - 24px));
+			max-height: 40dvh;
+		}
 	}
 	.phonewrap {
 		display: grid;

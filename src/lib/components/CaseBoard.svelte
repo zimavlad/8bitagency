@@ -4,10 +4,10 @@
 	import PixelLogo from './PixelLogo.svelte';
 
 	/** Кейс-борд: знак, назва, слоган, позиціонування і що з цього намалював Gemini. */
-	let { c }: { c: CaseData } = $props();
+	let { c, compact = false }: { c: CaseData; compact?: boolean } = $props();
 </script>
 
-<div class="board">
+<div class="board" class:compact>
 	<section class="id paper">
 		{#if c.logo}<PixelLogo logo={c.logo} size={96} />{/if}
 		<div>
@@ -18,7 +18,7 @@
 	</section>
 	{#if c.instagram}
 		<section class="ig">
-			<PhoneMock image={c.instagram.image} brand={c.name} caption={c.instagram.text} logo={c.logo} width={210} />
+			<PhoneMock image={c.instagram.image} brand={c.name} caption={c.instagram.text} logo={c.logo} width={compact ? 170 : 210} />
 		</section>
 	{/if}
 	{#if c.youtube}
@@ -109,6 +109,17 @@
 		}
 		.voice {
 			color: #6d5236;
+		}
+	}
+	.compact {
+		grid-template-columns: 1fr;
+		.ig {
+			grid-column: 1;
+			grid-row: auto;
+			justify-self: center;
+		}
+		.id h3 {
+			font-size: 18px;
 		}
 	}
 	@media (max-width: 560px) {

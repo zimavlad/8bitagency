@@ -14,7 +14,7 @@ export interface SceneInput {
 	clientInOffice: boolean;
 	gptFor: Role | null;
 	speaking: Speaker[];
-	board: { positioning: boolean; name: boolean; slogan: boolean; logo: boolean };
+	board: { positioning: boolean; name: boolean; slogan: boolean; logo: boolean; notes?: number };
 	logo: LogoSpec | null;
 	hour: number;
 	sky: Sky;
@@ -79,12 +79,89 @@ const DESK_W = 1.55, DESK_D = 0.9, DESK_H = 16;
 /** Крісло біля вікна: туди іноді йдуть з ноутом. */
 const ARMCHAIR = { gx: 0.62, gy: 4.02 };
 const SPOTS: Record<Role, Record<Spot, { gx: number; gy: number }>> = {
-	strategist: { desk: { gx: 1.45, gy: 1.55 }, table: { gx: 1.7, gy: 4.2 }, board: { gx: 2.72, gy: 0.62 }, coffee: { gx: 5.75, gy: 4.25 }, away: { gx: 0.3, gy: 5.1 }, armchair: ARMCHAIR },
-	copywriter: { desk: { gx: 3.85, gy: 1.55 }, table: { gx: 3.4, gy: 2.95 }, board: { gx: 2.72, gy: 0.62 }, coffee: { gx: 5.85, gy: 5.45 }, away: { gx: 0.3, gy: 5.1 }, armchair: ARMCHAIR },
-	designer: { desk: { gx: 6.25, gy: 1.55 }, table: { gx: 5.3, gy: 4.95 }, board: { gx: 2.72, gy: 0.62 }, coffee: { gx: 7.5, gy: 5.75 }, away: { gx: 0.3, gy: 5.1 }, armchair: ARMCHAIR }
+	strategist: { desk: { gx: 1.45, gy: 1.55 }, table: { gx: 1.7, gy: 4.2 }, board: { gx: 0.5, gy: 2.1 }, coffee: { gx: 5.75, gy: 4.25 }, away: { gx: 0.3, gy: 5.1 }, armchair: ARMCHAIR },
+	copywriter: { desk: { gx: 3.85, gy: 1.55 }, table: { gx: 3.4, gy: 2.95 }, board: { gx: 0.5, gy: 2.1 }, coffee: { gx: 5.85, gy: 5.45 }, away: { gx: 0.3, gy: 5.1 }, armchair: ARMCHAIR },
+	designer: { desk: { gx: 6.25, gy: 1.55 }, table: { gx: 5.3, gy: 4.95 }, board: { gx: 0.5, gy: 2.1 }, coffee: { gx: 7.5, gy: 5.75 }, away: { gx: 0.3, gy: 5.1 }, armchair: ARMCHAIR }
 };
 const CLIENT_DOOR = { gx: 0.35, gy: 5.15 };
 const CLIENT_TABLE = { gx: 3.45, gy: 5.85 };
+
+/* ─────────── обхід меблів ─────────── */
+type G = { gx: number; gy: number };
+const CELL = 0.2;
+const COLS = Math.round(GW / CELL), ROWS_N = Math.round(GH / CELL);
+/** Перешкоди на підлозі (gx1, gy1, gx2, gy2): столи, стіл нарад, крісло, кавовий куток, коробка, вазони, торшер. */
+const OBSTACLES: [number, number, number, number][] = [
+	[0.75, 0.3, 2.3, 1.2], [3.15, 0.3, 4.7, 1.2], [5.55, 0.3, 7.1, 1.2],
+	[2.2, 3.6, 4.6, 5.2], [0.15, 3.6, 0.95, 4.4], [6.5, 3.9, 7.9, 4.95], [7.3, 2.35, 7.92, 2.97],
+	[0.15, 0.15, 0.7, 0.7], [GW - 0.75, 0.15, GW - 0.15, 0.7], [0.22, 3.12, 0.5, 3.4], [6.6, 5.2, 7.0, 5.6]
+];
+let BLOCKED: boolean[] | null = null;
+function blocked(): boolean[] {
+	if (BLOCKED) return BLOCKED;
+	const m = 0.14;
+	BLOCKED = [];
+	for (let y = 0; y < ROWS_N; y++)
+		for (let x = 0; x < COLS; x++) {
+			const cx = (x + 0.5) * CELL, cy = (y + 0.5) * CELL;
+			BLOCKED.push(cx < 0.12 || cy < 0.12 || cx > GW - 0.12 || cy > GH - 0.12 || OBSTACLES.some(([a, b, c, d]) => cx > a - m && cx < c + m && cy > b - m && cy < d + m));
+		}
+	return BLOCKED;
+}
+const cellOf = (p: G) => [Math.max(0, Math.min(COLS - 1, Math.floor(p.gx / CELL))), Math.max(0, Math.min(ROWS_N - 1, Math.floor(p.gy / CELL)))];
+function clearLine(a: G, b: G): boolean {
+	const B = blocked();
+	const n = Math.ceil(Math.hypot(b.gx - a.gx, b.gy - a.gy) / (CELL / 3));
+	for (let i = 1; i < n; i++) {
+		const [x, y] = cellOf({ gx: a.gx + ((b.gx - a.gx) * i) / n, gy: a.gy + ((b.gy - a.gy) * i) / n });
+		if (B[y * COLS + x]) return false;
+	}
+	return true;
+}
+/** A* по сітці 0,2 клітинки; старт і ціль завжди прохідні (крісло, стілець — це цілі). Шлях спрямлюється. */
+export function findPath(from: G, to: G): G[] {
+	if (clearLine(from, to)) return [to];
+	const B = blocked();
+	const [sx, sy] = cellOf(from), [ex, ey] = cellOf(to);
+	const idx = (x: number, y: number) => y * COLS + x;
+	const open = new Map<number, number>([[idx(sx, sy), 0]]);
+	const g = new Map<number, number>([[idx(sx, sy), 0]]);
+	const prev = new Map<number, number>();
+	const h = (x: number, y: number) => Math.hypot(x - ex, y - ey);
+	let found = false;
+	for (let guard = 0; guard < 4000 && open.size; guard++) {
+		let cur = -1, best = Infinity;
+		for (const [k, f] of open) if (f < best) { best = f; cur = k; }
+		open.delete(cur);
+		const cx = cur % COLS, cy = Math.floor(cur / COLS);
+		if (cx === ex && cy === ey) { found = true; break; }
+		for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+			const nx = cx + dx, ny = cy + dy;
+			if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS_N) continue;
+			const k = idx(nx, ny);
+			if (B[k] && !(nx === ex && ny === ey)) continue;
+			if (dx && dy && (B[idx(cx + dx, cy)] || B[idx(cx, cy + dy)])) continue;
+			const ng = (g.get(cur) ?? 0) + Math.hypot(dx, dy);
+			if (ng < (g.get(k) ?? Infinity)) { g.set(k, ng); prev.set(k, cur); open.set(k, ng + h(nx, ny)); }
+		}
+	}
+	if (!found) return [to];
+	const cells: G[] = [];
+	for (let k = idx(ex, ey); k !== idx(sx, sy); k = prev.get(k)!) cells.unshift({ gx: ((k % COLS) + 0.5) * CELL, gy: (Math.floor(k / COLS) + 0.5) * CELL });
+	cells[cells.length - 1] = to;
+	// спрямлення: від точки — до найдальшої видимої
+	const out: G[] = [];
+	let at = from;
+	let i = 0;
+	while (i < cells.length) {
+		let j = cells.length - 1;
+		while (j > i && !clearLine(at, cells[j])) j--;
+		out.push(cells[j]);
+		at = cells[j];
+		i = j + 1;
+	}
+	return out;
+}
 
 /** Предмети, з якими можна взаємодіяти кліком. */
 export type Thing = 'coffee' | 'pizza' | 'door';
@@ -98,7 +175,7 @@ export class Office {
 	private TX = 0;
 	private TY = 0;
 	private DPR = 1;
-	private pos: Record<SpriteId, { gx: number; gy: number; tx: number; ty: number }>;
+	private pos: Record<SpriteId, { gx: number; gy: number; tx: number; ty: number; path?: G[] }>;
 	private raf = 0;
 	private last = 0;
 	private t = 0;
@@ -141,14 +218,15 @@ export class Office {
 
 	update(input: SceneInput) {
 		this.input = input;
-		for (const r of ROLES) {
-			const sp = SPOTS[r][input.away ? 'away' : input.agents[r].spot];
-			this.pos[r].tx = sp.gx;
-			this.pos[r].ty = sp.gy;
-		}
-		const c = input.clientInOffice ? CLIENT_TABLE : CLIENT_DOOR;
-		this.pos.client.tx = c.gx;
-		this.pos.client.ty = c.gy;
+		const go = (k: SpriteId, t: G) => {
+			const c = this.pos[k];
+			if (c.tx === t.gx && c.ty === t.gy) return;
+			c.tx = t.gx;
+			c.ty = t.gy;
+			c.path = findPath(c, t);
+		};
+		for (const r of ROLES) go(r, SPOTS[r][input.away ? 'away' : input.agents[r].spot]);
+		go('client', input.clientInOffice ? CLIENT_TABLE : CLIENT_DOOR);
 		if (input.reducedMotion) for (const k of Object.keys(this.pos) as SpriteId[]) { this.pos[k].gx = this.pos[k].tx; this.pos[k].gy = this.pos[k].ty; }
 	}
 
@@ -226,10 +304,12 @@ export class Office {
 		if (!this.input.reducedMotion) this.t += dt;
 		for (const k of Object.keys(this.pos) as SpriteId[]) {
 			const c = this.pos[k];
-			const dx = c.tx - c.gx, dy = c.ty - c.gy;
+			// іде по шляху в обхід меблів: точка за точкою
+			const wp = c.path?.[0] ?? { gx: c.tx, gy: c.ty };
+			const dx = wp.gx - c.gx, dy = wp.gy - c.gy;
 			const d = Math.hypot(dx, dy);
-			const step = 2.4 * dt;
-			if (d <= step || d < 0.01) { c.gx = c.tx; c.gy = c.ty; } else { c.gx += (dx / d) * step; c.gy += (dy / d) * step; }
+			const step = 2.2 * dt;
+			if (d <= step || d < 0.01) { c.gx = wp.gx; c.gy = wp.gy; c.path?.shift(); } else { c.gx += (dx / d) * step; c.gy += (dy / d) * step; }
 		}
 		this.draw();
 		this.raf = requestAnimationFrame(this.loop);
@@ -712,17 +792,18 @@ export class Office {
 		const kn = wL(5.55, 24); this.px(kn.x - 1, kn.y - 1, 2, 2, C.brass);
 		this.line([wL(4.5, 0), wL(4.5, 52), wL(5.75, 52), wL(5.75, 0)], C.ink);
 		}
-		// коркова дошка з чотирма слотами пакета (папірці на шпильках)
-		const b1 = 0.9, b2 = 3.1, bh1 = 36, bh2 = 68;
+		// коркова дошка: чотири слоти пакета + нотатки, графіки й скетчі, що зʼявляються з прогресом брифу
+		const b1 = 0.45, b2 = 3.2, bh1 = 31, bh2 = 70;
 		this.qL(b1 - 0.16, b2 + 0.16, bh1 - 3, bh2 + 3, C.woodDk);
 		this.qL(b1, b2, bh1, bh2, C.cork);
-		for (let i = 0; i < 40; i++) { const p = wL(b1 + hash(i, 1) * (b2 - b1), bh1 + hash(i, 2) * (bh2 - bh1)); this.px(p.x, p.y, 1, 1, C.corkDk); }
+		for (let i = 0; i < 60; i++) { const p = wL(b1 + hash(i, 1) * (b2 - b1), bh1 + hash(i, 2) * (bh2 - bh1)); this.px(p.x, p.y, 1, 1, C.corkDk); }
 		this.line([wL(b1 - 0.16, bh1 - 3), wL(b2 + 0.16, bh1 - 3), wL(b2 + 0.16, bh2 + 3), wL(b1 - 0.16, bh2 + 3)], C.ink, 1, true);
+		this.boardNotes(this.input.board.notes ?? 0);
 		const slots: [keyof SceneInput['board'], number, number, number, number, string][] = [
-			['positioning', b1 + 0.12, b1 + 1.02, bh2 - 15, bh2 - 3, '#ffe9a8'],
-			['name', b1 + 1.18, b2 - 0.12, bh2 - 15, bh2 - 3, '#cfe6ff'],
-			['slogan', b1 + 0.12, b1 + 1.02, bh1 + 3, bh1 + 14, '#ffd0d8'],
-			['logo', b1 + 1.18, b2 - 0.12, bh1 + 3, bh1 + 14, '#d8f2c8']
+			['positioning', 0.58, 1.42, 57, 67, '#ffe9a8'],
+			['name', 1.55, 2.39, 57, 67, '#cfe6ff'],
+			['slogan', 0.58, 1.42, 44, 54, '#ffd0d8'],
+			['logo', 1.55, 2.39, 44, 54, '#d8f2c8']
 		];
 		for (const [k, d1, d2, h1, h2, col] of slots) {
 			if (this.input.board[k]) {
@@ -730,12 +811,12 @@ export class Office {
 				this.qL(d1, d2, h1, h2, col);
 				if (k === 'logo' && this.input.logo) {
 					const pa = this.input.logo.palette;
-					this.qL(d1 + 0.3, d2 - 0.3, h1 + 2, h2 - 3, pa.a);
-					this.qL(d1 + 0.42, d2 - 0.42, h1 + 4, h2 - 5, pa.b);
-				} else for (let i = 0; i < 3; i++) this.qL(d1 + 0.12, d2 - 0.2 - (i % 2) * 0.35, h2 - 5 - i * 3, h2 - 4 - i * 3, 'rgba(70,50,40,.55)');
+					this.qL(d1 + 0.27, d2 - 0.27, h1 + 2, h2 - 2, pa.a);
+					this.qL(d1 + 0.38, d2 - 0.38, h1 + 4, h2 - 4, pa.b);
+				} else for (let i = 0; i < 3; i++) this.qL(d1 + 0.1, d2 - 0.15 - (i % 2) * 0.25, h2 - 4 - i * 2.5, h2 - 3 - i * 2.5, 'rgba(70,50,40,.55)');
 				const pin = wL((d1 + d2) / 2, h2 - 1); this.px(pin.x - 1, pin.y - 1, 2, 2, '#d8433a');
 			} else {
-				for (let i = 0; i < 10; i++) { const u = i / 10; this.px(wL(d1 + u * (d2 - d1), h1).x, wL(d1 + u * (d2 - d1), h1).y, 1, 1, 'rgba(255,255,255,.45)'); this.px(wL(d1 + u * (d2 - d1), h2).x, wL(d1 + u * (d2 - d1), h2).y, 1, 1, 'rgba(255,255,255,.45)'); }
+				for (let i = 0; i < 8; i++) { const u = i / 8; for (const hh of [h1, h2]) { const q = wL(d1 + u * (d2 - d1), hh); this.px(q.x, q.y, 1, 1, 'rgba(255,255,255,.45)'); } }
 			}
 		}
 		this.shelf(5.0, 7.45, 32, 3);
@@ -773,6 +854,33 @@ export class Office {
 	}
 
 	/** Абстрактний плакат на скотчі. */
+	/** Нотатки на дошці: стікери, стовпчики, лінійний графік, скетчі й нитка між ними — з кожним кроком більше. */
+	private boardNotes(n: number) {
+		const SPOTS_N: [number, number, 'note' | 'bars' | 'line' | 'sketch'][] = [
+			[2.5, 66, 'note'], [2.85, 60, 'bars'], [2.5, 53, 'sketch'], [2.85, 46, 'note'], [0.6, 40, 'bars'], [1.0, 37, 'note'],
+			[1.45, 40, 'sketch'], [1.9, 37, 'note'], [2.35, 40, 'line'], [2.8, 37, 'note'], [1.0, 69, 'note'], [2.0, 69, 'line']
+		];
+		const notes = ['#fff3a0', '#ffc8d6', '#c8e6ff', '#d4f5c0'];
+		const shown = Math.min(n, SPOTS_N.length);
+		for (let i = 0; i < shown; i++) {
+			const [d, h, kind] = SPOTS_N[i];
+			const w = 0.3, hh = 7;
+			this.qL(d + 0.03, d + w + 0.03, h - hh - 1, h - 1, 'rgba(60,30,10,.22)');
+			if (kind === 'note') {
+				this.qL(d, d + w, h - hh, h, notes[i % notes.length]);
+				for (let k = 0; k < 2; k++) this.qL(d + 0.05, d + w - 0.06 - k * 0.07, h - 2.5 - k * 2, h - 2 - k * 2, 'rgba(60,40,30,.55)');
+			} else {
+				this.qL(d, d + w, h - hh, h, '#fbf7ee');
+				if (kind === 'bars') for (let k = 0; k < 3; k++) { const top = h - hh + 1 + Math.round(hash(i, k) * 3); this.qL(d + 0.05 + k * 0.08, d + 0.1 + k * 0.08, h - hh + 1, top + 2, ['#d8433a', '#2f78d0', '#5fae43'][k]); }
+				if (kind === 'line') { const pts = [0, 1, 2, 3].map((k) => wL(d + 0.04 + k * 0.07, h - hh + 2 + Math.round(hash(i, k + 5) * 3))); this.line(pts, '#2f78d0'); }
+				if (kind === 'sketch') { const c = wL(d + w / 2, h - hh / 2); this.px(c.x - 2, c.y - 2, 4, 1, '#5a5a66'); this.px(c.x - 3, c.y - 1, 1, 2, '#5a5a66'); this.px(c.x + 2, c.y - 1, 1, 2, '#5a5a66'); this.px(c.x - 2, c.y + 1, 4, 1, '#5a5a66'); this.px(c.x, c.y - 1, 1, 1, '#d8433a'); }
+			}
+			const pin = wL(d + w / 2, h - 1); this.px(pin.x, pin.y - 1, 1, 1, ['#d8433a', '#2f78d0', '#f0c23b'][i % 3]);
+		}
+		// червона нитка між частиною нотаток — як у детективів
+		if (shown >= 4) this.line([wL(1.0, 66), wL(2.65, 65), wL(2.65, 50), wL(1.2, 37)].slice(0, Math.min(4, shown - 2)), 'rgba(200,50,50,.7)');
+	}
+
 	/** Постер з Патроном: піксельний джек-рассел у жилеті сапера на жовто-блакитному. */
 	private patron(d1: number, d2: number, h1: number, h2: number) {
 		this.qL(d1 + 0.03, d2 + 0.03, h1 - 1, h2 - 1, 'rgba(60,30,10,.25)');
@@ -851,6 +959,8 @@ export class Office {
 		add(0.6, () => this.bigPlant(0.4, 0.4, 1.1));
 		add(GW - 0.1, () => this.bigPlant(GW - 0.45, 0.4, 0.9));
 		add(0.15 + 3.6 + 0.8 + 0.8, () => this.armchair(0.15, 3.6));
+		// ближній підлокітник поверх того, хто сидить у кріслі
+		add(ARMCHAIR.gx + ARMCHAIR.gy + 1.35, () => this.box(0.31, 4.24, 0.64, 0.16, 15, C.sofaLt, C.sofa, C.sofaDk));
 		add(0.35 + 3.25 + 0.2, () => this.floorLamp(0.35, 3.25));
 		for (const r of ROLES) {
 			const d = DESKS[r], sp = SPOTS[r].desk;
@@ -1161,12 +1271,13 @@ export class Office {
 		const role = k === 'client' ? null : (k as Role);
 		const status = role ? this.input.agents[role].status : 'idle';
 		const burn = role ? this.input.agents[role].burnout : 0;
-		const bob = moving ? 0 : Math.round(Math.sin(this.t * (burn > 70 ? 1.6 : 3.3) + k.length) * 0.6);
+		// Як у Stardew: на місці людина стоїть спокійно, рухаються лише ноги під час ходьби.
+		const bob = 0;
 		// Сидить: за столом — спиною до нас (ноги ховає спинка крісла), у кріслі біля вікна — обличчям, з ноутом.
 		const near = (q: { gx: number; gy: number }) => Math.hypot(c.gx - q.gx, c.gy - q.gy) < 0.05;
 		const atDesk = !!role && !moving && near(SPOTS[role].desk);
 		const inArm = !!role && !moving && near(ARMCHAIR);
-		const sit = atDesk ? 3 : inArm ? 9 : 0;
+		const sit = atDesk ? 3 : inArm ? 1 : 0;
 		const x = Math.round(p.x - SPRITE_W / 2), y = Math.round(p.y - SPRITE_H) + bob + sit;
 		if (!sit) this.poly([{ x: p.x, y: p.y - 3 }, { x: p.x + 8, y: p.y }, { x: p.x, y: p.y + 3 }, { x: p.x - 8, y: p.y }], 'rgba(60,30,15,.28)');
 		const cs = k === 'client' ? clientSprite(this.input.client.gender, this.input.client.look) : null;

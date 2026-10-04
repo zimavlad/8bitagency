@@ -109,7 +109,9 @@
 			positioning: !!run?.elements.positioning,
 			name: !!run?.elements.name,
 			slogan: !!run?.elements.slogan,
-			logo: !!run?.elements.logo
+			logo: !!run?.elements.logo,
+			// з кожним кроком і колом на дошці більше нотаток
+			notes: run ? run.steps.reduce((n, x) => n + x.lines.length, 0) / 2 + run.verdicts.length : 0
 		},
 		logo: run?.elements.logo?.logo ?? null,
 		hour,
