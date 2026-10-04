@@ -11,7 +11,7 @@ import { fake } from './fake';
 import { indexFor, search } from './kb';
 import {
 	GPT_HABIT, GPT_QUESTION, SCHEMA, StepError, briefBlock, normClient, normContent, normGpt, normLogo, normNaming,
-	normPositioning, normRead, normReview, normRework, parseJson, prompt, readText, request, type Msg, type ReadOut, type ReviewOut
+	guide, normPositioning, normRead, normReview, normRework, parseJson, prompt, readText, request, type Msg, type ReadOut, type ReviewOut
 } from './steps';
 
 export interface Models {
@@ -167,7 +167,7 @@ export class Run {
 	/** Хід агента в його власній розмові: історія лише дописується, ходи одного агента — по черзі. */
 	private ask(role: Role, purpose: 'read' | 'core' | 'rework' | 'content', user: string, schema: Record<string, unknown>, fakeFn: () => unknown): Promise<Record<string, unknown>> {
 		const job = this.locks[role].catch(() => undefined).then(async () => {
-			const messages: Msg[] = [...this.history[role], { role: 'user', content: user }];
+			const messages: Msg[] = [...this.history[role], { role: 'user', content: user + guide(schema) }];
 			const r = await this.call({ purpose, who: role, model: this.deps.models.agent, system: systemFor(role, this.burnoutOf(role)), messages, schema, fake: fakeFn });
 			this.history[role] = [...messages, { role: 'assistant', content: r.content }];
 			this.tire(role, 3);
@@ -187,7 +187,7 @@ export class Run {
 		const chunks = search(index, `${this.state.brief.client.business} ${this.state.brief.text} ${question}`, 3);
 		const r = await this.call({
 			purpose: 'gpt', who: `gpt:${role}`, model: this.deps.models.gpt, system: GPT_CARD,
-			messages: [{ role: 'user', content: prompt.gpt(role, question, chunks) }], schema: SCHEMA.gpt,
+			messages: [{ role: 'user', content: prompt.gpt(role, question, chunks) + guide(SCHEMA.gpt) }], schema: SCHEMA.gpt,
 			fake: () => fake.gpt(role, chunks[0]?.source ?? '')
 		});
 		const g = normGpt(parseJson(r.text));
@@ -260,7 +260,7 @@ export class Run {
 		// Окрема розмова на моделі ревʼю: модель посеред розмови агента не міняємо.
 		const res = await this.call({
 			purpose: 'review', who: r, model: this.deps.models.review, system: systemFor(r, this.burnoutOf(r)),
-			messages: [{ role: 'user', content: `${briefBlock(this.state.brief)}\n\nТвоє прочитання:\n${own}\n\n${prompt.review(r, peers)}` }],
+			messages: [{ role: 'user', content: `${briefBlock(this.state.brief)}\n\nТвоє прочитання:\n${own}\n\n${prompt.review(r, peers)}${guide(SCHEMA.review)}` }],
 			schema: SCHEMA.review, fake: () => fake.review(r, peers)
 		});
 		this.tire(r, 3);
@@ -385,7 +385,7 @@ export class Run {
 		const res = await this.call({
 			purpose: 'client', who: 'client', model: this.deps.models.client,
 			system: CLIENT_CARD.replace('{archetype}', this.state.brief.client.archetype),
-			messages: [{ role: 'user', content: prompt.client(this.state.brief, items, round, CLIENT_ROUND2) }],
+			messages: [{ role: 'user', content: prompt.client(this.state.brief, items, round, CLIENT_ROUND2) + guide(SCHEMA.client) }],
 			schema: SCHEMA.client, fake: () => fake.client(round, stage)
 		});
 		const c = normClient(parseJson(res.text), ids, round);

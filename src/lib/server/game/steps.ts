@@ -7,6 +7,38 @@ import type { RequestParams } from '../model/client';
 
 export type Msg = Anthropic.MessageParam;
 
+/**
+ * Описи полів (description) у JSON-схемі на моделях 5.5 провокують відмову класифікатора
+ * (stop_reason refusal з порожньою відповіддю) — перевірено на живому API 04.10.2026.
+ * Тому в API йде схема без описів, а підказка про поля — звичайним текстом у запиті (guide).
+ */
+export function bare(schema: unknown): unknown {
+	if (Array.isArray(schema)) return schema.map(bare);
+	if (!schema || typeof schema !== 'object') return schema;
+	const out: Record<string, unknown> = {};
+	for (const [k, v] of Object.entries(schema)) if (k !== 'description') out[k] = bare(v);
+	return out;
+}
+
+/** Текстова підказка про поля відповіді зі схеми. */
+export function guide(schema: Record<string, unknown>): string {
+	const lines: string[] = [];
+	const walk = (o: Record<string, unknown>, path: string) => {
+		const props = (o.properties ?? {}) as Record<string, Record<string, unknown>>;
+		for (const [k, v] of Object.entries(props)) {
+			const name = path ? `${path}.${k}` : k;
+			const d = [v.description, (v.items as Record<string, unknown> | undefined)?.description].filter(Boolean).join('; ');
+			const en = (v.enum as string[] | undefined) ?? ((v.items as Record<string, unknown> | undefined)?.enum as string[] | undefined);
+			if (d || en) lines.push(`- ${name}: ${d}${en ? `${d ? ' ' : ''}(${en.join(' | ')})` : ''}`);
+			if (v.type === 'object') walk(v, name);
+			const it = v.items as Record<string, unknown> | undefined;
+			if (it?.type === 'object') walk(it, `${name}[]`);
+		}
+	};
+	walk(schema, '');
+	return lines.length ? `\n\nПоля відповіді:\n${lines.join('\n')}` : '';
+}
+
 /** Один формат запиту для всіх кроків: системна картка в кеші, історія тільки дописується, JSON за схемою. */
 export function request(o: { model: string; system: string; messages: Msg[]; schema: Record<string, unknown>; maxTokens?: number }): RequestParams {
 	const haiku = o.model.startsWith('claude-haiku');
@@ -16,7 +48,7 @@ export function request(o: { model: string; system: string; messages: Msg[]; sch
 		system: [{ type: 'text', text: o.system, cache_control: { type: 'ephemeral' } }],
 		messages: o.messages,
 		...(haiku ? {} : { thinking: { type: 'adaptive' } }),
-		output_config: { ...(haiku ? {} : { effort: 'low' }), format: { type: 'json_schema', schema: o.schema } }
+		output_config: { ...(haiku ? {} : { effort: 'low' }), format: { type: 'json_schema', schema: bare(o.schema) } }
 	} as RequestParams;
 }
 

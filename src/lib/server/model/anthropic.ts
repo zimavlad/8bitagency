@@ -2,6 +2,9 @@ import Anthropic from '@anthropic-ai/sdk';
 import { costUsd } from '../pricing';
 import { isAbortError, type CallOptions, type ModelClient, type ModelResult, type RequestParams } from './client';
 
+/** Моделі з класифікаторами, для яких є серверна запасна модель. */
+const WITH_FALLBACK = /^claude-(opus-5|sonnet-5-5|fable-5)/;
+
 /** Справжній Claude API. Тимчасові збої (429, 5xx, мережа) SDK повторює сам. */
 export class AnthropicModel implements ModelClient {
 	readonly name = 'claude';
@@ -15,7 +18,13 @@ export class AnthropicModel implements ModelClient {
 	async call(params: RequestParams, opts: CallOptions): Promise<ModelResult> {
 		const started = Date.now();
 		try {
-			const m = await this.client.messages.create(params, { signal: opts.signal });
+			// Відмову класифікатора сервер перепроганяє на запасній моделі (як у synthetic_interviews).
+			const fallback = WITH_FALLBACK.test(params.model);
+			const body = (fallback ? { ...params, fallbacks: 'default' } : params) as RequestParams;
+			const m = await this.client.messages.create(body, {
+				signal: opts.signal,
+				...(fallback ? { headers: { 'anthropic-beta': 'server-side-fallback-2026-07-01' } } : {})
+			});
 			const text = m.content.map((b) => (b.type === 'text' ? b.text : '')).join('').trim();
 			const usage = {
 				input_tokens: m.usage.input_tokens,
@@ -23,7 +32,7 @@ export class AnthropicModel implements ModelClient {
 				cache_read_input_tokens: m.usage.cache_read_input_tokens ?? 0,
 				cache_creation_input_tokens: m.usage.cache_creation_input_tokens ?? 0
 			};
-			console.log(JSON.stringify({ ev: 'model_call', purpose: opts.purpose, who: opts.who, model: m.model, stop: m.stop_reason, ms: Date.now() - started, in: usage.input_tokens, out: usage.output_tokens, usd: Number(costUsd(m.model, usage).toFixed(4)) }));
+			console.log(JSON.stringify({ ev: 'model_call', purpose: opts.purpose, who: opts.who, model: m.model, stop: m.stop_reason, served: m.model, ms: Date.now() - started, in: usage.input_tokens, out: usage.output_tokens, usd: Number(costUsd(m.model, usage).toFixed(4)) }));
 			return { content: m.content as unknown as Anthropic.ContentBlockParam[], text, stopReason: m.stop_reason, model: m.model, usage };
 		} catch (e) {
 			if (!isAbortError(e)) console.log(JSON.stringify({ ev: 'model_call_failed', purpose: opts.purpose, who: opts.who, ms: Date.now() - started, err: e instanceof Error ? e.name : 'unknown' }));
