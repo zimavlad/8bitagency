@@ -59,7 +59,7 @@
 	{/if}
 	<div class="card panel pop">
 		<h1>8bitagency</h1>
-		<p class="sub">{mode === 'title' ? 'Маленька креативна агенція. Тупі брифи. Вічне вигорання.' : 'Пауза. Команда завмерла й чекає.'}</p>
+		<p class="sub">{mode === 'title' ? 'Ідея була геніальна. До першого кола правок.' : 'Пауза. Видихни, клієнт не бачить.'}</p>
 		<nav>
 			{#if canContinue}<button class="btn primary wide" onclick={onContinue}><Icon name="play" size={16} />Продовжити</button>{/if}
 			<button class="btn wide" class:primary={!canContinue} onclick={() => (canContinue ? confirm('Почати нову гру? Поточна агенція закриється, прогрес зітреться.') && onNew() : onNew())}><Icon name="plus" size={16} />Нова гра</button>
@@ -67,7 +67,6 @@
 			<button class="btn wide" disabled title="Звук буде пізніше"><Icon name="bot" size={16} />Звук: скоро</button>
 			{#if mode === 'pause'}<button class="btn ghost wide" onclick={onTitle}><Icon name="back" size={16} />Головне меню</button>{/if}
 		</nav>
-		<p class="faint hint">{mode === 'pause' ? 'Esc — назад до гри' : 'Esc у грі — пауза й меню'}</p>
 	</div>
 </div>
 
@@ -164,10 +163,7 @@
 		display: grid;
 		gap: 8px;
 	}
-	.hint {
-		font-family: var(--pixel);
-		font-size: 12px;
-	}
+
 	@media (max-width: 640px) {
 		.wall {
 			grid-template-columns: 1fr 1fr;
