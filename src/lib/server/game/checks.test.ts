@@ -41,3 +41,18 @@ describe('розкадровка', () => {
 		expect(sceneOnly('Вечір: у вікні лампи')).toBe('у вікні лампи');
 	});
 });
+
+import { geminiUsd } from '../model/images';
+import { costUsd } from '../pricing';
+
+describe('лічильник грошей', () => {
+	it('Gemini: ціна з токенів відповіді (картинка 60$/М, решта виходу 3$/М, вхід 0,5$/М)', () => {
+		const u = { promptTokenCount: 459, candidatesTokenCount: 1616, candidatesTokensDetails: [{ modality: 'IMAGE', tokenCount: 1120 }] };
+		expect(geminiUsd(u)).toBeCloseTo((459 * 0.5 + 1120 * 60 + 496 * 3) / 1e6, 6);
+	});
+	it('Claude: невідома резервна модель не рахується нулем', () => {
+		const u = { input_tokens: 1000, output_tokens: 1000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+		expect(costUsd('claude-sonnet-5-5', u)).toBeCloseTo(0.012, 6);
+		expect(costUsd('claude-mystery-9', u)).toBeGreaterThan(0);
+	});
+});

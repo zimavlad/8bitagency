@@ -835,6 +835,8 @@ export class Run {
 				if (cur) this.setEl(j.id, cur.text, cur.details, { image: `/api/images/${this.id}/${file}` });
 			} catch (err) {
 				if (isAbortError(err)) throw err;
+				const lost = Number((err as { usd?: number }).usd) || 0;
+				if (lost) { this.state.imagesUsd += lost; this.deps.onSpend?.('gemini', lost); }
 				log('warn', 'image_failed', { run: this.id, id: j.id, msg: String((err as Error).message).slice(0, 200) });
 				this.note(`Картинка «${ELEMENT_TITLE[j.id]}» не вийшла: ${(err as Error).message.slice(0, 120)}`);
 			}

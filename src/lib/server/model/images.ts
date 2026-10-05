@@ -1,8 +1,23 @@
 import { encodePng } from '../png';
 import { log, errFields } from '../log';
 
-/** Ціна картинки Nano Banana 2 — оцінка; звіряй з балансом у консолі Google AI Studio. */
+/** Орієнтир ціни картинки 1024px (1120 токенів зображення). Справжню ціну рахуємо з usageMetadata відповіді. */
 export const IMAGE_USD = 0.067;
+
+/**
+ * Ціни Gemini 3.1 Flash Image, $ за 1 млн токенів (ai.google.dev/gemini-api/docs/pricing, звірено 05.10.2026):
+ * вхід 0,50; вихід-картинка 60; вихід-текст і «думання» 3.
+ */
+const G = { input: 0.5, image: 60, text: 3 };
+
+type GUsage = { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number; candidatesTokensDetails?: { modality?: string; tokenCount?: number }[] };
+
+export function geminiUsd(u?: GUsage): number {
+	if (!u) return IMAGE_USD;
+	const img = (u.candidatesTokensDetails ?? []).filter((d) => d.modality === 'IMAGE').reduce((n, d) => n + (d.tokenCount ?? 0), 0);
+	const other = Math.max(0, (u.candidatesTokenCount ?? 0) - img) + (u.thoughtsTokenCount ?? 0);
+	return ((u.promptTokenCount ?? 0) * G.input + img * G.image + other * G.text) / 1e6;
+}
 export const IMAGE_MODEL = 'gemini-3.1-flash-image';
 
 export interface ImageResult {
@@ -35,11 +50,13 @@ export class GeminiImages implements ImageModel {
 				signal: o.signal
 			});
 			const j = (await r.json()) as { error?: { message?: string; status?: string }; candidates?: { content?: { parts?: { inlineData?: { mimeType: string; data: string } }[] } }[]; usageMetadata?: Record<string, unknown> };
-			if (!r.ok || j.error) throw Object.assign(new Error(j.error?.message ?? `Gemini ${r.status}`), { status: r.status });
+			if (!r.ok || j.error) throw Object.assign(new Error(j.error?.message ?? `Gemini ${r.status}`), { status: r.status, usd: 0 });
+			// Платимо й тоді, коли картинки нема: токени думання й вхід уже списано.
+			const usd = geminiUsd(j.usageMetadata as GUsage | undefined);
 			const part = j.candidates?.[0]?.content?.parts?.find((p) => p.inlineData);
-			if (!part?.inlineData) throw new Error('Gemini не повернув картинку');
-			log('info', 'image_call', { who: o.who, model: this.model, ms: Date.now() - started, usage: j.usageMetadata, usd: IMAGE_USD });
-			return { data: Buffer.from(part.inlineData.data, 'base64'), mime: part.inlineData.mimeType, usd: IMAGE_USD };
+			if (!part?.inlineData) throw Object.assign(new Error('Gemini не повернув картинку'), { usd });
+			log('info', 'image_call', { who: o.who, model: this.model, ms: Date.now() - started, usage: j.usageMetadata, usd });
+			return { data: Buffer.from(part.inlineData.data, 'base64'), mime: part.inlineData.mimeType, usd };
 		} catch (e) {
 			log('error', 'image_call_failed', { who: o.who, ms: Date.now() - started, ...errFields(e) });
 			throw e;
