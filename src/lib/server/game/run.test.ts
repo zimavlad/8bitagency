@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { FakeModel } from '../model/fake';
 import { FakeImages } from '../model/images';
 import { inboxFor } from './briefs';
+import { resetLedgerCache } from '../ledger';
 import { Game } from './game';
 import { Run } from './run';
 
@@ -177,7 +178,7 @@ describe('бриф від початку до оплати', () => {
 });
 
 describe('гра', () => {
-	const mkGame = () => new Game({ dataDir: mkdtempSync(join(tmpdir(), 'game-')), model: new FakeModel(), images: new FakeImages(), models: MODELS });
+	const mkGame = () => (resetLedgerCache(mkdtempSync(join(tmpdir(), 'ledger-'))), new Game({ dataDir: mkdtempSync(join(tmpdir(), 'game-')), model: new FakeModel(), images: new FakeImages(), models: MODELS }));
 
 	it('після брифу — новий день, гроші, архів, витрати в балансі', async () => {
 		const g = mkGame();
@@ -221,9 +222,9 @@ describe('гра', () => {
 		expect(g.state.team.strategist.done).toBe(1);
 		expect(g.state.history).toHaveLength(1);
 		expect(g.state.history[0].case?.name).toBeTruthy();
-		expect(g.state.ledger.claude.usd).toBe(2.2);
+		// рахунки API спільні на сервер, у грі — лише вигляд
 		expect(g.setBalance('gemini', 4.5)).toBeNull();
-		expect(g.state.ledger.gemini).toMatchObject({ usd: 4.5, spent: 0 });
+		expect(g.view().ledger.gemini).toMatchObject({ usd: 4.5, spent: 0 });
 	});
 
 	it('похвала при стресі понад 60% лише дратує; після 5 проєктів — прохання про підвищення', () => {

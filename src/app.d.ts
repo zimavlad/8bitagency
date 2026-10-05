@@ -1,4 +1,9 @@
 declare global {
-	namespace App {}
+	namespace App {
+		interface Locals {
+			/** Гравець (cookie pid): у кожного своя гра. */
+			pid: string;
+		}
+	}
 }
 export {};

@@ -24,7 +24,7 @@
 <section class="wrap" data-tour="inbox">
 	<div class="head sticky">
 		<h2>Вхідні брифи</h2>
-		<button class="btn human sm" disabled={locked} onclick={() => (custom = true)}><Icon name="plus" size={14} />Свій бриф</button>
+		<button class="btn human sm" data-tour="custom" disabled={locked} onclick={() => (custom = true)}><Icon name="plus" size={14} />Свій бриф</button>
 	</div>
 	{#if locked && g.activeRun}
 		<p class="muted">Команда зайнята брифом. Нові підождуть.</p>

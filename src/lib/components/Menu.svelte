@@ -12,20 +12,21 @@
 
 	let shots = $state<{ src: string; cap: string; rot: number }[]>([]);
 
-	const agents = (spot: Spot | Partial<Record<Role, Spot>>, status = 'idle') => {
+	const agents = (spot: Spot | Partial<Record<Role, Spot>>, status = 'idle', burn: Partial<Record<Role, number>> = {}) => {
 		const at = (r: Role) => (typeof spot === 'string' ? spot : spot[r] ?? 'desk');
-		return { strategist: { spot: at('strategist'), status, burnout: 20 }, copywriter: { spot: at('copywriter'), status, burnout: 40 }, designer: { spot: at('designer'), status, burnout: 30 } };
+		return { strategist: { spot: at('strategist'), status, burnout: burn.strategist ?? 20 }, copywriter: { spot: at('copywriter'), status, burnout: burn.copywriter ?? 40 }, designer: { spot: at('designer'), status, burnout: burn.designer ?? 30 } };
 	};
 	const base: Omit<SceneInput, 'agents' | 'hour'> = {
 		clientInOffice: false, gptFor: null, speaking: [], board: { positioning: true, name: true, slogan: true, logo: false }, logo: null,
 		sky: 'clear', reducedMotion: true, client: { gender: 'm', look: 'leather' }, away: false
 	};
 	/** Кадр: стан офісу + яку частину арту вирізати (x, y, ширина в пікселях арту, пропорція 4:3). */
+	// Кадри як у серіалі «Офіс»: крупні плани з того самого офісу гри, «сфотографовані» на поляроїд.
 	const FRAMES: { cap: string; input: SceneInput; crop: [number, number, number] }[] = [
-		{ cap: 'Клієнт хоче лого більше', input: { ...base, agents: agents('table'), clientInOffice: true, speaking: ['client'], hour: 15 }, crop: [96, 120, 180] },
+		{ cap: '«А можна логотип більше?»', input: { ...base, agents: agents('table'), clientInOffice: true, speaking: ['client'], hour: 15 }, crop: [60, 158, 74] },
 		{ cap: 'Дедлайн «на вчора»', input: { ...base, agents: agents('desk', 'thinking'), hour: 23.5, sky: 'rain' }, crop: [40, 40, 220] },
-		{ cap: 'Пʼятниця, 18:00', input: { ...base, agents: agents('coffee'), hour: 18.5 }, crop: [100, 118, 168] },
-		{ cap: 'Інсайт знайдено~', input: { ...base, agents: agents({ strategist: 'board' }), gptFor: 'copywriter', speaking: ['strategist'], hour: 11 }, crop: [105, 36, 190] }
+		{ cap: 'Дизайнер після третього кола правок', input: { ...base, agents: agents({ strategist: 'table', copywriter: 'table', designer: 'coffee' }, 'idle', { designer: 96 }), hour: 19 }, crop: [160, 198, 74] },
+		{ cap: 'Джіпітенко радить «бути автентичним»', input: { ...base, agents: agents('desk', 'thinking'), gptFor: 'copywriter', hour: 11 }, crop: [176, 90, 80] }
 	];
 
 	onMount(() => {

@@ -3,14 +3,14 @@ import { app } from '$lib/server/app';
 import { kbStats } from '$lib/server/game/kb';
 import type { Role } from '$lib/types';
 
-export async function GET() {
-	const g = app();
-	return json({ game: g.state, demo: g.demo, imagesDemo: g.imagesDemo, kb: await kbStats(process.env.DATA_DIR ?? './data') });
+export async function GET({ locals }) {
+	const g = app(locals.pid);
+	return json({ game: g.view(), demo: g.demo, imagesDemo: g.imagesDemo, kb: await kbStats(process.env.DATA_DIR ?? './data') });
 }
 
 /** {action: 'rest' | 'reset' | 'balance' | 'perk', provider?, usd?, kind?, role?} */
-export async function POST({ request }) {
-	const g = app();
+export async function POST({ request, locals }) {
+	const g = app(locals.pid);
 	const b = (await request.json().catch(() => ({}))) as { action?: string; provider?: string; usd?: number; kind?: string; role?: string };
 	let err: string | null = null;
 	let note: string | undefined;
@@ -24,5 +24,5 @@ export async function POST({ request }) {
 	} else if (b.action === 'answer') err = g.answer(!!(b as { yes?: boolean }).yes);
 	else return json({ error: 'Невідома дія.' }, { status: 400 });
 	if (err) return json({ error: err }, { status: 409 });
-	return json({ game: g.state, note });
+	return json({ game: g.view(), note });
 }

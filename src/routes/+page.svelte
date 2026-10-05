@@ -263,7 +263,7 @@
 				'У тебе тиждень. Якщо за сім днів агенція не вийде в плюс — побачимось у суді. Без образ, це бізнес.',
 				'Брифи бери будь-які, хоч від шаурми. Команду не спали — вони мені ще потрібні живими. Удачі!'
 			]} ps="Останній раз виручаю. Справді останній.">
-				<button class="btn primary" onclick={() => { mail = null; tour = true; }}><Icon name="x" size={14} />Закрити лист</button>
+				<button class="btn primary" onclick={() => { mail = null; tour = true; }}><Icon name="x" size={14} />Закрити</button>
 			</Email>
 		{:else if g.ask && !live.run?.phase?.startsWith('client')}
 			{@const r = g.ask}
@@ -277,7 +277,7 @@
 			</Email>
 		{:else if g.investorOk && g.day === DEADLINE_DAY && !investorSeen}
 			<Email from="investor_shef777@gmail.com" to="director@creative.agnc" subject="Ну добре" body={['Бачу плюс. Не очікував, чесно.', 'Суд скасовується. Працюй далі, але звіти щопонеділка.']}>
-				<button class="btn primary" onclick={() => (investorSeen = true)}>Закрити лист</button>
+				<button class="btn primary" onclick={() => (investorSeen = true)}>Закрити</button>
 			</Email>
 		{/if}
 		{#if tour}<Tour onTab={(t) => (tab = t)} onDone={() => { tour = false; tab = 'inbox'; }} />{/if}

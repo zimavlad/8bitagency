@@ -1,8 +1,8 @@
 import { app } from '$lib/server/app';
 
 /** Живий стан брифу (SSE). Після перепідключення клієнт одразу отримує повний стан. */
-export function GET({ params, request }) {
-	const g = app();
+export function GET({ params, request, locals }) {
+	const g = app(locals.pid);
 	const run = g.run(params.id);
 	if (!run) return new Response('not found', { status: 404 });
 	const enc = new TextEncoder();

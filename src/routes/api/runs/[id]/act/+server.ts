@@ -5,8 +5,8 @@ import type { Decision } from '$lib/server/game/run';
 /**
  * Дії гравця: pick {index} · submit · edit {notes[]} · retry · giveup · pause {on} · drop.
  */
-export async function POST({ params, request }) {
-	const run = app().run(params.id);
+export async function POST({ params, request, locals }) {
+	const run = app(locals.pid).run(params.id);
 	if (!run) return json({ error: 'Бриф не знайдено.' }, { status: 404 });
 	const b = (await request.json().catch(() => ({}))) as { action?: string; index?: number; notes?: unknown; on?: boolean };
 	let error: string | null = null;

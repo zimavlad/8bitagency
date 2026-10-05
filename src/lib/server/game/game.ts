@@ -1,7 +1,8 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { DAY_START, DEADLINE_DAY, PIZZA_COST, PROMO_AFTER, ROLES, START_MONEY, dailyCost as costOf, type Brief, type BriefForm, type GameState, type Ledger, type Perks, type Role, type RunState, type Staff } from '$lib/types';
 import { log } from '../log';
+import { ledger, setLedger, spendLedger } from '../ledger';
 import type { ModelClient } from '../model/client';
 import type { ImageModel } from '../model/images';
 import { caseOf } from '$lib/case';
@@ -60,7 +61,8 @@ export class Game {
 	private listeners = new Map<string, Set<Listener>>();
 	private counter = 0;
 
-	constructor(private o: { dataDir: string; model: ModelClient; images: ImageModel; models: Models; paceMs?: number }) {
+	/** dataDir — спільні архів, картинки й база; saveFile — сейв цього гравця. */
+	constructor(private o: { dataDir: string; saveFile?: string; player?: string; model: ModelClient; images: ImageModel; models: Models; paceMs?: number }) {
 		this.state = this.load();
 		// Бриф з минулого запуску сервера не відновлюється — звільняємо слот.
 		if (this.state.activeRun) {
@@ -80,15 +82,17 @@ export class Game {
 	/** Влад вводить залишок з консолі — від цієї миті витрати рахуються заново. */
 	setBalance(provider: 'claude' | 'gemini', usd: number): string | null {
 		if (!Number.isFinite(usd) || usd < 0 || usd > 100000) return 'Невірна сума.';
-		this.state.ledger[provider] = { usd: Math.round(usd * 100) / 100, at: new Date().toISOString().slice(0, 10), spent: 0 };
-		this.save();
+		setLedger(provider, usd);
 		return null;
 	}
 
 	private spend(provider: 'claude' | 'gemini', usd: number) {
-		if (!usd) return;
-		this.state.ledger[provider].spent += usd;
-		this.dirty = true;
+		spendLedger(provider, usd);
+	}
+
+	/** Стан для гравця: його гра + спільні на сервер рахунки API. */
+	view(): GameState {
+		return { ...this.state, ledger: ledger(this.o.dataDir) };
 	}
 
 	private dirty = false;
@@ -98,20 +102,19 @@ export class Game {
 		try {
 			const dir = join(this.o.dataDir, 'runs');
 			mkdirSync(dir, { recursive: true });
-			writeFileSync(join(dir, `${run.id}.json`), JSON.stringify({ saved: new Date().toISOString(), state: run.state, trace: run.trace }, null, 1));
+			writeFileSync(join(dir, `${run.id}.json`), JSON.stringify({ saved: new Date().toISOString(), player: this.o.player ?? 'main', state: run.state, trace: run.trace }, null, 1));
 		} catch (e) {
 			log('error', 'archive_failed', { run: run.id, msg: String(e).slice(0, 200) });
 		}
 	}
 
 	private file() {
-		return join(this.o.dataDir, 'save.json');
+		return this.o.saveFile ?? join(this.o.dataDir, 'save.json');
 	}
 
 	private load(): GameState {
 		try {
 			const s = { ...newGame(), ...(JSON.parse(readFileSync(this.file(), 'utf8')) as GameState) };
-			s.ledger = { ...START_LEDGER(), ...(s.ledger ?? {}) };
 			// Сейви до рівнів: брифи без рівня перегенеровуємо.
 			if (s.inbox.some((b) => !b.tier || !b.client.role)) s.inbox = inboxFor(s.day, s.reputation);
 			if (!s.perks || s.perks.day !== s.day) s.perks = perksFor(s.day);
@@ -124,7 +127,7 @@ export class Game {
 	}
 
 	private save() {
-		mkdirSync(this.o.dataDir, { recursive: true });
+		mkdirSync(dirname(this.file()), { recursive: true });
 		const tmp = `${this.file()}.tmp`;
 		writeFileSync(tmp, JSON.stringify(this.state, null, 1));
 		renameSync(tmp, this.file());
@@ -191,7 +194,7 @@ export class Game {
 		// Передплата 20% приходить одразу, щойно береш бриф.
 		this.state.money += brief.prepay;
 		this.save();
-		log('info', 'run_start', { run: id, brief: brief.id, custom: !!brief.custom, client: brief.client.name, business: brief.client.business });
+		log('info', 'run_start', { player: this.o.player ?? 'main', run: id, brief: brief.id, custom: !!brief.custom, client: brief.client.name, business: brief.client.business });
 		run.start();
 		return { run };
 	}
