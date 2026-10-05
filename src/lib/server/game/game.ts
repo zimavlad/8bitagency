@@ -1,5 +1,4 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import type { Notebooks } from '../notebooks';
 import { dirname, join } from 'node:path';
 import { DAY_START, DEADLINE_DAY, PIZZA_COST, PROMO_AFTER, ROLES, START_MONEY, dailyCost as costOf, type Brief, type BriefForm, type GameState, type Ledger, type Perks, type Role, type RunState, type Staff } from '$lib/types';
 import { log } from '../log';
@@ -63,7 +62,7 @@ export class Game {
 	private counter = 0;
 
 	/** dataDir — спільні архів, картинки й база; saveFile — сейв цього гравця. */
-	constructor(private o: { dataDir: string; saveFile?: string; player?: string; model: ModelClient; images: ImageModel; models: Models; paceMs?: number; notebooks?: Notebooks }) {
+	constructor(private o: { dataDir: string; saveFile?: string; player?: string; model: ModelClient; images: ImageModel; models: Models; paceMs?: number }) {
 		this.state = this.load();
 		// Бриф з минулого запуску сервера не відновлюється — звільняємо слот.
 		if (this.state.activeRun) {
@@ -187,7 +186,6 @@ export class Game {
 			model: this.o.model,
 			images: this.o.images,
 			models: this.o.models,
-			notebooks: this.o.notebooks,
 			dataDir: this.o.dataDir,
 			burnout: { ...this.state.burnout },
 			morale: { ...this.state.morale },
