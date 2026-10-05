@@ -87,7 +87,10 @@
 	const g = $derived(live.game!);
 	const run = $derived(live.run);
 	const active = $derived(!!run && run.phase !== 'done' && run.phase !== 'failed');
-	const canContinue = $derived(!!g.activeRun || g.day > 1 || g.history.length > 0);
+	// Програна гра не продовжується: з меню — лише нова.
+	/** Гроші на API закінчуються: менше ніж на два брифи (Claude ≈ $0.3, Gemini ≈ $0.28 за бриф). */
+	const apiLow = $derived(g.ledger.claude.usd - g.ledger.claude.spent < 0.6 || g.ledger.gemini.usd - g.ledger.gemini.spent < 0.6);
+	const canContinue = $derived(!g.bankrupt && (!!g.activeRun || g.day > 1 || g.history.length > 0));
 	/** Скільки тримати вердикт, поки клієнт договорює репліки над головою. */
 	const talk = $derived((run?.verdicts.at(-1)?.lines.length ?? 0) * 2600 + 500);
 
@@ -216,7 +219,7 @@
 			<span class="kpi" title="День і час у грі"><span class="faint dw">день</span> <span class="num">{g.day}</span> <span class="num faint">{hhmm}</span></span>
 			<span class="kpi" title="Гроші" data-tour="money"><Icon name="coin" size={16} /><Num value={g.money} width={6} suffix=" ₴" /></span>
 			<span class="kpi" title="Репутація; рівень агенції"><Icon name="star" size={16} /><Num value={g.reputation} width={3} /><span class="faint lvl">рів. {tierOf(g.reputation)}</span></span>
-			<span class="kpi bal" title="Орієнтовний залишок на рахунках API"><span class="faint">Claude</span> <span class="num">${Math.max(0, g.ledger.claude.usd - g.ledger.claude.spent).toFixed(2)}</span> <span class="faint">Gemini</span> <span class="num">${Math.max(0, g.ledger.gemini.usd - g.ledger.gemini.spent).toFixed(2)}</span></span>
+			<span class="kpi bal" class:low={apiLow} title={apiLow ? 'Поповнити рахунок API' : 'Орієнтовний залишок на рахунках API'}><span class="faint">Claude</span> <span class="num">${Math.max(0, g.ledger.claude.usd - g.ledger.claude.spent).toFixed(2)}</span> <span class="faint">Gemini</span> <span class="num">${Math.max(0, g.ledger.gemini.usd - g.ledger.gemini.spent).toFixed(2)}</span></span>
 		</div>
 		<button class="btn ghost sm menu-btn" onclick={openMenu} aria-label="Меню"><Icon name="menu" size={18} /></button>
 	</header>
@@ -251,13 +254,7 @@
 				</nav>
 			{/if}
 			<div class="content">
-				{#if g.bankrupt}
-					<div class="panel bankrupt">
-						<h2>{g.over === 'investor' ? 'Інвестор подав до суду' : 'Агенція збанкрутувала'}</h2>
-						<p class="muted">{g.over === 'investor' ? `Тиждень минув, а на рахунку не більше за ${START_MONEY.toLocaleString('uk-UA')} ₴. Інвестор тримав слово.` : 'Гроші скінчились. Таке буває навіть з чесними агенціями.'}</p>
-						<button class="btn primary" onclick={newGame}>Нова гра</button>
-					</div>
-				{/if}
+
 				{#if tab === 'inbox'}
 					<Inbox {live} />
 				{:else if tab === 'work'}
@@ -290,7 +287,14 @@
 	{/if}
 
 	{#if screen === 'game' && !menu}
-		{#if mail === 'investor'}
+		{#if g.bankrupt}
+			<!-- Програш: лист із суду, далі — головне меню. -->
+			<Email from="sud_777@gmail.com" to="director@creative.agnc" subject={g.over === 'investor' ? 'Повістка. Справа №777/8bit' : 'Повістка. Справа №777/0₴'} body={g.over === 'investor'
+				? ['Шановний Василю.', 'Повідомляємо, що завтра о 9:00 відбудеться засідання за позовом інвестора щодо повернення 12 000 ₴.', 'Явка обовʼязкова. Портфоліо як доказ платоспроможності суд не приймає.']
+				: ['Шановний Василю.', 'Повідомляємо, що завтра о 9:00 відбудеться засідання за позовом орендодавця і команди щодо несплати оренди й зарплат.', 'Явка обовʼязкова. Піцу із собою не брати.']} ps="Секретар суду. Відповідати на цей лист не треба.">
+				<button class="btn primary" onclick={() => { screen = 'title'; }}>Закрити</button>
+			</Email>
+		{:else if mail === 'investor'}
 			<Email from="investor_shef777@gmail.com" to="director@creative.agnc" subject="В тебе тиждень, Васю" body={[
 				'Васю, добрий день.',
 				`Перекинув на рахунок агенції ${START_MONEY.toLocaleString('uk-UA')} ₴. Це останній внесок. Я дуже, дуже спокійний, просто пишу без емоцій.`,
@@ -434,6 +438,11 @@
 
 	.bal {
 		gap: 4px;
+		cursor: help;
+		&.low,
+		&.low :global(*) {
+			color: var(--bad);
+		}
 	}
 	@media (max-width: 640px) {
 		.bal {
@@ -590,12 +599,6 @@
 				color: var(--accent);
 			}
 		}
-	}
-	.bankrupt {
-		padding: 14px;
-		display: grid;
-		gap: 8px;
-		border-color: var(--bad);
 	}
 	.err {
 		color: var(--bad);
