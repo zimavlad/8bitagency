@@ -279,3 +279,19 @@ describe('гра', () => {
 		expect(run!.state.brief.client.look).toBe('leather');
 	});
 });
+
+describe('блокноти NotebookLM', () => {
+	it('стратегиня й копірайтер беруть нотатки зі своїх блокнотів, Джіпітенко — з блокнота як з бази', async () => {
+		const asked: string[] = [];
+		const { run, model } = mk();
+		(run as unknown as { deps: { notebooks: unknown } }).deps.notebooks = { ask: async (o: string) => { asked.push(o); return `нотатка для ${o}`; } };
+		run.start();
+		await until(() => run.state.phase === 'pick_name');
+		expect(asked).toContain('strategist');
+		expect(asked).toContain('copywriter');
+		const prompts = model.requests.map((r) => JSON.stringify(r.params.messages));
+		expect(prompts.some((p) => p.includes('нотатка для strategist'))).toBe(true);
+		expect(prompts.some((p) => p.includes('нотатка для copywriter'))).toBe(true);
+		expect(run.trace.some((t) => t.purpose === 'notebook')).toBe(true);
+	});
+});

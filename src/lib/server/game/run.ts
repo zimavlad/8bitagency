@@ -14,6 +14,7 @@ import { GPT_CARD, PERSONA_CARD, clientCard, systemFor } from './characters';
 import { qualityOf, reputationDelta } from './checks';
 import { fake } from './fake';
 import { indexFor, search } from './kb';
+import type { NotebookOwner, Notebooks } from '../notebooks';
 import {
 	GPT_HABIT, GPT_QUESTION, SCHEMA, StepError, briefBlock, guide, normClient, normContent, normGpt, normHuddle, normLogo,
 	normIdea, normNaming, normPersona, normPositioning, normRead, normRename, normReposition, parseJson, prompt, readText, request,
@@ -43,6 +44,8 @@ export interface RunDeps {
 	onChange?: (run: Run) => void;
 	onFinish?: (run: Run) => void;
 	onSpend?: (provider: 'claude' | 'gemini', usd: number) => void;
+	/** Блокноти NotebookLM: без них (або без входу) радяться лише з базою знань. */
+	notebooks?: Notebooks;
 }
 
 /** Рішення гравця, на яке чекає бриф. */
@@ -59,7 +62,7 @@ export type Decision =
 /** Запис одного виклику моделі — для архіву прогону (бачити, що агенти думали насправді). */
 export interface TraceEntry {
 	t: string;
-	purpose: CallPurpose | 'image';
+	purpose: CallPurpose | 'image' | 'notebook';
 	who: string;
 	model: string;
 	prompt: string;
@@ -374,13 +377,25 @@ export class Run {
 		return parseJson(r.text);
 	}
 
+	/** Питання до блокнота NotebookLM; у архів прогону — як окремий виклик, щоб бачити, що він відповів. */
+	private async notebook(owner: NotebookOwner, question: string): Promise<string | undefined> {
+		const nb = this.deps.notebooks;
+		if (!nb) return undefined;
+		const started = Date.now();
+		const a = await nb.ask(owner, question);
+		if (a) this.trace.push({ t: new Date().toISOString(), purpose: 'notebook', who: `notebook:${owner}`, model: 'notebooklm', prompt: question, response: a, stop: 'end_turn', ms: Date.now() - started, usd: 0 });
+		return a ?? undefined;
+	}
+
 	private async maybeGpt(role: Role, step: 'read' | 'naming'): Promise<string | undefined> {
 		if (chance(`${this.id}:${role}:${step}`) >= GPT_HABIT[role]) return undefined;
 		const question = step === 'read' ? GPT_QUESTION.read(role, this.state.brief) : GPT_QUESTION.naming(this.state.brief);
 		this.agent(role, 'gpt', 'радиться з Джіпітенком');
 		this.say(role, `Джіпітенко, ${question}`, 'system');
 		const index = await indexFor(this.deps.dataDir, role);
-		const chunks = search(index, `${this.state.brief.client.business} ${this.state.brief.text} ${question}`, 3);
+		const chunks: { source: string; text: string }[] = search(index, `${this.state.brief.client.business} ${this.state.brief.text} ${question}`, 3);
+		const nb = await this.notebook('gpt', `${question} Бізнес: ${this.state.brief.client.business}. Бриф: ${this.state.brief.text}`);
+		if (nb) chunks.unshift({ source: 'блокнот NotebookLM', text: nb });
 		const g = normGpt(await this.once({
 			purpose: 'gpt', who: `gpt:${role}`, model: this.deps.models.gpt, system: GPT_CARD,
 			user: prompt.gpt(role, question, chunks), schema: SCHEMA.gpt, fake: () => fake.gpt(chunks[0]?.source ?? '')
@@ -469,7 +484,10 @@ export class Run {
 		await this.gate();
 		this.agent('strategist', 'thinking', 'читає бриф');
 		const gpt = await this.maybeGpt('strategist', 'read');
-		this.read = normRead(await this.ask('strategist', 'read', prompt.read(b, gpt), SCHEMA.read, () => fake.read(b, !!gpt)));
+		this.step('Стратегиня гортає свій блокнот');
+		const snotes = await this.notebook('strategist', `Бізнес: ${b.client.business}. Бриф клієнта: «${b.text}». Яка тут людська проблема, інсайт і сильне позиціонування? Дай приклади з джерел.`);
+		if (snotes) this.say('strategist', 'Так, у блокноті щось про це було~', 'thought', undefined, [snotes]);
+		this.read = normRead(await this.ask('strategist', 'read', prompt.read(b, gpt, snotes), SCHEMA.read, () => fake.read(b, !!gpt)));
 		this.say('strategist', this.read.thought, 'thought', undefined, readText(this.read).split('\n'));
 		this.state.strategy = { problem: this.read.problem, insight: this.read.insight, advantage: this.read.advantage, direction: this.read.direction };
 		this.record('strategy', readText(this.read).split('\n'));
@@ -515,7 +533,9 @@ export class Run {
 		this.step('Копірайтер вигадує, про що напишуть у Threads');
 		this.phase('naming', 'Копірайтер шукає креативну ідею', { strategist: 'coffee' });
 		this.agent('copywriter', 'thinking', 'вигадує ідею');
-		const idea = normIdea(await this.ask('copywriter', 'core', prompt.idea(this.pos, this.read, b.budget), SCHEMA.idea, () => fake.idea()));
+		const cnotes = await this.notebook('copywriter', `Бізнес: ${b.client.business}. Позиціонування: «${this.pos.positioning}». Які сміливі віральні креативні ходи, мемні кампанії й слогани підійдуть? Приклади з джерел.`);
+		if (cnotes) this.say('copywriter', 'Секунду, гляну в блокнот.', 'thought', undefined, [cnotes]);
+		const idea = normIdea(await this.ask('copywriter', 'core', prompt.idea(this.pos, this.read, b.budget, cnotes), SCHEMA.idea, () => fake.idea()));
 		this.setEl('idea', idea.idea, idea.how, { why: idea.why });
 		this.record('name', [`Ідея: ${idea.idea}`, ...idea.how.map((h) => `Як живе: ${h}`)]);
 		this.say('copywriter', idea.thought, 'thought', undefined, [idea.idea, ...idea.how]);
