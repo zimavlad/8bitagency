@@ -31,15 +31,16 @@ describe('бриф від початку до оплати', () => {
 		const { run, model, images, dataDir } = mk();
 		run.start();
 		await until(() => run.state.phase === 'pick_name');
-		// до вибору назви працювали лише стратегиня (читання, позиціонування) і поради колег
-		expect(model.requests.map((r) => r.purpose).filter((p) => p !== 'gpt')).toEqual(['read', 'review', 'review', 'core', 'core']);
+		// до вибору назви: стратегиня (читання, позиціонування), поради колег, ідея і назви копірайтера
+		expect(model.requests.map((r) => r.purpose).filter((p) => p !== 'gpt')).toEqual(['read', 'review', 'review', 'core', 'core', 'core']);
+		expect(run.state.elements.idea?.text).toBeTruthy();
 		expect(run.state.options).toHaveLength(3);
 		expect(run.decide({ action: 'pick', index: 5 })).toMatch(/Нема/);
 		// не подобається — ще варіанти
 		const first = run.state.options.map((o) => o.name).join();
 		expect(run.decide({ action: 'more' })).toBeNull();
 		await until(() => run.state.phase === 'pick_name' && run.state.rerolls === 1);
-		expect(run.state.steps.find((x) => x.key === 'name')?.lines[0]).toMatch(/Забраковано/);
+		expect(run.state.steps.find((x) => x.key === 'name')?.lines.join(' ')).toMatch(/Забраковано/);
 		void first;
 		expect(run.decide({ action: 'pick', index: 1 })).toBeNull();
 		await until(() => run.state.phase === 'player_core');
@@ -84,7 +85,7 @@ describe('бриф від початку до оплати', () => {
 		expect(run.state.elements.youtube?.image).toMatch(/youtube-/);
 		expect(images.prompts.find((p) => p.includes('storyboard'))).toBeTruthy();
 		// кожен етап можна переглянути: варіанти назви, знак, кола клієнта
-		expect(run.state.steps.find((x) => x.key === 'name')?.lines).toHaveLength(6);
+		expect(run.state.steps.find((x) => x.key === 'name')?.lines).toHaveLength(9);
 		expect(run.state.steps.find((x) => x.key === 'logo')?.logos?.length).toBeGreaterThan(1);
 		expect(run.state.strategy?.insight).toBeTruthy();
 		expect(images.prompts[0]).toContain('Stardew Valley');

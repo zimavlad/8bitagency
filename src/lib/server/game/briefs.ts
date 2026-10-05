@@ -2,7 +2,7 @@ import { PREPAY_SHARE, tierOf, type Brief, type BriefForm, type Client } from '$
 
 /** Брифи, як вони реально приходять: сирі, суперечливі, з «на вчора». */
 /** tier: 1 — дрібний бізнес із чеками до 5 тис., 2 — середній, 3 — великий. Передплати на старті нема ніде. */
-const POOL: { client: Client; text: string; fee: number; tier: number }[] = [
+const POOL: { client: Client; text: string; fee: number; tier: number; budget?: number }[] = [
 	{
 		client: { name: 'Віталій', role: 'власник', business: 'мережа шаурми «У Петровича», 4 точки в Житомирі', archetype: 'хоче як у McDonald’s, але за свої гроші; любить червоний колір і знижки', gender: 'm', look: 'leather', voice: '«ну шо», «короче», про таксистів і трасу' },
 		text: 'Треба новий бренд щоб було як у макдональдса але наше. Молодь не ходить, ходять таксисти. Бюджет є але не дуже. Логотип щоб видно було з дороги. На вчора.',
@@ -31,7 +31,8 @@ const POOL: { client: Client; text: string; fee: number; tier: number }[] = [
 		client: { name: 'Марина', role: 'маркетологиня', business: 'онлайн-школа англійської для дітей', archetype: 'маркетолог-самоучка, говорить «воронка» і «CTR», хоче вірусні рілси', gender: 'f', look: 'casual', voice: '«воронка», «CPL», «таргет», швидко й по пунктах' },
 		text: 'У нас 12 конкурентів з однаковими мультяшними совами. Хочемо вирізнятись, але батьки мають довіряти. Головне — заявки з таргету, CPL зараз 9 доларів. І рілси щоб залітали.',
 		fee: 12000,
-		tier: 2
+		tier: 2,
+		budget: 180000
 	},
 	{
 		client: { name: 'Олег', role: 'власник', business: 'СТО «Мотор-Сервіс» на Троєщині', archetype: 'прямий, недовірливий, вважає маркетинг розводом, але дружина сказала треба', gender: 'm', look: 'sport', voice: 'коротко, недовірливо, «нормально ремонтуємо», «дружина сказала»' },
@@ -49,7 +50,8 @@ const POOL: { client: Client; text: string; fee: number; tier: number }[] = [
 		client: { name: 'Дмитро', role: 'співзасновник', business: 'стартап доставки ліків «АптекаБот»', archetype: 'говорить як інвестор-презентація, вимагає «юнікорн-енерджі» і щоб було як в Uber', gender: 'm', look: 'casual', voice: '«юнікорн», «скейлимо», «як Uber», англіцизми' },
 		text: 'Ми як Uber для аптек. Pre-seed, треба бренд для інвесторів і для користувачів одночасно. Конкуренти: всі аптеки. Хочемо щоб було сміливо, але щоб пенсіонери довіряли.',
 		fee: 18000,
-		tier: 2
+		tier: 2,
+		budget: 300000
 	},
 	{
 		client: { name: 'Людмила', role: 'власниця', business: 'магазин побутової техніки «Електросвіт», райцентр', archetype: 'головне — акції; на кожну ідею питає «а де тут знижка?»', gender: 'f', look: 'suit', voice: '«а де знижка?», «люди свої», «20 років»' },
@@ -61,7 +63,8 @@ const POOL: { client: Client; text: string; fee: number; tier: number }[] = [
 		client: { name: 'Тарас', role: 'пивовар і власник', business: 'крафтова пивоварня «Бровар 47»', archetype: 'хоче «щоб пацани оцінили», але також на полиці АТБ', gender: 'm', look: 'leather', voice: '«пацани», «щоб репостили», «на полиці АТБ»' },
 		text: 'Варимо крафт, хочемо зайти в мережі. Назва в нас нормальна, але етикетки кожен раз різні. Треба щось одне впізнаване. І ролик, щоб пацани репостили.',
 		fee: 15000,
-		tier: 2
+		tier: 2,
+		budget: 250000
 	},
 	{
 		client: { name: 'Галина', role: 'власниця', business: 'їдальня «Смачно як вдома» у Вінниці', archetype: 'годує як мама, ображається на суші навпроти; хоче «модно, але не дорого»', gender: 'f', look: 'casual', voice: '«дітки», «як вдома», «ці ваші суші»' },
@@ -114,7 +117,7 @@ export function inboxFor(day: number, reputation: number, exclude: string[] = []
 		const open = all.filter((b) => b.tier === t && !picked.includes(b));
 		while (picked.length < 3 && open.length) picked.push(open.splice(Math.floor(r() * open.length), 1)[0]);
 	}
-	return picked.map((b) => ({ id: `b${b.i}`, client: b.client, text: b.text, fee: b.fee, prepay: prepayOf(b.fee), tier: b.tier }));
+	return picked.map((b) => ({ id: `b${b.i}`, client: b.client, text: b.text, fee: b.fee, prepay: prepayOf(b.fee), tier: b.tier, ...(b.budget ? { budget: b.budget } : {}) }));
 }
 
 const CUSTOM_ARCHETYPES = [

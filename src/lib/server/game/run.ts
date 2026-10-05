@@ -16,8 +16,8 @@ import { fake } from './fake';
 import { indexFor, search } from './kb';
 import {
 	GPT_HABIT, GPT_QUESTION, SCHEMA, StepError, briefBlock, guide, normClient, normContent, normGpt, normHuddle, normLogo,
-	normNaming, normPersona, normPositioning, normRead, normRename, normReposition, parseJson, prompt, readText, request,
-	type Msg, type Pos, type Read
+	normIdea, normNaming, normPersona, normPositioning, normRead, normRename, normReposition, parseJson, prompt, readText, request,
+	type Mix, type Msg, type Pos, type Read
 } from './steps';
 
 export interface Models {
@@ -257,6 +257,16 @@ export class Run {
 			if (!out.includes(g)) out.push(g);
 		}
 		return out;
+	}
+
+	/** Скільки правок і яких: від 1 до 7, більшість — «повітря» й тупі питання, решта — «серйозні» зі страху. */
+	private mix(stage: 'core' | 'content', round: number): Mix {
+		const n = 1 + Math.floor(chance(`${this.id}:mix:${stage}:${round}`) * 7);
+		let serious = Math.round((n * 3) / 7);
+		const dumb = n - serious >= 2 ? 1 : n === 1 && chance(`${this.id}:dumb:${stage}:${round}`) > 0.5 ? 1 : 0;
+		// з рекламним бюджетом клієнт обовʼязково хоче телевізор
+		if (stage === 'content' && this.state.brief.budget && !serious) serious = 1;
+		return { empty: Math.max(0, n - serious - dumb), dumb, serious };
 	}
 
 	private sys(r: Role) {
@@ -500,13 +510,24 @@ export class Run {
 		this.agent('strategist', 'done', 'позиціонування готове');
 		this.tick();
 
-		// 4. назва: 3 варіанти, обирає гравець
+		// 4. креативна ідея: навіть під серйозну стратегію — сміливий сучасний прикол
+		await this.gate();
+		this.step('Копірайтер вигадує, про що напишуть у Threads');
+		this.phase('naming', 'Копірайтер шукає креативну ідею', { strategist: 'coffee' });
+		this.agent('copywriter', 'thinking', 'вигадує ідею');
+		const idea = normIdea(await this.ask('copywriter', 'core', prompt.idea(this.pos, this.read, b.budget), SCHEMA.idea, () => fake.idea()));
+		this.setEl('idea', idea.idea, idea.how, { why: idea.why });
+		this.record('name', [`Ідея: ${idea.idea}`, ...idea.how.map((h) => `Як живе: ${h}`)]);
+		this.say('copywriter', idea.thought, 'thought', undefined, [idea.idea, ...idea.how]);
+		this.tick();
+
+		// 5. назва: 3 варіанти, обирає гравець
 		await this.gate();
 		this.step('Копірайтер викреслює двадцяту назву');
 		this.phase('naming', 'Копірайтер шукає назву', { strategist: 'coffee' });
 		this.agent('copywriter', 'thinking', 'шукає назву');
 		const g2 = await this.maybeGpt('copywriter', 'naming');
-		const nm = normNaming(await this.ask('copywriter', 'core', prompt.naming(this.pos, g2), SCHEMA.naming, () => fake.naming(!!g2)));
+		const nm = normNaming(await this.ask('copywriter', 'core', prompt.naming(this.pos, g2, idea.idea), SCHEMA.naming, () => fake.naming(!!g2)));
 		this.state.options = nm.options;
 		this.say('copywriter', nm.thought, 'thought', undefined, nm.options.map((o) => `${o.name} — «${o.slogan}» (${o.why})`));
 		if (nm.gptTake) this.note(`Копірайтер про Джіпітенка: ${nm.gptTake}`);
@@ -549,7 +570,7 @@ export class Run {
 		this.step('Дизайнер мовчки малює знак');
 		this.phase('logo', 'Дизайнер малює знак', { designer: 'desk', copywriter: 'desk' });
 		this.agent('designer', 'thinking', 'малює знак');
-		const lg = await this.drawLogo('core', prompt.logo(this.pos, chosen.name, chosen.slogan));
+		const lg = await this.drawLogo('core', prompt.logo(this.pos, chosen.name, chosen.slogan, this.state.elements.idea?.text));
 		this.setEl('logo', lg.concept, [], { logo: lg.logo, why: lg.thought });
 		this.record('logo', [lg.concept], lg.logo);
 		this.say('designer', lg.thought, 'thought', undefined, [lg.concept]);
@@ -674,7 +695,7 @@ export class Run {
 			const items = ids.map((id) => this.state.elements[id]).filter((e): e is ElementValue => !!e);
 			const c = normClient(await this.once({
 				purpose: 'client', who: 'client', model: this.deps.models.client, system: clientCard(this.state.brief.client, this.state.brief.text),
-				user: prompt.client(items, stage, round, stage === 'content' ? `Бренд-платформу (${this.state.elements.name?.text}, «${this.state.elements.slogan?.text}») ти вже затвердив.` : undefined, this.state.verdicts.flatMap((v) => v.demands), round < rounds ? this.hints(stage, round) : [], this.state.brief.client.gender),
+				user: prompt.client(items, stage, round, stage === 'content' ? `Бренд-платформу (${this.state.elements.name?.text}, «${this.state.elements.slogan?.text}») ти вже затвердив.` : undefined, this.state.verdicts.flatMap((v) => v.demands), round < rounds ? this.hints(stage, round) : [], this.state.brief.client.gender, round < rounds ? this.mix(stage, round) : undefined, this.state.brief.budget),
 				schema: SCHEMA.client, fake: () => fake.client(round, stage)
 			}), stage, round);
 			this.tick();
@@ -739,8 +760,10 @@ export class Run {
 			await this.gate();
 			const name = this.state.elements.name?.text ?? '', slogan = this.state.elements.slogan?.text ?? '';
 			this.agent('copywriter', 'thinking', 'переглядає назву й слоган');
-			const rn = normRename(await this.ask('copywriter', 'rework', prompt.rename(who, notes, this.pos, rp.changed, name, slogan), SCHEMA.rename, () => fake.rename(who === 'клієнт')), name, slogan);
+			const curIdea = this.state.elements.idea?.text ?? '';
+			const rn = normRename(await this.ask('copywriter', 'rework', prompt.rename(who, notes, this.pos, rp.changed, name, slogan, curIdea), SCHEMA.rename, () => fake.rename(who === 'клієнт')), name, slogan);
 			if (rn.changed) {
+				if (rn.idea && rn.idea !== curIdea) { this.setEl('idea', rn.idea, this.state.elements.idea?.details ?? []); this.bump('idea'); }
 				if (rn.name !== name) { this.setEl('name', rn.name, [], rn.why ? { why: rn.why } : {}); this.bump('name'); }
 				if (rn.slogan !== slogan) { this.setEl('slogan', rn.slogan, []); this.bump('slogan'); }
 			}
@@ -782,7 +805,8 @@ export class Run {
 
 	private pack(): string {
 		const e = this.state.elements;
-		return [`- Позиціонування: ${this.pos.positioning}`, `- Роль бренду: ${this.pos.role}; ворог: ${this.pos.enemy}`, `- Назва: ${e.name?.text ?? '—'}`, `- Слоган: ${e.slogan?.text ?? '—'}`, `- Знак: ${e.logo?.text ?? '—'}`].join('\n');
+		const budget = this.state.brief.budget;
+		return [`- Позиціонування: ${this.pos.positioning}`, `- Роль бренду: ${this.pos.role}; ворог: ${this.pos.enemy}`, `- Креативна ідея: ${e.idea?.text ?? '—'}`, ...(budget ? [`- Рекламний бюджет: ${budget.toLocaleString('uk-UA')} ₴ — шукаємо дешеві віральні ходи, телевізор і білборди його зʼїдять`] : []), `- Назва: ${e.name?.text ?? '—'}`, `- Слоган: ${e.slogan?.text ?? '—'}`, `- Знак: ${e.logo?.text ?? '—'}`].join('\n');
 	}
 
 	private async contentStep(id: ContentElement) {

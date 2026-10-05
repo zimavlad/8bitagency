@@ -129,7 +129,7 @@
 				{#if e.logo?.logo}<PixelLogo logo={e.logo.logo} size={44} />{/if}
 				<div class="st">
 					<b class="px">{e.name?.text ?? '—'}</b> <span>«{e.slogan?.text ?? ''}»</span>
-					{#if v.stage === 'core'}<p class="small">{e.positioning?.text}</p>{:else}<p class="small">Банер, пости Threads, Reels і ролик «{e.youtube?.text ?? ''}»</p>{/if}
+					{#if v.stage === 'core'}<p class="small">{e.positioning?.text}</p>{#if e.idea}<p class="small">Ідея: {e.idea.text}</p>{/if}{:else}<p class="small">Банер, пости Threads, Reels і ролик «{e.youtube?.text ?? ''}»</p>{/if}
 				</div>
 				{#if v.stage === 'content'}
 					{#each [e.instagram?.image, e.youtube?.image].filter(Boolean) as src}<img class="th" {src} alt="" />{/each}
@@ -214,6 +214,14 @@
 					<p class="big">{e.positioning.text}</p>
 					<p class="small">{e.positioning.details.join(' · ')}</p>
 					{#if e.positioning.why}<p class="why">Чому так: {e.positioning.why}</p>{/if}
+				</section>
+			{/if}
+			{#if e.idea}
+				<section class="sum paper">
+					<h3>Креативна ідея {#if isNew('idea')}<span class="new">нове</span>{/if}</h3>
+					<p class="big">{e.idea.text}</p>
+					{#if e.idea.details.length}<ul>{#each e.idea.details as d}<li>{d}</li>{/each}</ul>{/if}
+					{#if e.idea.why}<p class="why">Чому так: {e.idea.why}</p>{/if}
 				</section>
 			{/if}
 			<section class="sum paper">

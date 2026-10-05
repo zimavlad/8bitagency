@@ -6,13 +6,13 @@ import { AnthropicModel } from '../model/anthropic';
 import { FakeImages, GeminiImages } from '../model/images';
 import { inboxFor } from './briefs';
 import { Run } from './run';
-const OUT = join(tmpdir(), 'agency-live-full.json');
+const OUT = process.env.DEMO_OUT ?? join(tmpdir(), 'agency-live-full.json');
 it.skipIf(!(process.env.LIVE_CLAUDE && process.env.ANTHROPIC_API_KEY))('повний бриф на справжньому Claude', async () => {
 	const t0 = Date.now();
 	const want = process.env.LIVE_CLIENT ?? 'Людмила';
 	let brief = inboxFor(1, 15)[0];
 	for (let d = 1; d < 60; d++) { const f = inboxFor(d, 15).find((b) => b.client.name === want); if (f) { brief = f; break; } }
-	const run = new Run('live1', brief, { model: new AnthropicModel(process.env.ANTHROPIC_API_KEY!), images: process.env.GEMINI_API_KEY ? new GeminiImages(process.env.GEMINI_API_KEY) : new FakeImages(), models: { agent: 'claude-sonnet-5-5', review: 'claude-opus-5-5', client: 'claude-sonnet-5-5', gpt: 'claude-haiku-4-5' }, dataDir: mkdtempSync(join(tmpdir(), 'live-')), burnout: { strategist: 10, copywriter: 15, designer: 5 }, morale: { strategist: 75, copywriter: 65, designer: 70 } });
+	const run = new Run('live1', brief, { model: new AnthropicModel(process.env.ANTHROPIC_API_KEY!), images: process.env.GEMINI_API_KEY ? new GeminiImages(process.env.GEMINI_API_KEY) : new FakeImages(), models: { agent: 'claude-sonnet-5-5', review: 'claude-opus-5-5', client: 'claude-sonnet-5-5', gpt: 'claude-haiku-4-5' }, dataDir: process.env.DEMO_DATA ?? mkdtempSync(join(tmpdir(), 'live-')), burnout: { strategist: 10, copywriter: 15, designer: 5 }, morale: { strategist: 75, copywriter: 65, designer: 70 } });
 	run.start();
 	const wait = async (f: () => boolean) => { while (!f()) { if (run.state.phase === 'failed') throw new Error(run.state.error ?? 'failed'); await new Promise((r) => setTimeout(r, 300)); } };
 	await wait(() => run.state.phase === 'pick_name');

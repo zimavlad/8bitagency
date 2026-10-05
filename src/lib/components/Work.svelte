@@ -18,7 +18,7 @@
 	);
 	const HISTORY: { key: StepKey; title: string }[] = [
 		{ key: 'strategy', title: 'Стратегія: розбір і порада колег' },
-		{ key: 'name', title: 'Назва й слоган: усі варіанти' },
+		{ key: 'name', title: 'Ідея, назва й слоган: усі варіанти' },
 		{ key: 'logo', title: 'Знак: усі версії' },
 		{ key: 'you_core', title: 'Твої правки до платформи' },
 		{ key: 'client_core', title: 'Клієнт про платформу' },

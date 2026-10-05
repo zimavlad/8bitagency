@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { sceneOnly } from './run';
+import { clean, mixText } from './steps';
 import type { ElementValue } from '$lib/types';
 import { qualityOf, quoteFound, reputationDelta } from './checks';
 
@@ -54,5 +55,22 @@ describe('лічильник грошей', () => {
 		const u = { input_tokens: 1000, output_tokens: 1000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
 		expect(costUsd('claude-sonnet-5-5', u)).toBeCloseTo(0.012, 6);
 		expect(costUsd('claude-mystery-9', u)).toBeGreaterThan(0);
+	});
+});
+
+describe('сміття від моделі', () => {
+	it('прибирає хвіст із лапок і ієрогліфи', () => {
+		expect(clean('Роль бренду прямо в назві.""""""""""""""""')).toBe('Роль бренду прямо в назві.');
+		expect(clean('знає особливості村 району')).toBe('знає особливості району');
+		expect(clean('слоган «Беру» і «ще»')).toBe('слоган «Беру» і «ще»');
+	});
+});
+
+describe('правки клієнта', () => {
+	it('рахує склад і просить телевізор, коли є бюджет', () => {
+		const t = mixText({ empty: 4, dumb: 1, serious: 2 }, 250000);
+		expect(t).toMatch(/рівно 7 вимог/);
+		expect(t).toMatch(/телебаченні/);
+		expect(mixText({ empty: 1, dumb: 0, serious: 0 })).toMatch(/рівно 1 вимога/);
 	});
 });

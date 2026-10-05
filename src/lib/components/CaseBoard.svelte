@@ -15,6 +15,7 @@
 			<h3>{c.name}</h3>
 			{#if c.slogan}<p class="slogan">«{c.slogan}»</p>{/if}
 			{#if c.positioning}<p class="pos">{c.positioning}</p>{/if}
+			{#if c.idea}<p class="pos idea">Ідея: {c.idea}</p>{/if}
 		</div>
 	</section>
 	{#if c.instagram}
@@ -62,6 +63,10 @@
 	.pos {
 		font-size: 13px;
 		color: #6d5236;
+	}
+	.idea {
+		margin-top: 4px;
+		color: var(--paper-ink);
 	}
 	.ig {
 		grid-column: 2;

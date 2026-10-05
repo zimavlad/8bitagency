@@ -40,7 +40,7 @@
 				<div class="fee"><Num value={b.fee} width={6} suffix=" ₴" /></div>
 			</header>
 			<p>«{b.text}»</p>
-			<p class="terms faint">{b.prepay.toLocaleString('uk-UA')} ₴ одразу · {(b.fee - b.prepay).toLocaleString('uk-UA')} ₴ — коли скаже «беру» · {TIER_NAME[b.tier]}</p>
+			<p class="terms faint">{b.prepay.toLocaleString('uk-UA')} ₴ одразу · {(b.fee - b.prepay).toLocaleString('uk-UA')} ₴ — коли скаже «беру» · {TIER_NAME[b.tier]}{#if b.budget} · бюджет на рекламу {b.budget.toLocaleString('uk-UA')} ₴{/if}</p>
 			<button class="btn primary" disabled={locked || live.busy} onclick={() => live.start({ briefId: b.id })}>Взяти бриф</button>
 		</article>
 	{:else}

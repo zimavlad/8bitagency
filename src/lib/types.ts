@@ -13,15 +13,16 @@ export const ROLE_NAME: Record<Role, string> = {
 export type Speaker = Role | 'gpt' | 'client';
 
 /** Основа — до клієнта; канали — після «так» від клієнта. */
-export type CoreElement = 'positioning' | 'name' | 'slogan' | 'logo';
+export type CoreElement = 'positioning' | 'idea' | 'name' | 'slogan' | 'logo';
 export type ContentElement = 'threads' | 'instagram' | 'reels' | 'youtube';
 export type ElementId = CoreElement | ContentElement;
 
-export const CORE: CoreElement[] = ['positioning', 'name', 'slogan', 'logo'];
+export const CORE: CoreElement[] = ['positioning', 'idea', 'name', 'slogan', 'logo'];
 export const CONTENT: ContentElement[] = ['threads', 'instagram', 'reels', 'youtube'];
 
 export const ELEMENT_TITLE: Record<ElementId, string> = {
 	positioning: 'Позиціонування',
+	idea: 'Креативна ідея',
 	name: 'Назва',
 	slogan: 'Слоган',
 	logo: 'Лого',
@@ -33,6 +34,7 @@ export const ELEMENT_TITLE: Record<ElementId, string> = {
 
 export const ELEMENT_OWNER: Record<ElementId, Role> = {
 	positioning: 'strategist',
+	idea: 'copywriter',
 	name: 'copywriter',
 	slogan: 'copywriter',
 	logo: 'designer',
@@ -91,6 +93,8 @@ export interface Brief {
 	prepay: number;
 	/** Рівень клієнта: 1 — дрібний бізнес, 2 — середній, 3 — великий. */
 	tier: number;
+	/** Рекламний бюджет клієнта в гривнях (з середнього бізнесу): команда шукає дешеві віральні ходи, клієнт хоче телевізор. */
+	budget?: number;
 	custom?: boolean;
 }
 
@@ -150,6 +154,7 @@ export const PIZZA_COST = 400;
 /** Кейс для борду: що вийшло в підсумку. */
 export interface CaseData {
 	positioning: string;
+	idea?: string;
 	name: string;
 	slogan: string;
 	logo?: LogoSpec;

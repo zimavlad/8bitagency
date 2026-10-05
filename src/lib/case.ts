@@ -5,6 +5,7 @@ export function caseOf(r: RunState): CaseData {
 	const e = r.elements;
 	return {
 		positioning: e.positioning?.text ?? '',
+		idea: e.idea?.text,
 		name: e.name?.text ?? '—',
 		slogan: e.slogan?.text ?? '',
 		logo: e.logo?.logo,
