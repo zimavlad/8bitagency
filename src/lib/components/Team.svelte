@@ -10,6 +10,8 @@
 	const g = $derived(live.game!);
 	const run = $derived(live.run && live.run.phase !== 'done' && live.run.phase !== 'failed' ? live.run : null);
 	const tier = $derived(tierOf(g.reputation));
+	/** Картка показує шкали; біографія й решта — по кліку. */
+	let openRole = $state<Role | null>(null);
 
 
 	let editing = $state<'claude' | 'gemini' | null>(null);
@@ -25,7 +27,7 @@
 	<p class="faint small">Рівень {tier}: {TIER_NAME[tier]} · щодня −{dailyCost(g.reputation, g.team).toLocaleString('uk-UA')} ₴ оренди й зарплат · клікай на людей і предмети в офісі</p>
 	{#each ROLES as r}
 		{@const a = run ? run.agents[r] : { burnout: g.burnout[r], morale: g.morale[r], hp: g.hp[r], doing: 'між брифами' }}
-		<button class="member panel" onclick={() => onOpen(r)}>
+		<button class="member panel" onclick={() => (openRole = openRole === r ? null : r)} aria-expanded={openRole === r}>
 			<Avatar who={r} size={52} />
 			<div class="mb">
 				<div class="top"><span class="name">{g.team[r].grade}-{ROLE_NAME[r].toLowerCase()}</span><span class="faint doing">{g.team[r].sulk ? 'ображений(а)' : a.doing}</span></div>
@@ -33,10 +35,15 @@
 				<Bar label="Здоровʼя" value={a.hp} kind="hp" />
 				<Bar label="Стрес" value={a.burnout} kind="stress" />
 				<Bar label="Мораль" value={a.morale} kind="morale" />
-				<p class="small bio">{PROFILE[r].bio}</p>
-				<p class="faint small"><span class="k">Сильна сторона:</span> {PROFILE[r].strong}</p>
-				<p class="faint small"><span class="k">Слабке місце:</span> {PROFILE[r].weak}</p>
-				{#if live.kb && r !== 'designer' && live.kb[r]}<p class="faint small"><span class="k">Бібліотека:</span> {live.kb[r]} книжок у базі Джіпітенка</p>{/if}
+				{#if openRole === r}
+					<p class="small bio">{PROFILE[r].bio}</p>
+					<p class="faint small"><span class="k">Сильна сторона:</span> {PROFILE[r].strong}</p>
+					<p class="faint small"><span class="k">Слабке місце:</span> {PROFILE[r].weak}</p>
+					{#if live.kb?.[r]}<p class="faint small"><span class="k">Бібліотека:</span> {live.kb[r]} файлів у базі Джіпітенка</p>{/if}
+					{#if run}<span class="link faint small" role="link" tabindex="0" onclick={(e) => { e.stopPropagation(); onOpen(r); }} onkeydown={(e) => e.key === 'Enter' && onOpen(r)}>Що думає зараз</span>{/if}
+				{:else}
+					<span class="faint small more">Детальніше</span>
+				{/if}
 			</div>
 		</button>
 	{/each}

@@ -21,6 +21,9 @@
 </div>
 
 <style lang="scss">
+	p {
+		white-space: pre-line;
+	}
 	.feed {
 		background: #101114;
 		border: 2px solid #0c0d10;
