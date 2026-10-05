@@ -678,10 +678,11 @@ export class Run {
 				for (const n of d.notes) this.say('client', n, 'client');
 				this.record(them, d.notes.map((n) => `Коло ${round}, твоя правка: ${n}`));
 				this.cheer(-3);
+				// кинув правки — і пішов: команда переробляє без нього
+				this.state.clientInOffice = false;
 				await this.rework(stage, 'клієнт', d.notes);
 				for (const r of ROLES) this.tire(r, 3);
 				this.idle();
-				this.state.clientInOffice = false;
 				this.phase(playerPhase, 'Переробили під твої правки. Глянь і неси собі ж', { strategist: 'table', copywriter: 'table', designer: 'table' });
 				await this.wait([playerPhase]);
 				this.state.clientInOffice = true;
@@ -723,11 +724,12 @@ export class Run {
 				this.state.clientInOffice = false;
 				return false;
 			}
+			// клієнт іде, поки команда переробляє, і повертається на наступне коло
+			this.state.clientInOffice = false;
 			await this.rework(stage, 'клієнт', c.demands);
 			for (const r of ROLES) this.tire(r, 3);
 			// Після переробки — знову зведення: гравець бачить, яким став проєкт, і несе клієнту.
 			this.idle();
-			this.state.clientInOffice = false;
 			this.phase(playerPhase, `Переробили під правки клієнта. Глянь, що вийшло, і неси назад`, { strategist: 'table', copywriter: 'table', designer: 'table' });
 			for (const r of ROLES) this.agent(r, 'idle', 'чекає твого рішення');
 			await this.wait([playerPhase]);
