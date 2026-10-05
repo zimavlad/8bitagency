@@ -2,6 +2,7 @@
 	import { Live } from '$lib/live.svelte';
 	import { COMMS_ROUNDS, CONTENT, EDIT_SLOTS, MAX_CLIENT_ROUNDS, ELEMENT_TITLE, ROLE_NAME, ROLES, type ClientVerdict } from '$lib/types';
 	import { caseOf } from '$lib/case';
+	import { pickMood } from '$lib/picks';
 	import Avatar from './Avatar.svelte';
 	import CaseBoard from './CaseBoard.svelte';
 	import PhoneMock from './PhoneMock.svelte';
@@ -27,6 +28,8 @@
 	let lastKey = '';
 	let editing = $state(false);
 	let notes = $state<string[]>(Array(EDIT_SLOTS).fill(''));
+	/** Які правки клієнта беремо в роботу (вікно «хоче правок»). */
+	let picks = $state<number[]>([]);
 	let ready = $state(true);
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	$effect(() => {
@@ -35,6 +38,7 @@
 		minimized = false;
 		editing = false;
 		notes = Array(EDIT_SLOTS).fill('');
+		picks = [];
 		clearTimeout(timer);
 		const verdict = phase === 'client_decision_core' || phase === 'client_decision_content';
 		ready = !verdict || !talk;
@@ -56,6 +60,10 @@
 	const isNew = (id: string) => (run.changed as string[]).includes(id);
 	const hasNotes = $derived(notes.some((n) => n.trim()));
 	const sign = (n: number) => (n > 0 ? `+${n}` : `${n}`);
+
+	const rework = $derived(v?.verdict === 'rework');
+	const preview = $derived(v && rework ? pickMood(v.mood, v.demands.length, picks, v.cringe) : null);
+	const toggle = (i: number) => (picks = picks.includes(i) ? picks.filter((x) => x !== i) : [...picks, i]);
 
 	async function sendEdits() {
 		if (await live.act({ action: 'edit', notes })) editing = false;
@@ -135,25 +143,36 @@
 					{#each [e.instagram?.image, e.youtube?.image].filter(Boolean) as src}<img class="th" {src} alt="" />{/each}
 				{/if}
 			</section>
-			<Bar label="Настрій" value={v.mood} kind={v.mood >= 60 ? 'hp' : 'stress'} />
-			<section class="sum paper">
-				{#each v.lines as l}<p class="quote">«{l.replace(/^[«"“]+|[»"”]+$/g, '')}»</p>{/each}
-				<p class="why">{v.reaction}</p>
-			</section>
+			{@const mood = preview ? preview.mood : v.mood}
+			<Bar label="Настрій" value={mood} kind={mood >= 60 ? 'hp' : 'stress'} />
+			{#if !rework}
+				<section class="sum paper">
+					{#each v.lines as l}<p class="quote">«{l.replace(/^[«"“]+|[»"”]+$/g, '')}»</p>{/each}
+					<p class="why">{v.reaction}</p>
+				</section>
+			{/if}
 			{#if v.verdict === 'ok' && v.stage === 'content'}
 				<div class="inline-board"><h3>Кейс-борд</h3><CaseBoard c={caseOf(run)} compact /></div>
 			{/if}
 			{#if v.demands.length}
 				<section class="sum paper">
 					<h3>Що хоче змінити</h3>
-					<ul>{#each v.demands as d}<li>{d}</li>{/each}</ul>
+					{#if rework}
+						<div class="picks">
+							{#each v.demands as d, i}
+								<label class="pick" class:on={picks.includes(i)}><input type="checkbox" checked={picks.includes(i)} onchange={() => toggle(i)} /><span>{d}</span></label>
+							{/each}
+						</div>
+					{:else}
+						<ul>{#each v.demands as d}<li>{d}</li>{/each}</ul>
+					{/if}
 				</section>
 			{/if}
 			<div class="actions">
 				{#if v.verdict === 'rework'}
-					<p class="next small">{v.round === 1 ? 'Це не провал, а нормальна робота з клієнтом: з першого разу ніхто не бере.' : 'Ще одне коло — теж норма, клієнт уже теплішає.'} Тисни «Ще коло»: команда переробить під правки, ти глянеш і знову понесеш.</p>
+					<p class="next small">{v.round === 1 ? 'Це не провал, а нормальна робота з клієнтом: з першого разу ніхто не бере.' : 'Ще одне коло — теж норма.'} Відміть, які правки беремо в роботу: решту команда тихо забуде. Візьмеш замало або не ті — клієнт образиться.</p>
 					<button class="btn ghost" disabled={live.busy} onclick={() => confirm('Кинути проєкт? Лишиться тільки передплата 20%, решту клієнт не заплатить.') && live.act({ action: 'giveup' })}><Icon name="x" size={16} />Кинути проєкт</button>
-					<button class="btn primary" disabled={live.busy} onclick={() => live.act({ action: 'retry' })}><Icon name="reset" size={16} />Ще коло з його правками</button>
+					<button class="btn primary" disabled={live.busy || !picks.length} onclick={() => live.act({ action: 'retry', picks })}><Icon name="reset" size={16} />Ще коло: беремо {picks.length} з {v.demands.length}</button>
 				{:else if v.verdict === 'ok' && v.stage === 'core'}
 					<button class="btn primary" disabled={live.busy} onclick={() => live.act({ action: 'continue' })}><Icon name="check" size={16} />Далі: комунікація</button>
 				{:else}
@@ -197,10 +216,11 @@
 {#snippet summary(core: boolean)}
 	<div class="grid" class:core>
 		{#if core}
+			<!-- Бренд-платформа на один екран: розбір | суть | айдентика. «Чому так» — в історії «Що було». -->
 			{#if s}
 				<section class="sum paper">
 					<h3>Стратегія</h3>
-					<dl>
+					<dl class="tight">
 						<dt>Проблема</dt><dd>{s.problem}</dd>
 						<dt>Інсайт</dt><dd>{s.insight}</dd>
 						<dt>Перевага</dt><dd>{s.advantage}</dd>
@@ -208,27 +228,26 @@
 					</dl>
 				</section>
 			{/if}
-			{#if e.positioning}
-				<section class="sum paper">
-					<h3>Позиціонування {#if isNew('positioning')}<span class="new">нове</span>{/if}</h3>
-					<p class="big">{e.positioning.text}</p>
-					<p class="small">{e.positioning.details.join(' · ')}</p>
-					{#if e.positioning.why}<p class="why">Чому так: {e.positioning.why}</p>{/if}
-				</section>
-			{/if}
-			{#if e.idea}
-				<section class="sum paper">
-					<h3>Креативна ідея {#if isNew('idea')}<span class="new">нове</span>{/if}</h3>
-					<p class="big">{e.idea.text}</p>
-					{#if e.idea.details.length}<ul>{#each e.idea.details as d}<li>{d}</li>{/each}</ul>{/if}
-					{#if e.idea.why}<p class="why">Чому так: {e.idea.why}</p>{/if}
-				</section>
-			{/if}
-			<section class="sum paper">
-				{#if e.logo?.logo}<PixelLogo logo={e.logo.logo} size={96} />{/if}
+			<div class="col">
+				{#if e.positioning}
+					<section class="sum paper">
+						<h3>Позиціонування {#if isNew('positioning')}<span class="new">нове</span>{/if}</h3>
+						<p class="big">{e.positioning.text}</p>
+						<p class="small">{e.positioning.details.join(' · ')}</p>
+					</section>
+				{/if}
+				{#if e.idea}
+					<section class="sum paper">
+						<h3>Креативна ідея {#if isNew('idea')}<span class="new">нове</span>{/if}</h3>
+						<p class="big">{e.idea.text}</p>
+						{#if e.idea.details[0]}<p class="small">{e.idea.details[0]}</p>{/if}
+					</section>
+				{/if}
+			</div>
+			<section class="sum paper ident">
+				{#if e.logo?.logo}<PixelLogo logo={e.logo.logo} size={88} />{/if}
 				<h3 class="bn">{e.name?.text ?? '—'} {#if isNew('name') || isNew('slogan') || isNew('logo')}<span class="new">нове</span>{/if}</h3>
 				<p class="big">«{e.slogan?.text ?? '—'}»</p>
-				{#if e.name?.why}<p class="why">Назва й слоган: {e.name.why}</p>{/if}
 				{#if e.logo}<p class="why">Знак: {e.logo.text}</p>{/if}
 			</section>
 		{:else}
@@ -289,7 +308,10 @@
 		gap: 10px;
 		align-items: start;
 		&.core {
-			grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+			grid-template-columns: 1.1fr 1.3fr 0.9fr;
+			@media (max-width: 900px) {
+				grid-template-columns: 1fr;
+			}
 		}
 	}
 	.col {
@@ -422,6 +444,10 @@
 		font-size: 16px;
 		font-weight: 500;
 	}
+	.tight {
+		font-size: 13.5px;
+		line-height: 1.35;
+	}
 	.small {
 		font-size: 13px;
 	}
@@ -431,6 +457,31 @@
 	}
 	.quote {
 		font-size: 15px;
+	}
+	.picks {
+		display: grid;
+		gap: 6px;
+	}
+	.pick {
+		display: flex;
+		gap: 10px;
+		align-items: flex-start;
+		cursor: pointer;
+		font-size: 15px;
+		line-height: 1.4;
+		input {
+			margin-top: 3px;
+			width: 18px;
+			height: 18px;
+			accent-color: #4f8f4a;
+			flex: 0 0 auto;
+		}
+		span {
+			font-family: var(--font);
+		}
+		&:not(.on) span {
+			color: #6d5236;
+		}
 	}
 	.next {
 		flex: 1 1 100%;

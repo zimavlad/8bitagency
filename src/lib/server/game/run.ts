@@ -13,6 +13,7 @@ import { rasterLogo } from '../raster';
 import { GPT_CARD, PERSONA_CARD, clientCard, systemFor } from './characters';
 import { qualityOf, reputationDelta } from './checks';
 import { fake } from './fake';
+import { pickMood } from '$lib/picks';
 import { indexFor, search } from './kb';
 import {
 	GPT_HABIT, GPT_QUESTION, SCHEMA, StepError, briefBlock, guide, normClient, normContent, normGpt, normHuddle, normLogo,
@@ -50,7 +51,7 @@ export type Decision =
 	| { action: 'pick'; index: number }
 	| { action: 'submit' }
 	| { action: 'edit'; notes: string[] }
-	| { action: 'retry' }
+	| { action: 'retry'; picks?: number[] }
 	| { action: 'giveup' }
 	| { action: 'continue' }
 	| { action: 'more' }
@@ -97,7 +98,8 @@ const HINTS_CORE = [
 const HINTS_CONTENT = [
 	'САЙТ великими', 'QR-код на пів банера', 'слово «АКЦІЯ»', 'номер телефону більший', '«-20%»', 'фото власника з котом', '«доставка безкоштовно»',
 	'пʼять зірочок відгуків', '«ми в Instagram»', '«найкращі в місті»', 'адреса і схема проїзду', 'Viber, Telegram і WhatsApp іконки',
-	'«працюємо без вихідних»', 'вибух-зірка «ХІТ»', 'мем з котом, щоб молодь', 'ще один логотип, про всяк випадок'
+	'«працюємо без вихідних»', 'вибух-зірка «ХІТ»', 'мем з котом, щоб молодь', 'ще один логотип, про всяк випадок',
+	'у ролику продукт крупно, щоб було видно', 'ціна в кожному кадрі ролика', 'диктор у фіналі кричить «тільки цього тижня»', 'весь асортимент на полиці у фіналі ролика'
 ];
 
 function chance(seed: string): number {
@@ -431,6 +433,12 @@ export class Run {
 			const v = this.state.verdicts.at(-1)?.verdict;
 			if (d.action === 'continue' && v === 'rework') return 'Клієнт чекає: ще коло чи кидаємо проєкт?';
 			if (d.action !== 'continue' && v !== 'rework') return 'Тут лише «далі».';
+			if (d.action === 'retry' && d.picks) {
+				const n = this.state.verdicts.at(-1)?.demands.length ?? 0;
+				const picks = [...new Set(d.picks)].filter((i) => i >= 0 && i < n);
+				if (!picks.length) return 'Відміть хоча б одну правку.';
+				d = { action: 'retry', picks };
+			}
 		}
 		this.waiter = null;
 		w.resolve(d);
@@ -636,7 +644,9 @@ export class Run {
 		const decisionPhase: RunPhase = stage === 'core' ? 'client_decision_core' : 'client_decision_content';
 		const you: StepKey = stage === 'core' ? 'you_core' : 'you_content';
 		const them: StepKey = stage === 'core' ? 'client_core' : 'client_content';
-		const rounds = stage === 'core' ? MAX_CLIENT_ROUNDS : COMMS_ROUNDS;
+		// Взяв замало правок або без кринжової — клієнт ображається і додає коло (раз на етап).
+		let rounds = stage === 'core' ? MAX_CLIENT_ROUNDS : COMMS_ROUNDS;
+		let extended = false;
 		const name = this.state.brief.client.name;
 
 		this.state.editAvailable = true;
@@ -696,9 +706,9 @@ export class Run {
 			const items = ids.map((id) => this.state.elements[id]).filter((e): e is ElementValue => !!e);
 			const c = normClient(await this.once({
 				purpose: 'client', who: 'client', model: this.deps.models.client, system: clientCard(this.state.brief.client, this.state.brief.text),
-				user: prompt.client(items, stage, round, stage === 'content' ? `Бренд-платформу (${this.state.elements.name?.text}, «${this.state.elements.slogan?.text}») ти вже затвердив.` : undefined, this.state.verdicts.flatMap((v) => v.demands), round < rounds ? this.hints(stage, round) : [], this.state.brief.client.gender, round < rounds ? this.mix(stage, round) : undefined, this.state.brief.budget),
+				user: prompt.client(items, stage, round, stage === 'content' ? `Бренд-платформу (${this.state.elements.name?.text}, «${this.state.elements.slogan?.text}») ти вже затвердив.` : undefined, this.state.verdicts.flatMap((v) => v.demands), round < rounds ? this.hints(stage, round) : [], this.state.brief.client.gender, round < rounds ? this.mix(stage, round) : undefined, this.state.brief.budget, round >= rounds),
 				schema: SCHEMA.client, fake: () => fake.client(round, stage)
-			}), stage, round);
+			}), stage, round, rounds);
 			this.tick();
 			this.idle();
 			const v: ClientVerdict = { stage, round, ...c };
@@ -726,7 +736,20 @@ export class Run {
 			}
 			// клієнт іде, поки команда переробляє, і повертається на наступне коло
 			this.state.clientInOffice = false;
-			await this.rework(stage, 'клієнт', c.demands);
+			// Гравець відмітив, які правки беремо; решту команда тихо ігнорує.
+			const picks = d.action === 'retry' && d.picks ? d.picks : c.demands.map((_, i) => i);
+			const pm = pickMood(c.mood, c.demands.length, picks, c.cringe);
+			const taken = picks.map((i) => c.demands[i]).filter(Boolean);
+			const skipped = c.demands.filter((_, i) => !picks.includes(i));
+			this.state.verdicts = this.state.verdicts.map((x) => (x === v ? { ...x, picked: picks, mood: pm.mood } : x));
+			this.record(them, [`Беремо в роботу: ${taken.join('; ')}`, ...(skipped.length ? [`Тихо ігноруємо: ${skipped.join('; ')}`] : [])]);
+			if (!pm.ok && !extended) {
+				extended = true;
+				rounds++;
+				this.note(`${name} відчуває, що ${this.state.brief.client.gender === 'f' ? 'її' : 'його'} не почули: буде ще одне коло`);
+				this.cheer(-3);
+			}
+			await this.rework(stage, 'клієнт', taken);
 			for (const r of ROLES) this.tire(r, 3);
 			// Після переробки — знову зведення: гравець бачить, яким став проєкт, і несе клієнту.
 			this.idle();
@@ -843,7 +866,7 @@ export class Run {
 			},
 			{
 				id: 'youtube', aspect: '16:9',
-				prompt: `${STYLE}\nA simple storyboard sheet for a brand video: a 2×2 grid of four pixel-art frames with thin dark borders on a light paper background.\nThe ONLY text allowed: one big digit in the top-left corner of each frame — 1, 2, 3, 4. No words, no captions, no titles anywhere.\nFrames (describe only the picture; any sign, screen, poster or paper in a frame stays blank, without letters; never write frame titles or labels):\n${(e.youtube?.details ?? []).slice(0, 4).map((x, i) => `${i + 1}. ${sceneOnly(x)}`).join('\n')}\n${mark ? 'In frame 4 show the provided logo small.' : ''}\nUse the brand colours ${e.logo?.logo?.palette.a ?? ''} and ${e.logo?.logo?.palette.b ?? ''}.`
+				prompt: `${STYLE}\nA simple storyboard sheet for a short funny ad video: a 2×2 grid of four pixel-art frames with thin dark borders on a light paper background.\nThe ONLY text allowed: one big digit in the top-left corner of each frame — 1, 2, 3, 4. No words, no captions, no titles anywhere.\nFrames (describe only the picture; any sign, screen, poster or paper in a frame stays blank, without letters; never write frame titles or labels):\n${(e.youtube?.details ?? []).slice(0, 4).map((x, i) => `${i + 1}. ${sceneOnly(x)}`).join('\n')}\n${mark ? 'In frame 4 show the provided logo small.' : ''}\nUse the brand colours ${e.logo?.logo?.palette.a ?? ''} and ${e.logo?.logo?.palette.b ?? ''}.`
 			}
 		];
 		await Promise.all(jobs.map(async (j) => {

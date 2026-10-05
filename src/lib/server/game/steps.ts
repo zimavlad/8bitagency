@@ -124,9 +124,9 @@ export const SCHEMA = {
 	}),
 	idea: obj({
 		thought: THOUGHT,
-		idea: S('креативна ідея одним реченням до 24 слів: сміливий сучасний хід, про який напишуть у Threads і який перешлють другу'),
-		how: list(S('як ідея живе в реальному світі, до 16 слів'), 'рівно 2 конкретні втілення'),
-		why: S('чому це сміливо і смішно, до 12 слів')
+		idea: S('креативна ідея коротко, до 14 слів: назва ходу й суть'),
+		how: list(S('як це виглядає в житті, до 12 слів, без соцмереж і реклами'), 'рівно 1'),
+		why: S('чому це сміливо, до 8 слів')
 	}),
 	naming: obj({
 		thought: THOUGHT,
@@ -151,7 +151,7 @@ export const SCHEMA = {
 	rename: obj({
 		thought: THOUGHT,
 		changed: { type: 'boolean' },
-		idea: S('креативна ідея одним реченням до 24 слів: та сама або змінена під правки'),
+		idea: S('креативна ідея до 14 слів: та сама або змінена під правки'),
 		name: S('назва, 1–2 слова'),
 		slogan: S('слоган до 6 слів'),
 		why: S('що змінив і чому, до 14 слів')
@@ -159,14 +159,14 @@ export const SCHEMA = {
 	threads: obj({ thought: THOUGHT, voice: S('голос бренду одним реченням до 12 слів'), posts: list(S('пост для Threads до 220 знаків, який хочеться переслати чи прокоментувати: мем, хот-тейк, стьоб над конкурентом чи собою, провокація на відповідь; без хештегів, цін і «купуйте»'), 'рівно 3, кожен іншим прийомом') }),
 	instagram: obj({ thought: THOUGHT, headline: S('заголовок на банері, до 6 слів'), visual: S('що на картинці, до 16 слів') }),
 	reels: obj({ thought: THOUGHT, hooks: list(S('ідея Reels до 24 слів: гачок у перші 2 секунди і прикол — перекручений мем-тренд з несподіваним фіналом або сміливий офлайн-челендж, знятий на телефон'), 'рівно 3, різні прийоми') }),
-	youtube: obj({ thought: THOUGHT, title: S('назва ролика до 5 слів'), scenes: list(S('сцена до 10 слів: що в кадрі'), 'рівно 4, від першої до останньої') }),
+	youtube: obj({ thought: THOUGHT, title: S('назва ролика до 5 слів'), scenes: list(S('кадр до 14 слів: що в кадрі і що відбувається'), 'рівно 4, від гачка до фіналу з брендом') }),
 	gpt: obj({ answer: S('порада до 200 знаків, без вступу і без запитань у відповідь'), source: S('назва файлу з бази або «загальні знання»') }),
 	client: obj({
 		lines: list(S('коротка репліка вголос до 60 знаків: жарт-доїбка або похвала про конкретну річ з роботи'), 'рівно 3, від найголовнішого'),
 		reaction: S('підсумок одним-двома реченнями'),
 		verdict: { type: 'string', enum: ['ok', 'rework', 'reject'] },
 		mood: { type: 'integer' },
-		demands: list(S('вимога до 14 слів'), 'стільки, скільки сказано в завданні, якщо rework')
+		demands: list(obj({ text: S('вимога до 14 слів'), kind: { type: 'string', enum: ['air', 'question', 'fear'], description: 'air — «повітря», question — тупе питання про сенс, fear — «серйозна» правка зі страху' } }), 'стільки, скільки сказано в завданні, якщо rework')
 	}),
 	persona: obj({
 		name: S('як звертаються до власника чи власниці'),
@@ -212,6 +212,7 @@ export const prompt = {
 		`Придумай креативну ідею, на якій стоятиме вся реклама. Стратегія може бути серйозною — ідея навпаки сміла, смішна й сучасна: хід, про який напишуть у Threads, перешлють другу, а конкуренти позаздрять. ` +
 		`Це може бути стьоб над конкурентом чи над собою, дивна акція з правилами, офлайн-прикол, колаба з несподіваним партнером, мем, якого ще нема. ` +
 		`Бери з України зараз: що реально обговорюють ці люди в цьому місті, мова українських Threads і TikTok, побут (генератор, «світло дали», черга на Новій пошті, кум-експерт у вайбері). Горе й смерть не чіпай. ` +
+		`Ідея — сам хід у реальному світі (що бренд робить, що людина бачить чи отримує), а не план постів: соцмережі, рілси, банери й ролик не згадуй, до каналів ще не дійшли. Коротко: суть до 14 слів. ` +
 		`Ідея випливає з інсайту і здійсненна для цього бізнесу. ${budget ? `Рекламний бюджет ${budget.toLocaleString('uk-UA')} ₴: телевізор і білборди його зʼїдять за тиждень, тож ідея має розійтися сама, дешево.` : 'Грошей на рекламу майже нема: ідея має розійтися сама.'} ` +
 		`Без пафосу, «цінностей» і соціальних роликів про любов. Перевір: чи хочеться розповісти про це другу? Якщо ні — думай далі.`,
 
@@ -243,19 +244,19 @@ export const prompt = {
 
 	recontent: (id: ContentElement, who: 'керівник агенції' | 'клієнт', notes: string[], cur: ElementValue) =>
 		`${who === 'клієнт' ? 'Клієнт' : 'Керівник агенції'} дав правки до каналів:\n${notes.map((n, i) => `${i + 1}. ${n}`).join('\n')}\n\n` +
-		`Твоя поточна версія «${ELEMENT_TITLE[id]}»:\n${[cur.text, ...cur.details].join('\n')}\n\nПерероби з урахуванням правок, що стосуються саме цього каналу; решту лиши. Так само коротко.${who === 'клієнт' ? ' Клієнт платить, тож його штуки (сайт, QR-код, «АКЦІЯ», телефон, знижка тощо) вписуємо, але з розумом і з гумором: на банер — майже все підряд, у Threads і Reels — одну-дві, обіграні смішно, у ролик — одну деталь у фіналі. Не повторюй однакову штуку в кожному каналі.' : ''}`,
+		`Твоя поточна версія «${ELEMENT_TITLE[id]}»:\n${[cur.text, ...cur.details].join('\n')}\n\nПерероби з урахуванням правок, що стосуються саме цього каналу; решту лиши. Так само коротко.${who === 'клієнт' ? ' Клієнт платить, тож його штуки (сайт, QR-код, «АКЦІЯ», телефон, знижка тощо) вписуємо, але з розумом і з гумором: на банер — майже все підряд, у Threads і Reels — одну-дві, обіграні смішно, у ролик — те, що клієнт просить (продукт крупно, ціна, «АКЦІЯ» у фіналі, диктор), навіть якщо від ідеї мало що лишиться. Не повторюй однакову штуку в кожному каналі.' : ''}`,
 
 	gpt: (role: Role, question: string, chunks: { source: string; text: string }[]) =>
 		`${ROLE_NAME[role]} питає: ${question}\n\n` +
 		(chunks.length ? `Уривки з бази знань:\n${chunks.map((c, i) => `[${i + 1}] (${c.source}) ${c.text}`).join('\n\n')}` : 'Уривків з бази знань нема.'),
 
-	client: (items: ElementValue[], stage: 'core' | 'content', round: number, extra?: string, asked: string[] = [], hints: string[] = [], gender: 'm' | 'f' = 'm', mix?: Mix, budget?: number) =>
+	client: (items: ElementValue[], stage: 'core' | 'content', round: number, extra?: string, asked: string[] = [], hints: string[] = [], gender: 'm' | 'f' = 'm', mix?: Mix, budget?: number, last?: boolean) =>
 		'Спершу скажи 3 короткі репліки вголос (lines): про конкретні речі з того, що бачиш, твоїми словами. Потім підсумок і рішення.\n\n' +
 		(asked.length ? `Ти вже просив раніше (не повторюйся, вигадай інше):\n${asked.map((a) => `- ${a}`).join('\n')}\n\n` : '') +
 		(hints.length ? `Цього разу тебе чомусь чіпляє (візьми щось звідси, своїми словами): ${hints.join('; ')}.\nЗнижку чи акцію згадуй щонайбільше в одній вимозі за весь проєкт. Кожна вимога — про одну штуку.\n\n` : '') +
 		`Агенція показує${round > 1 ? ` (коло ${round}, після твоїх правок)` : ''}:\n${items.map((e) => `- ${ELEMENT_TITLE[e.id]}: ${e.text}${e.details.length ? ' (' + e.details.slice(0, 4).join('; ') + ')' : ''}`).join('\n')}` +
 		(extra ? `\n\n${extra}` : '') +
-		`\n\n${CLIENT_ROUND[stage][Math.min(round, CLIENT_ROUND[stage].length) - 1].replace('{spouse}', gender === 'f' ? 'чоловік' : 'дружина')}` +
+		`\n\n${CLIENT_ROUND[stage][last === undefined ? Math.min(round, CLIENT_ROUND[stage].length) - 1 : last ? CLIENT_ROUND[stage].length - 1 : Math.min(round, CLIENT_ROUND[stage].length - 1) - 1].replace('{spouse}', gender === 'f' ? 'чоловік' : 'дружина')}` +
 		(mix ? `\n${mixText(mix, stage === 'content' ? budget : undefined)}` : '') +
 		(gender === 'f' ? '\nТи жінка: про себе в жіночому роді; якщо згадуєш родину — це чоловік, не дружина.' : ''),
 
@@ -294,14 +295,14 @@ export function mixText(m: Mix, budget?: number): string {
 		m.serious ? `- ${m.serious} — «серйозна» правка, що вбиває сміливу ідею, бо тобі страшно: «а якщо люди подумають…», «а що скажуть конкуренти, сусіди, податкова», «приберіть жарт, ми серйозна фірма», «давайте як у всіх, тільки краще». Формулюй як турботу про бізнес.` : '',
 		budget ? `- одна із «серйозних» — віддати весь рекламний бюджет (${budget.toLocaleString('uk-UA')} ₴) на ролик на телебаченні або білборди на трасі, бо «рілси — це для дітей».` : ''
 	].filter(Boolean);
-	return `У demands рівно ${total} ${total === 1 ? 'вимога' : total < 5 ? 'вимоги' : 'вимог'}, упереміш:\n${lines.join('\n')}\nПриклади в дужках — лише тип правки: слова з них не повторюй, придумай своє про цю роботу. Кожна правка про іншу річ.\nУ lines скажи вголос найабсурднішу з них. Ти щиро віриш, що рятуєш бізнес: смішно має бути від того, наскільки серйозно ти це кажеш, а не від образ.`;
+	return `У demands рівно ${total} ${total === 1 ? 'вимога' : total < 5 ? 'вимоги' : 'вимог'}, упереміш:\n${lines.join('\n')}\nУ kind кожної вимоги познач тип: air, question або fear.\nПриклади в дужках — лише тип правки: слова з них не повторюй, придумай своє про цю роботу. Кожна правка про іншу річ.\nУ lines скажи вголос найабсурднішу з них. Ти щиро віриш, що рятуєш бізнес: смішно має бути від того, наскільки серйозно ти це кажеш, а не від образ.`;
 }
 
 const CONTENT_TASK: Record<ContentElement, string> = {
 	threads: 'голос бренду одним реченням і 3 пости для Threads, які хочеться переслати або прокоментувати: мемний формат, сміливий хот-тейк, стьоб над конкурентом чи собою, провокація на відповідь, впізнаваний український побут зараз. Кожен пост — інший прийом. Без хештегів, цін і «купуйте». Не жарт, який треба пояснювати.',
 	instagram: 'банер для Instagram: заголовок до 6 слів і що на картинці одним реченням.',
 	reels: '3 ідеї для Reels, які хочеться переслати другу: перекручений мем-тренд з несподіваним фіналом або сміливий офлайн-прикол чи челендж, знятий на телефон. Гачок у перші 2 секунди. Кожна одним рядком: що в кадрі і в чому прикол.',
-	youtube: 'дорогий іміджевий ролик для YouTube: емоційна історія про людей і роль бренду, як у великих брендів — без цін, акцій, телефонів і написів у кадрі. Назва до 5 слів і розкадровка з 4 сцен, кожна одним рядком до 12 слів — лише що видно в кадрі.'
+	youtube: 'короткий рекламний ролик на 15–20 секунд, що втілює креативну ідею: смішний, сміливий, з гачком у першому кадрі й несподіваним поворотом; бренд — у фіналі одним кадром. Не іміджева драма про почуття і не «продукт крупно з ціною» — такий ролик хочеться переслати. Без цін, акцій, телефонів і написів. Назва до 5 слів і 4 кадри, кожен одним рядком до 14 слів — що видно і що відбувається.'
 };
 
 export const GPT_QUESTION = {
@@ -335,7 +336,7 @@ export function normPositioning(j: Record<string, unknown>) {
 export function normIdea(j: Record<string, unknown>) {
 	const idea = str(j.idea, 300);
 	if (!idea) throw new StepError('копірайтер не дав ідею');
-	return { thought: str(j.thought, 120), idea, how: strs(j.how, 2, 160), why: str(j.why, 160) };
+	return { thought: str(j.thought, 120), idea: str(j.idea, 160), how: strs(j.how, 1, 120), why: str(j.why, 100) };
 }
 
 export function normNaming(j: Record<string, unknown>): { thought: string; options: NamingOption[]; gptTake: string } {
@@ -379,15 +380,20 @@ export function normGpt(j: Record<string, unknown>) {
 }
 
 /** Вердикт за сценарієм: поки не останнє коло — правки (навіть якщо модель «погодилась»), на останньому — «так». */
-export function normClient(j: Record<string, unknown>, stage: 'core' | 'content', round: number) {
-	const last = round >= (stage === 'core' ? 3 : 2);
+export function normClient(j: Record<string, unknown>, stage: 'core' | 'content', round: number, lastRound?: number) {
+	const last = round >= (lastRound ?? (stage === 'core' ? 3 : 2));
 	const verdict: 'ok' | 'rework' = last ? 'ok' : 'rework';
-	let demands = strs(j.demands, 7, 160);
-	if (verdict === 'rework' && !demands.length) demands = stage === 'core' ? ['логотип більший', 'щоб було видно, що ми найкращі'] : ['додайте QR-код', 'велике слово «АКЦІЯ»', 'номер телефону більше'];
+	const raw0 = arr(j.demands).slice(0, 7).map((x) => (typeof x === 'string' ? { text: str(x, 160), kind: '' } : { text: str((x as Record<string, unknown>)?.text, 160), kind: String((x as Record<string, unknown>)?.kind ?? '') })).filter((d) => d.text);
+	let demands = raw0.map((d) => d.text);
+	let cringe = raw0.flatMap((d, i) => (d.kind === 'fear' ? [i] : []));
+	if (verdict === 'rework' && !demands.length) {
+		demands = stage === 'core' ? ['логотип більший', 'щоб було видно, що ми найкращі'] : ['додайте QR-код', 'велике слово «АКЦІЯ»', 'номер телефону більше'];
+		cringe = [1];
+	}
 	const raw = Math.round(Number(j.mood) || 50);
 	const mood = Math.max(0, Math.min(100, last ? Math.max(85, raw) : Math.min(70, raw)));
 	const lines = strs(j.lines, 3, 90);
-	return { reaction: str(j.reaction, 300), lines: lines.length ? lines : [str(j.reaction, 90)].filter(Boolean), verdict, mood, demands: verdict === 'rework' ? demands : [] };
+	return { reaction: str(j.reaction, 300), lines: lines.length ? lines : [str(j.reaction, 90)].filter(Boolean), verdict, mood, demands: verdict === 'rework' ? demands : [], cringe: verdict === 'rework' ? cringe : [] };
 }
 
 export function normPersona(j: Record<string, unknown>) {

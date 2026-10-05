@@ -5,6 +5,7 @@ type Init = { game: GameState; demo: boolean; imagesDemo: boolean; kb: KB };
 export type Act =
 	| { action: 'pick'; index: number }
 	| { action: 'submit' | 'retry' | 'giveup' | 'drop' | 'continue' | 'more' }
+	| { action: 'retry'; picks: number[] }
 	| { action: 'edit' | 'feedback'; notes: string[] }
 	| { action: 'pause'; on: boolean };
 

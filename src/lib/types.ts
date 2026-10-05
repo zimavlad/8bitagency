@@ -29,7 +29,7 @@ export const ELEMENT_TITLE: Record<ElementId, string> = {
 	threads: 'Threads: пости',
 	instagram: 'Instagram: банер',
 	reels: 'Reels: ідеї',
-	youtube: 'YouTube: іміджевий ролик'
+	youtube: 'Рекламний ролик'
 };
 
 export const ELEMENT_OWNER: Record<ElementId, Role> = {
@@ -289,6 +289,10 @@ export interface ClientVerdict {
 	/** Короткі репліки-доїбки над головою, до 60 знаків. */
 	lines: string[];
 	demands: string[];
+	/** Які з вимог «кринжові» (вбивають ідею) — гравцю не показуємо, рахує настрій. */
+	cringe?: number[];
+	/** Які вимоги гравець узяв у роботу. */
+	picked?: number[];
 	verdict: 'ok' | 'rework' | 'reject';
 	mood: number;
 }

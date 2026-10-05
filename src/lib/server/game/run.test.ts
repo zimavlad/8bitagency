@@ -85,7 +85,7 @@ describe('бриф від початку до оплати', () => {
 		expect(run.state.elements.youtube?.image).toMatch(/youtube-/);
 		expect(images.prompts.find((p) => p.includes('storyboard'))).toBeTruthy();
 		// кожен етап можна переглянути: варіанти назви, знак, кола клієнта
-		expect(run.state.steps.find((x) => x.key === 'name')?.lines).toHaveLength(9);
+		expect(run.state.steps.find((x) => x.key === 'name')?.lines).toHaveLength(8);
 		expect(run.state.steps.find((x) => x.key === 'logo')?.logos?.length).toBeGreaterThan(1);
 		expect(run.state.strategy?.insight).toBeTruthy();
 		expect(images.prompts[0]).toContain('original characters');
