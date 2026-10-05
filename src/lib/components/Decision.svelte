@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Live } from '$lib/live.svelte';
-	import { CONTENT, EDIT_SLOTS, ELEMENT_TITLE, ROLE_NAME, ROLES, type ClientVerdict } from '$lib/types';
+	import { COMMS_ROUNDS, CONTENT, EDIT_SLOTS, MAX_CLIENT_ROUNDS, ELEMENT_TITLE, ROLE_NAME, ROLES, type ClientVerdict } from '$lib/types';
 	import { caseOf } from '$lib/case';
 	import Avatar from './Avatar.svelte';
 	import CaseBoard from './CaseBoard.svelte';
@@ -123,7 +123,7 @@
 	{:else if kind === 'verdict' && v}
 		<Modal title={v.verdict === 'ok' ? `${name} у захваті` : `${name} хоче правок`} onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
 			{#snippet head()}<Avatar who="client" client={run.brief.client} size={48} />{/snippet}
-			<p class="faint small">{v.stage === 'core' ? 'Бренд-платформа' : 'Комунікація'} · коло {v.round}</p>
+			<p class="faint small">{v.stage === 'core' ? 'Бренд-платформа' : 'Комунікація'} · коло {v.round} з {v.stage === 'core' ? MAX_CLIENT_ROUNDS : COMMS_ROUNDS}</p>
 			<!-- що саме клієнт оцінював -->
 			<section class="shown paper">
 				{#if e.logo?.logo}<PixelLogo logo={e.logo.logo} size={44} />{/if}
@@ -151,8 +151,9 @@
 			{/if}
 			<div class="actions">
 				{#if v.verdict === 'rework'}
-					<button class="btn danger" disabled={live.busy} onclick={() => confirm('Кинути проєкт? Лишиться тільки передплата 20%, решту клієнт не заплатить.') && live.act({ action: 'giveup' })}><Icon name="x" size={16} />Кинути проєкт</button>
-					<button class="btn human" disabled={live.busy} onclick={() => live.act({ action: 'retry' })}><Icon name="reset" size={16} />Ще коло з його правками</button>
+					<p class="next small">{v.round === 1 ? 'Це не провал, а нормальна робота з клієнтом: з першого разу ніхто не бере.' : 'Ще одне коло — теж норма, клієнт уже теплішає.'} Тисни «Ще коло»: команда переробить під правки, ти глянеш і знову понесеш.</p>
+					<button class="btn ghost" disabled={live.busy} onclick={() => confirm('Кинути проєкт? Лишиться тільки передплата 20%, решту клієнт не заплатить.') && live.act({ action: 'giveup' })}><Icon name="x" size={16} />Кинути проєкт</button>
+					<button class="btn primary" disabled={live.busy} onclick={() => live.act({ action: 'retry' })}><Icon name="reset" size={16} />Ще коло з його правками</button>
 				{:else if v.verdict === 'ok' && v.stage === 'core'}
 					<button class="btn primary" disabled={live.busy} onclick={() => live.act({ action: 'continue' })}><Icon name="check" size={16} />Далі: комунікація</button>
 				{:else}
@@ -422,6 +423,10 @@
 	}
 	.quote {
 		font-size: 15px;
+	}
+	.next {
+		flex: 1 1 100%;
+		color: var(--text-2);
 	}
 	.actions {
 		display: flex;

@@ -144,8 +144,16 @@ export class Game {
 		return () => set.delete(fn);
 	}
 
+	/** Останній заархівований етап кожного прогону: пишемо архів на кожній зміні етапу, а не лише в кінці. */
+	private archived = new Map<string, string>();
+
 	private notify(run: Run) {
 		for (const fn of this.listeners.get(run.id) ?? []) fn(run.state);
+		// Щоб недограний бриф не губився при рестарті сервера.
+		if (this.archived.get(run.id) !== run.state.phase) {
+			this.archived.set(run.id, run.state.phase);
+			this.archive(run);
+		}
 		if (this.dirty) {
 			this.dirty = false;
 			this.save();
