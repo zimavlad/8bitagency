@@ -1,14 +1,15 @@
 <script lang="ts">
-	import { BODY, PALETTE, clientSprite } from '$lib/scene/sprites';
+	import { BODY, FACE, PALETTE, clientSprite, withFace, type Expr } from '$lib/scene/sprites';
 	import type { Client, Role } from '$lib/types';
 
 	/** Портрет з того самого спрайта, що в офісі: голова й плечі, з обводкою. */
-	let { who, client, size = 40 }: { who: Role | 'client'; client?: Client; size?: number } = $props();
+	let { who, client, size = 40, expr = 'neutral' }: { who: Role | 'client'; client?: Client; size?: number; expr?: Expr } = $props();
 	let cv: HTMLCanvasElement;
 
 	$effect(() => {
 		const cs = who === 'client' && client ? clientSprite(client.gender, client.look) : null;
-		const rows = (cs ? cs.body : BODY[who === 'client' ? 'client' : who]).slice(0, 18);
+		const id = who === 'client' ? 'client' : who;
+		const rows = withFace(cs ? cs.body : BODY[id], cs ? cs.face : FACE[id], expr).slice(0, 18);
 		const pal: Record<string, string> = cs ? cs.pal : PALETTE[who === 'client' ? 'client' : who];
 		const ctx = cv.getContext('2d')!;
 		ctx.clearRect(0, 0, 20, 20);

@@ -42,6 +42,18 @@
 	.pop {
 		animation: none;
 	}
+	/* телефон: вікно в межах видимої частини екрана, навіть коли відкрита клавіатура */
+	@media (max-width: 859px) {
+		.modal {
+			top: calc(var(--vv-top, 0px) + 8px);
+			transform: translateX(-50%);
+			max-height: calc(var(--vv-h, 100dvh) - 16px);
+			width: calc(100vw - 16px);
+			&.wide {
+				width: calc(100vw - 16px);
+			}
+		}
+	}
 	header {
 		display: flex;
 		align-items: center;

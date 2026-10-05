@@ -54,13 +54,42 @@
 	let sceneEl = $state<HTMLDivElement>();
 	let minimized = $state(false);
 	let waiting = $state(false);
+	/**
+	 * Телефон: офіс — фон на весь екран, інтерфейс — шторка знизу над вкладками.
+	 * min — тільки рядок статусу, mid — пів екрана, max — майже весь.
+	 */
+	let sheet = $state<'min' | 'mid' | 'max'>('mid');
+	let sheetH = $state(0);
+	let topH = $state(56);
+	function pickTab(t: Tab) {
+		if (!wide && tab === t && sheet !== 'min') sheet = 'min';
+		else {
+			tab = t;
+			if (sheet === 'min') sheet = 'mid';
+		}
+	}
+	let grab: { y: number; t: number } | null = null;
+	function grabDown(e: PointerEvent) {
+		grab = { y: e.clientY, t: Date.now() };
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+	}
+	function grabUp(e: PointerEvent) {
+		if (!grab) return;
+		const dy = e.clientY - grab.y;
+		grab = null;
+		const order = ['min', 'mid', 'max'] as const;
+		const i = order.indexOf(sheet);
+		if (Math.abs(dy) < 8) sheet = sheet === 'min' ? 'mid' : 'min';
+		else if (dy < 0) sheet = order[Math.min(2, i + 1)];
+		else sheet = order[Math.max(0, i - 1)];
+	}
 
 	const g = $derived(live.game!);
 	const run = $derived(live.run);
 	const active = $derived(!!run && run.phase !== 'done' && run.phase !== 'failed');
 	const canContinue = $derived(!!g.activeRun || g.day > 1 || g.history.length > 0);
 	/** Скільки тримати вердикт, поки клієнт договорює репліки над головою. */
-	const talk = $derived(wide ? (run?.verdicts.at(-1)?.lines.length ?? 0) * 2600 + 500 : 700);
+	const talk = $derived((run?.verdicts.at(-1)?.lines.length ?? 0) * 2600 + 500);
 
 	/** Перемотати ігровий час на годину h (для анімації вихідного). */
 	function setHour(h: number | null) {
@@ -144,6 +173,16 @@
 		addEventListener('beforeunload', () => clearInterval(beat));
 		if (q.has('play')) screen = 'game';
 		fetch(`/api/weather${q.get('w') ? `?w=${q.get('w')}` : ''}`).then((r) => r.json()).then((j) => (sky = j.sky)).catch(() => {});
+		// iOS не стискає сторінку під клавіатуру: вікна рахують висоту від видимої частини екрана.
+		const vv = window.visualViewport;
+		const syncVV = () => {
+			if (!vv) return;
+			document.documentElement.style.setProperty('--vv-h', `${Math.round(vv.height)}px`);
+			document.documentElement.style.setProperty('--vv-top', `${Math.round(vv.offsetTop)}px`);
+		};
+		vv?.addEventListener('resize', syncVV);
+		vv?.addEventListener('scroll', syncVV);
+		syncVV();
 		const mq = matchMedia('(min-width: 860px)');
 		wide = mq.matches;
 		mq.addEventListener('change', (e) => (wide = e.matches));
@@ -153,8 +192,6 @@
 		live.close();
 	});
 
-	const last = $derived(live.run?.speech.at(-1));
-	const lastWho = $derived(last ? (last.who === 'gpt' ? 'Джіпітенко' : last.who === 'client' ? live.run!.brief.client.name : ROLE_NAME[last.who]) : '');
 	const tabs: { id: Tab; label: string; icon: 'inbox' | 'work' | 'team' }[] = [
 		{ id: 'inbox', label: 'Брифи', icon: 'inbox' },
 		{ id: 'work', label: 'Робота', icon: 'work' },
@@ -172,7 +209,7 @@
 {/if}
 
 <div class="app">
-	<header class="top">
+	<header class="top" bind:clientHeight={topH}>
 		<button class="brand" onclick={openMenu} title="Меню (Esc)">8bitagency</button>
 		{#if live.demo}<span class="demo" title="Без ключа Claude відповідає підставна модель">демо</span>{/if}
 		<div class="hud">
@@ -184,9 +221,9 @@
 		<button class="btn ghost sm menu-btn" onclick={openMenu} aria-label="Меню"><Icon name="menu" size={18} /></button>
 	</header>
 
-	<main class="main">
-		<div class="scene" bind:this={sceneEl} data-tour="scene">
-			<Scene run={live.run} {hour} {sky} bubbles={wide} {away} {coffee} frozen={menu || screen === 'title' || !!mail || tour} onPick={(what, x, y) => (pop = { what, x, y })} />
+	<main class="main" style:--top-real="{topH}px">
+		<div class="scene" bind:this={sceneEl} data-tour="scene" style:--reserve="{wide ? 0 : sheetH + 12}px">
+			<Scene run={live.run} {hour} {sky} {away} {coffee} reserve={wide ? 0 : sheetH + 12} fill={!wide} frozen={menu || screen === 'title' || !!mail || tour} onPick={(what, x, y) => (pop = { what, x, y })} />
 			<div class="tools" data-tour="scene-tools">
 				<button class="btn sm" onclick={openMenu} title="Пауза й меню (Esc)"><Icon name="pause" size={14} />Пауза</button>
 				{#if run}<button class="btn sm" onclick={() => (briefOpen = true)}><Icon name="inbox" size={14} />Бриф</button>{/if}
@@ -195,20 +232,17 @@
 			{#if live.toast}<div class="toast px rise">{live.toast}</div>{/if}
 			{#if waiting && minimized}<button class="btn human yourturn" onclick={() => (minimized = false)}><Icon name="play" size={16} />Твій хід</button>{/if}
 			{#if pop && sceneEl}
-				<Popover {live} what={pop.what} x={pop.x} y={pop.y} w={sceneEl.clientWidth} h={sceneEl.clientHeight} onClose={() => (pop = null)} onThoughts={(w) => { pop = null; open = w; }} onRest={dayOff} {onBrew} />
+				<Popover {live} what={pop.what} x={pop.x} y={pop.y} w={sceneEl.clientWidth} h={sceneEl.clientHeight - (wide ? 0 : sheetH + 12)} onClose={() => (pop = null)} onThoughts={(w) => { pop = null; open = w; }} onRest={dayOff} {onBrew} />
 			{/if}
 		</div>
-		{#if !wide}
-			<div class="dialog" aria-live="polite">
-				{#if last && live.run?.phase !== 'done'}
-					<b>{lastWho}</b> <span>{last.text}</span>
-				{:else}
-					<span class="faint">{live.run?.status ?? 'Офіс чекає на бриф. Торкнись людей і предметів.'}</span>
-				{/if}
-			</div>
-		{/if}
-
-		<aside class="side">
+		<aside class="side" class:min={sheet === 'min'} class:max={sheet === 'max'} bind:clientHeight={sheetH}>
+			{#if !wide}
+				<button class="grab" onpointerdown={grabDown} onpointerup={grabUp} aria-label={sheet === 'min' ? 'Розгорнути' : 'Згорнути, подивитись офіс'}>
+					<i class="handle"></i>
+					<span class="status">{live.run && live.run.phase !== 'done' ? live.run.status : sheet === 'min' ? tabs.find((t) => t.id === tab)?.label : 'Офіс можна тягнути пальцем'}</span>
+					<Icon name={sheet === 'min' ? 'up' : 'down'} size={14} />
+				</button>
+			{/if}
 			{#if wide}
 				<nav class="tabs-top">
 					{#each tabs as t}
@@ -280,13 +314,13 @@
 				<button class="btn primary" onclick={() => (investorSeen = true)}>Закрити</button>
 			</Email>
 		{/if}
-		{#if tour}<Tour onTab={(t) => (tab = t)} onDone={() => { tour = false; tab = 'inbox'; }} />{/if}
+		{#if tour}<Tour onTab={(t) => { tab = t; if (sheet === 'min') sheet = 'mid'; }} onDone={() => { tour = false; tab = 'inbox'; }} />{/if}
 	{/if}
 
 	{#if !wide}
 		<nav class="tabs-bottom">
 			{#each tabs as t}
-				<button class:on={tab === t.id} data-tour="tab-{t.id}" onclick={() => (tab = t.id)}><Icon name={t.icon} size={20} /><span>{t.label}</span></button>
+				<button class:on={tab === t.id && sheet !== 'min'} data-tour="tab-{t.id}" onclick={() => pickTab(t.id)}><Icon name={t.icon} size={20} /><span>{t.label}</span></button>
 			{/each}
 		</nav>
 	{/if}
@@ -328,7 +362,7 @@
 	.paused {
 		position: absolute;
 		left: 50%;
-		top: 50%;
+		top: calc((100% - var(--reserve, 0px)) / 2);
 		transform: translate(-50%, -50%);
 		font-size: 28px;
 		color: var(--human);
@@ -339,7 +373,7 @@
 	.toast {
 		position: absolute;
 		left: 50%;
-		bottom: 12px;
+		bottom: calc(var(--reserve, 0px) + 12px);
 		transform: translateX(-50%);
 		padding: 6px 12px 7px;
 		background: var(--paper);
@@ -415,23 +449,87 @@
 		border-image: var(--frame) 3 / 3px stretch;
 		overflow: hidden;
 	}
-	.dialog {
-		margin: 8px 16px 0;
-		min-height: 48px;
-		font-size: 14px;
-		line-height: 1.45;
-		padding: 8px 12px;
-		border: 2px solid #3a2414;
-		background: var(--paper);
-		color: var(--paper-ink);
-		b {
-			font-family: var(--pixel);
-			font-weight: 600;
-			margin-right: 4px;
-		}
+	/* Телефон: офіс на весь екран під шапкою, інтерфейс — шторка над вкладками. */
+	.app {
+		height: 100dvh;
+		overflow: hidden;
+	}
+	.main {
+		position: relative;
+		min-height: 0;
+	}
+	.scene {
+		position: fixed;
+		left: 0;
+		right: 0;
+		top: var(--top-real, var(--top-h));
+		bottom: calc(var(--tabs-h) + env(safe-area-inset-bottom));
+		height: auto;
+		min-height: 0;
+		margin: 0;
+		border: 0;
 	}
 	.side {
-		padding: 12px 16px calc(var(--tabs-h) + 16px + env(safe-area-inset-bottom));
+		position: fixed;
+		left: 8px;
+		right: 8px;
+		bottom: calc(var(--tabs-h) + env(safe-area-inset-bottom) + 8px);
+		z-index: 6;
+		height: 42dvh;
+		display: grid;
+		grid-template-rows: auto 1fr;
+		background: color-mix(in srgb, var(--bg) 96%, transparent);
+		border: 3px solid transparent;
+		border-image: var(--frame) 3 / 3px stretch;
+		transition: height 180ms var(--ease);
+		&.min {
+			height: auto;
+			.content {
+				display: none;
+			}
+		}
+		&.max {
+			height: calc(100dvh - var(--top-real, var(--top-h)) - var(--tabs-h) - env(safe-area-inset-bottom) - 24px);
+		}
+		.content {
+			overflow: auto;
+			min-height: 0;
+			padding: 4px 12px 16px;
+			overscroll-behavior: contain;
+		}
+	}
+	.grab {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 12px 8px;
+		min-height: 40px;
+		color: var(--text-2);
+		font-size: 13px;
+		touch-action: none;
+		position: relative;
+		text-align: left;
+		.handle {
+			position: absolute;
+			left: 50%;
+			top: 3px;
+			width: 36px;
+			height: 3px;
+			transform: translateX(-50%);
+			background: var(--line-hi);
+		}
+		.status {
+			flex: 1;
+			min-width: 0;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			padding-top: 4px;
+		}
+	}
+	/* клавіатура відкрита — вкладки знизу не налазять на поле вводу */
+	.app:global(:has(input:focus, textarea:focus)) .tabs-bottom {
+		display: none;
 	}
 	.content {
 		display: grid;
@@ -539,14 +637,27 @@
 			height: calc(100dvh - var(--top-h));
 		}
 		.scene {
+			position: relative;
+			inset: auto;
 			height: auto;
 			min-height: 0;
 			margin: 16px;
+			border: 3px solid transparent;
+			border-image: var(--frame) 3 / 3px stretch;
 		}
 		.side {
+			position: static;
+			display: block;
+			height: auto;
 			min-height: 0;
 			padding: 16px 16px 24px 0;
 			overflow: auto;
+			background: none;
+			border: 0;
+			.content {
+				overflow: visible;
+				padding: 0;
+			}
 		}
 	}
 </style>

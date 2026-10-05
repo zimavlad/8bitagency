@@ -21,12 +21,43 @@
 		sky: 'clear', reducedMotion: true, client: { gender: 'm', look: 'leather' }, away: false
 	};
 	/** Кадр: стан офісу + яку частину арту вирізати (x, y, ширина в пікселях арту, пропорція 4:3). */
-	// Кадри як у серіалі «Офіс»: крупні плани з того самого офісу гри, «сфотографовані» на поляроїд.
+	// Фото з телефона на корпоративі й посеред робочого дня: ті самі люди, що в грі, але без брифу.
 	const FRAMES: { cap: string; input: SceneInput; crop: [number, number, number] }[] = [
-		{ cap: '«А можна логотип більше?»', input: { ...base, agents: agents('table'), clientInOffice: true, speaking: ['client'], hour: 15 }, crop: [60, 158, 74] },
-		{ cap: 'Дедлайн «на вчора»', input: { ...base, agents: agents('desk', 'thinking'), hour: 23.5, sky: 'rain' }, crop: [40, 40, 220] },
-		{ cap: 'Дизайнер після третього кола правок', input: { ...base, agents: agents({ strategist: 'table', copywriter: 'table', designer: 'coffee' }, 'idle', { designer: 96 }), hour: 19 }, crop: [160, 198, 74] },
-		{ cap: 'Джіпітенко радить «бути автентичним»', input: { ...base, agents: agents('desk', 'thinking'), gptFor: 'copywriter', hour: 11 }, crop: [176, 90, 80] }
+		{
+			cap: 'Корпоратив. Клієнта не кликали',
+			input: { ...base, agents: agents('table'), hour: 21.5, still: {
+				party: true, mic: 'strategist',
+				place: { strategist: { gx: 3.0, gy: 2.6 }, copywriter: { gx: 3.9, gy: 2.9 }, designer: { gx: 2.2, gy: 2.9 } },
+				expr: { strategist: 'laugh', copywriter: 'laugh', designer: 'happy' },
+				emote: { strategist: 'note', copywriter: 'laugh', designer: 'heart' }
+			} },
+			crop: [110, 102, 100]
+		},
+		{
+			cap: 'Дедлайн «на вчора»',
+			input: { ...base, agents: agents('desk', 'thinking', { strategist: 70, copywriter: 85, designer: 90 }), hour: 23.5, sky: 'rain' },
+			crop: [40, 40, 220]
+		},
+		{
+			cap: 'Перегони на кріслах. Дизайнер оскаржує результат',
+			input: { ...base, agents: agents('table'), hour: 17, still: {
+				chair: ['copywriter', 'designer'],
+				place: { copywriter: { gx: 4.6, gy: 2.3 }, designer: { gx: 3.3, gy: 2.7 }, strategist: { gx: 5.1, gy: 1.75 } },
+				expr: { copywriter: 'laugh', designer: 'angry', strategist: 'happy' },
+				emote: { copywriter: null, designer: 'angry', strategist: 'idea' }
+			} },
+			crop: [148, 116, 104]
+		},
+		{
+			cap: 'Дизайнер прикрив очі на пʼять хвилин',
+			input: { ...base, agents: agents({ strategist: 'desk', copywriter: 'table', designer: 'armchair' }), hour: 14, still: {
+				stickers: 'designer',
+				place: { copywriter: { gx: 1.4, gy: 3.45 } },
+				expr: { designer: 'sleep', copywriter: 'wink' },
+				emote: { designer: 'zzz', copywriter: null, strategist: null }
+			} },
+			crop: [48, 98, 92]
+		}
 	];
 
 	onMount(() => {

@@ -4,7 +4,7 @@
 	import { ROLE_NAME, ROLES, type Role, type RunState, type Speaker, type Speech } from '$lib/types';
 
 	type Target = Role | 'client' | Thing;
-	let { run, hour, sky, bubbles = true, away = false, frozen = false, coffee = 0, onPick }: { run: RunState | null; hour: number; sky: Sky; bubbles?: boolean; away?: boolean; frozen?: boolean; coffee?: number; onPick?: (what: Target, x: number, y: number) => void } = $props();
+	let { run, hour, sky, bubbles = true, away = false, frozen = false, coffee = 0, reserve = 0, fill = false, onPick }: { run: RunState | null; hour: number; sky: Sky; bubbles?: boolean; away?: boolean; frozen?: boolean; coffee?: number; reserve?: number; fill?: boolean; onPick?: (what: Target, x: number, y: number) => void } = $props();
 
 	let stage: HTMLDivElement;
 	let canvas: HTMLCanvasElement;
@@ -131,7 +131,8 @@
 		reducedMotion: reduced,
 		client: { gender: run?.brief.client.gender ?? 'm', look: run?.brief.client.look ?? 'leather' },
 		away,
-		coffee
+		coffee,
+		clientMood: run?.verdicts.at(-1)?.mood
 	});
 
 	$effect(() => {
@@ -139,6 +140,31 @@
 		const i = input;
 		office?.update(i);
 	});
+	$effect(() => {
+		const v = { reserve, fill };
+		office?.setView(v);
+	});
+
+	// Тягнеш пальцем — камера їде; коротке торкання — клік по людині чи предмету.
+	let drag: { x: number; y: number; moved: boolean } | null = null;
+	let dragged = false;
+	function down(e: PointerEvent) {
+		if (!fill) return;
+		drag = { x: e.clientX, y: e.clientY, moved: false };
+		dragged = false;
+	}
+	function move(e: PointerEvent) {
+		if (!drag) return;
+		const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+		if (!drag.moved && Math.hypot(dx, dy) < 8) return;
+		drag.moved = dragged = true;
+		office?.panBy(dx, dy);
+		drag.x = e.clientX;
+		drag.y = e.clientY;
+	}
+	function up() {
+		drag = null;
+	}
 
 	const els: Partial<Record<Speaker, HTMLElement>> = {};
 
@@ -158,7 +184,7 @@
 				// Джіпітенко говорить з «екрана» в нижньому лівому куті — там порожня підлога, бабли людей не перекриває.
 				if (s.who === 'gpt') {
 					el.style.opacity = a ? '1' : '0';
-					el.style.transform = `translate(8px, ${h - el.offsetHeight - 8}px)`;
+					el.style.transform = `translate(8px, ${h - reserve - el.offsetHeight - 8}px)`;
 					continue;
 				}
 				if (!a) {
@@ -173,7 +199,16 @@
 					if (!hit) break;
 					top = hit.t - bh - 6;
 				}
-				top = Math.max(6, top);
+				// не вище за кнопки «Пауза» і «Бриф»; якщо вгорі вже тісно — під тим, з ким перетнулись
+				const minTop = fill ? 50 : 6;
+				if (top < minTop) {
+					top = minTop;
+					for (let guard = 0; guard < 6; guard++) {
+						const hit = placed.find((p) => left < p.r + 4 && left + bw > p.l - 4 && top < p.b + 4 && top + bh > p.t - 4);
+						if (!hit) break;
+						top = hit.b + 6;
+					}
+				}
 				placed.push({ l: left, r: left + bw, t: top, b: top + bh });
 				el.style.opacity = '1';
 				el.style.transform = `translate(${left}px, ${top}px)`;
@@ -185,6 +220,7 @@
 
 	onMount(() => {
 		office = new Office(canvas, stage, input);
+		office.setView({ reserve, fill });
 		if (import.meta.env.DEV) (window as unknown as { __office: Office }).__office = office;
 		raf = requestAnimationFrame(place);
 		return () => {
@@ -201,8 +237,17 @@
 <div class="stage" bind:this={stage}>
 	<canvas
 		bind:this={canvas}
+		class:fill
 		aria-label="Офіс агенції. Торкнись персонажа або предмета, щоб побачити, що можна зробити."
+		onpointerdown={down}
+		onpointermove={move}
+		onpointerup={up}
+		onpointercancel={up}
 		onclick={(e) => {
+			if (dragged) {
+				dragged = false;
+				return;
+			}
 			const r = canvas.getBoundingClientRect();
 			const x = e.clientX - r.left, y = e.clientY - r.top;
 			const what = office?.hit(x, y) ?? office?.thing(x, y);
@@ -235,6 +280,9 @@
 		height: 100%;
 		display: block;
 		image-rendering: pixelated;
+		&.fill {
+			touch-action: none;
+		}
 	}
 	.bubble {
 		position: absolute;

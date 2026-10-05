@@ -48,10 +48,10 @@ export const BODY: Record<SpriteId, string[]> = {
 		'...bBBBBBBBBb...',
 		'...rrrrrrrrrr...',
 		'...hSSSSSSSSh...',
-		'..WGGGSSSSGGGW..',
-		'...GEGSSSSGEG...',
-		'...SGGSSSSGGS...',
-		'...SSSSssSSSS...',
+		'..WSGGSSSSGGSW..',
+		'...GSSGSSGSSG...',
+		'...GSSGGGGSSG...',
+		'...SGGSssSGGS...',
 		'...SmmmmmmmmS...',
 		'...SmSSMMSSmS...',
 		'....mmmmmmmm....',
@@ -245,16 +245,18 @@ export const PALETTE: Record<SpriteId, Record<string, string>> = {
 		A: '#3f4f9a', R: '#e0414f',
 		C: '#fbf6ee', c: '#d8d2dc',
 		P: '#3f4f9a', p: '#2e3a78',
-		B: '#7a4a32', b: '#523020'
+		B: '#7a4a32', b: '#523020',
+		Y: '#7a3a6a', O: '#6a1e2a'
 	},
 	copywriter: {
 		outline: '#2b2220',
 		b: '#b0782a', B: '#e2a73b', L: '#ffd77a', r: '#c48a2c',
 		h: '#5a3b28', S: '#f2c49b', s: '#d9a57c',
-		G: '#2b2220', E: '#2b2220', W: '#ffffff', m: '#6b4530', M: '#a85a4a',
+		G: '#9a6a3a', E: '#2b2220', W: '#ffffff', m: '#6b4530', M: '#a85a4a',
 		T: '#efe6cf', C: '#3f8f88', c: '#2c6964',
 		P: '#36507a', p: '#273c5e',
-		g: '#9aa0a8'
+		g: '#9aa0a8',
+		Y: '#5a3b28', O: '#5a1a22'
 	},
 	designer: {
 		outline: '#221a18',
@@ -263,20 +265,26 @@ export const PALETTE: Record<SpriteId, Record<string, string>> = {
 		d: '#4a3426', M: '#8a4a3a',
 		C: '#5f6672', c: '#454b56', A: '#d7d2c4',
 		P: '#5e6638', p: '#454b28',
-		B: '#3a2a20', b: '#241812'
+		B: '#3a2a20', b: '#241812',
+		Y: '#2a1e18', O: '#5a1a22'
 	},
 	client: {
 		outline: '#1c1517',
 		S: '#f0b98f', s: '#d39a72', L: '#fff0de', h: '#6b5040',
-		E: '#2b2420', m: '#4a3428', M: '#9a4a3a',
+		E: '#2b2420', W: '#ffffff', m: '#8a6248', M: '#9a4a3a',
 		C: '#2a2a30', c: '#1d1d22', A: '#f0c23b', T: '#c8463a', Q: '#5a8fd8',
 		P: '#2f3340', p: '#23262f',
-		B: '#18181c', b: '#0e0e10'
+		B: '#18181c', b: '#0e0e10',
+		Y: '#4a3428', O: '#5a1a22'
 	}
 };
 
 /** Мала піксельна іконка над головою (емоція) 7×7. */
-export const EMOTE: Record<'think' | 'gpt' | 'tired' | 'angry' | 'idea', string[]> = {
+export const EMOTE: Record<'think' | 'gpt' | 'tired' | 'angry' | 'idea' | 'heart' | 'note' | 'zzz' | 'laugh', string[]> = {
+	heart: ['.......', '.xx.xx.', 'xxxxxxx', 'xxxxxxx', '.xxxxx.', '..xxx..', '...x...'],
+	note: ['...xxxx', '...x..x', '...x..x', '...x..x', '.xxx.xx', 'xxxx.xx', '.xx....'],
+	zzz: ['...xxxx', '.....x.', '....x..', 'xxxxxxx', '..x....', '.x.....', 'xxx....'],
+	laugh: ['x.x.x.x', '.......', '.xxxxx.', '.x...x.', '..xxx..', '.......', '.......'],
 	think: ['..xxx..', '.x...x.', '....x..', '...x...', '...x...', '.......', '...x...'],
 	gpt: ['.xxxxx.', 'x.....x', 'x.x.x.x', 'x.....x', '.xxxxx.', '..x.x..', '.xx.xx.'],
 	tired: ['.......', 'xx.....', '.x.....', 'x..xx..', 'xx..x..', '...x...', '...xx..'],
@@ -354,10 +362,77 @@ const HAIR_F: Record<Look, [string, string, string]> = {
 };
 
 export function clientSprite(gender: 'm' | 'f', look: Look) {
-	const skin = { S: '#f0b98f', s: '#d39a72', K: '#f08a8a', E: '#2b2420' };
+	const skin = { S: '#f0b98f', s: '#d39a72', K: '#f08a8a', E: '#2b2420', W: '#ffffff' };
 	if (gender === 'f') {
 		const [h, H, L] = HAIR_F[look];
-		return { body: CLIENT_F_BODY, legs: CLIENT_F_LEGS, pal: { outline: '#22161a', ...skin, h, H, L, M: '#c8344a', Q: '#5a8fd8', ...LOOKS[look] } };
+		return { body: CLIENT_F_BODY, legs: CLIENT_F_LEGS, pal: { outline: '#22161a', ...skin, h, H, L, M: '#c8344a', Q: '#5a8fd8', Y: h, O: '#5a1a22', ...LOOKS[look] }, face: FACE.client_f };
 	}
-	return { body: BODY.client, legs: LEGS.client, pal: { ...PALETTE.client, ...LOOKS[look] } };
+	return { body: BODY.client, legs: LEGS.client, pal: { ...PALETTE.client, ...LOOKS[look] }, face: FACE.client };
+}
+
+/* ─────────── міміка ─────────── */
+
+/**
+ * Обличчя малюємо поверх спрайта, а не руками в кожному рядку: очі, брови й рот міняються від настрою,
+ * як у Stardew (там портрети теж мають кілька емоцій). Y — брова, O — відкритий рот.
+ */
+export type Expr = 'neutral' | 'happy' | 'laugh' | 'talk' | 'sad' | 'angry' | 'tired' | 'surprised' | 'closed' | 'wink' | 'sleep';
+
+/** Де очі (ліве, праве, верхній рядок, ширина), брова, рот (x, рядок, ширина) і колір шкіри під ними. */
+export type Face = { l: number; r: number; y: number; w: number; brow: number; mouth: [number, number, number]; skin: string; mskin: string };
+
+export const FACE: Record<SpriteId | 'client_f', Face> = {
+	strategist: { l: 4, r: 9, y: 8, w: 3, brow: 7, mouth: [6, 11, 4], skin: 'S', mskin: 'S' },
+	copywriter: { l: 4, r: 10, y: 7, w: 2, brow: 5, mouth: [6, 11, 4], skin: 'S', mskin: 'S' },
+	designer: { l: 4, r: 10, y: 7, w: 2, brow: 6, mouth: [6, 10, 4], skin: 'S', mskin: 'd' },
+	client: { l: 4, r: 10, y: 5, w: 2, brow: 4, mouth: [6, 9, 4], skin: 'S', mskin: 'S' },
+	client_f: { l: 4, r: 10, y: 7, w: 2, brow: 6, mouth: [6, 10, 4], skin: 'S', mskin: 'S' }
+};
+
+type EyeKind = 'open' | 'happy' | 'closed' | 'tired' | 'angry' | 'sad';
+const EYES: Record<Expr, [EyeKind, EyeKind]> = {
+	neutral: ['open', 'open'], happy: ['happy', 'happy'], laugh: ['happy', 'happy'], talk: ['open', 'open'], sad: ['sad', 'sad'],
+	angry: ['angry', 'angry'], tired: ['tired', 'tired'], surprised: ['open', 'open'], closed: ['closed', 'closed'], wink: ['closed', 'open'], sleep: ['closed', 'closed']
+};
+type MouthKind = 'line' | 'smile' | 'open' | 'small' | 'frown' | 'grit' | 'o';
+const MOUTH: Record<Expr, MouthKind> = {
+	neutral: 'line', happy: 'smile', laugh: 'open', talk: 'small', sad: 'frown', angry: 'grit', tired: 'line', surprised: 'o', closed: 'line', wink: 'smile', sleep: 'small'
+};
+
+/** Рядки спрайта з обличчям потрібного настрою. */
+export function withFace(rows: string[], f: Face, e: Expr): string[] {
+	const g = rows.map((r) => r.split(''));
+	const put = (x: number, y: number, ch: string, onlySkin = false) => {
+		if (y < 0 || y >= g.length || x < 0 || x >= g[y].length) return;
+		if (onlySkin && g[y][x] !== f.skin && g[y][x] !== f.mskin) return;
+		g[y][x] = ch;
+	};
+	const [ex, ey, w] = [0, f.y, f.w];
+	for (const [side, x0] of [['l', f.l], ['r', f.r]] as const) {
+		const kind = EYES[e][side === 'l' ? 0 : 1];
+		const outer = side === 'l' ? 0 : w - 1, inner = w - 1 - outer;
+		for (let i = 0; i < w; i++) { put(x0 + i, ey, f.skin); put(x0 + i, ey + 1, f.skin); }
+		const top = (i: number, ch: string) => put(x0 + ex + i, ey, ch);
+		const bot = (i: number, ch: string) => put(x0 + ex + i, ey + 1, ch);
+		for (let i = 0; i < w; i++) {
+			if (kind === 'open') { top(i, i === 0 ? 'W' : 'E'); bot(i, 'E'); }
+			else if (kind === 'happy') { if (w === 3) { if (i === 1) top(i, 'E'); else bot(i, 'E'); } else { top(i, 'E'); if (i === outer) bot(i, 'E'); } }
+			else if (kind === 'closed') bot(i, 'E');
+			else if (kind === 'tired') { top(i, 's'); bot(i, 'E'); }
+			else if (kind === 'angry') { top(i, i === inner ? 'Y' : 'E'); bot(i, 'E'); if (i === outer) put(x0 + i, f.brow, 'Y', true); }
+			else if (kind === 'sad') { if (i !== outer) top(i, 'E'); bot(i, 'E'); if (i === inner) put(x0 + i, f.brow, 'Y', true); }
+		}
+	}
+	const [mx, my, mw] = f.mouth;
+	for (let i = 0; i < mw; i++) put(mx + i, my, f.mskin);
+	const mid = (y: number, ch: string) => { for (let i = 1; i < mw - 1; i++) put(mx + i, y, ch); };
+	const m = MOUTH[e];
+	if (m === 'line') mid(my, 'M');
+	else if (m === 'smile') { mid(my, 'M'); put(mx, my - 1, 'M', true); put(mx + mw - 1, my - 1, 'M', true); }
+	else if (m === 'open') { for (let i = 0; i < mw; i++) put(mx + i, my, 'O'); mid(my + 1, 'O'); }
+	else if (m === 'small') mid(my, 'O');
+	else if (m === 'frown') { mid(my, 'M'); put(mx, my + 1, 'M', true); put(mx + mw - 1, my + 1, 'M', true); }
+	else if (m === 'grit') for (let i = 0; i < mw; i++) put(mx + i, my, 'M');
+	else if (m === 'o') { mid(my, 'O'); mid(my + 1, 'O'); }
+	return g.map((r) => r.join(''));
 }

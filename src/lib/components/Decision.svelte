@@ -122,7 +122,7 @@
 		</Modal>
 	{:else if kind === 'verdict' && v}
 		<Modal title={v.verdict === 'ok' ? `${name} у захваті` : `${name} хоче правок`} onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
-			{#snippet head()}<Avatar who="client" client={run.brief.client} size={48} />{/snippet}
+			{#snippet head()}<Avatar who="client" client={run.brief.client} size={48} expr={v.mood >= 60 ? 'happy' : v.mood < 40 ? 'angry' : 'neutral'} />{/snippet}
 			<p class="faint small">{v.stage === 'core' ? 'Бренд-платформа' : 'Комунікація'} · коло {v.round} з {v.stage === 'core' ? MAX_CLIENT_ROUNDS : COMMS_ROUNDS}</p>
 			<!-- що саме клієнт оцінював -->
 			<section class="shown paper">

@@ -1,6 +1,6 @@
 <script lang="ts">
 	/** Власні svg-іконки 20×20, штрих 1.6. Emoji як іконки не вживаємо. */
-	type Name = 'inbox' | 'work' | 'team' | 'sun' | 'moon' | 'coffee' | 'x' | 'check' | 'edit' | 'send' | 'coin' | 'star' | 'flame' | 'bot' | 'plus' | 'reset' | 'pause' | 'play' | 'door' | 'menu' | 'pizza' | 'heart' | 'eye' | 'back';
+	type Name = 'inbox' | 'work' | 'team' | 'sun' | 'moon' | 'coffee' | 'x' | 'check' | 'edit' | 'send' | 'coin' | 'star' | 'flame' | 'bot' | 'plus' | 'reset' | 'pause' | 'play' | 'door' | 'menu' | 'pizza' | 'heart' | 'eye' | 'back' | 'up' | 'down';
 	let { name, size = 18 }: { name: Name; size?: number } = $props();
 	const P: Record<Name, string> = {
 		inbox: 'M3 11h4l1.5 2.5h3L13 11h4M3 11l2-6h10l2 6v5H3z',
@@ -26,7 +26,9 @@
 		pizza: 'M3 4.5c4.5-1.6 9.5-1.6 14 0L10 17.5zM7.5 7.5h.01M11.5 9h.01M9.5 12h.01',
 		heart: 'M10 16.5S3 12.6 3 7.8A3.6 3.6 0 0 1 10 6a3.6 3.6 0 0 1 7 1.8c0 4.8-7 8.7-7 8.7z',
 		eye: 'M2 10s3-5.5 8-5.5 8 5.5 8 5.5-3 5.5-8 5.5S2 10 2 10zM10 12.3a2.3 2.3 0 1 0 0-4.6 2.3 2.3 0 0 0 0 4.6z',
-		back: 'M12.5 4.5L7 10l5.5 5.5'
+		back: 'M12.5 4.5L7 10l5.5 5.5',
+		up: 'M4.5 12.5L10 7l5.5 5.5',
+		down: 'M4.5 7.5L10 13l5.5-5.5'
 	};
 </script>
 

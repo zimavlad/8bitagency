@@ -1,5 +1,5 @@
 import { ROLES, ROLE_NAME, type LogoSpec, type Role, type Speaker, type Spot } from '$lib/types';
-import { BACK, BODY, CAT, EMOTE, LEGS, PALETTE, SPRITE_H, SPRITE_W, clientSprite, type SpriteId } from './sprites';
+import { BACK, BODY, CAT, EMOTE, FACE, LEGS, PALETTE, SPRITE_H, SPRITE_W, clientSprite, withFace, type Expr, type SpriteId } from './sprites';
 
 /**
  * Ізометричний офіс у справжній піксельній сітці, як у Stardew Valley: сцена малюється в маленьке
@@ -10,7 +10,7 @@ import { BACK, BODY, CAT, EMOTE, LEGS, PALETTE, SPRITE_H, SPRITE_W, clientSprite
 export type Sky = 'clear' | 'clouds' | 'rain' | 'snow' | 'storm' | 'fog';
 
 export interface SceneInput {
-	agents: Record<Role, { spot: Spot; status: string; burnout: number }>;
+	agents: Record<Role, { spot: Spot; status: string; burnout: number; morale?: number }>;
 	clientInOffice: boolean;
 	gptFor: Role | null;
 	speaking: Speaker[];
@@ -24,6 +24,21 @@ export interface SceneInput {
 	away: boolean;
 	/** Скільки кави в колбі, 0..1. Пара йде, лише коли кава є. */
 	coffee?: number;
+	/** Настрій клієнта 0..100: від нього обличчя, коли він говорить. */
+	clientMood?: number;
+	/** Для кадрів меню: хто де стоїть, з яким обличчям і що в руках. */
+	still?: Still;
+}
+
+export interface Still {
+	place?: Partial<Record<SpriteId, { gx: number; gy: number }>>;
+	expr?: Partial<Record<SpriteId, Expr>>;
+	emote?: Partial<Record<SpriteId, keyof typeof EMOTE | null>>;
+	/** Сидить на офісному кріслі посеред кімнати (перегони). */
+	chair?: SpriteId[];
+	mic?: SpriteId;
+	stickers?: SpriteId;
+	party?: boolean;
 }
 
 /* ─────────── геометрія ─────────── */
@@ -225,22 +240,52 @@ export class Office {
 			c.ty = t.gy;
 			c.path = findPath(c, t);
 		};
-		for (const r of ROLES) go(r, SPOTS[r][input.away ? 'away' : input.agents[r].spot]);
-		go('client', input.clientInOffice ? CLIENT_TABLE : CLIENT_DOOR);
+		const pl = input.still?.place ?? {};
+		for (const r of ROLES) go(r, pl[r] ?? SPOTS[r][input.away ? 'away' : input.agents[r].spot]);
+		go('client', pl.client ?? (input.clientInOffice ? CLIENT_TABLE : CLIENT_DOOR));
 		if (input.reducedMotion) for (const k of Object.keys(this.pos) as SpriteId[]) { this.pos[k].gx = this.pos[k].tx; this.pos[k].gy = this.pos[k].ty; }
+	}
+
+	/**
+	 * Як показувати офіс. На телефоні він — фон на весь екран: reserve — скільки знизу закриває шторка інтерфейсу,
+	 * fill — збільшити, щоб кімната заповнила видиму висоту (боки тоді виходять за край і їх видно, якщо потягнути).
+	 */
+	private view = { reserve: 0, fill: false };
+	private pan = { x: 0, y: 0 };
+
+	setView(v: { reserve?: number; fill?: boolean }) {
+		if ((v.reserve ?? this.view.reserve) === this.view.reserve && (v.fill ?? this.view.fill) === this.view.fill) return;
+		Object.assign(this.view, v);
+		this.fit();
+	}
+
+	/** Потягнути камеру пальцем (CSS-пікселі). */
+	panBy(dx: number, dy: number) {
+		this.pan.x += dx;
+		this.pan.y += dy;
+		this.fit();
 	}
 
 	private fit() {
 		const w = this.stage.clientWidth || 320;
 		const h = this.stage.clientHeight || 240;
 		this.DPR = Math.min(window.devicePixelRatio || 1, 2);
-		this.canvas.width = Math.round(w * this.DPR);
-		this.canvas.height = Math.round(h * this.DPR);
-		const raw = Math.min(w / SCENE_W, h / SCENE_H);
+		const cw = Math.round(w * this.DPR), ch = Math.round(h * this.DPR);
+		if (this.canvas.width !== cw) this.canvas.width = cw;
+		if (this.canvas.height !== ch) this.canvas.height = ch;
+		const visH = Math.max(140, h - this.view.reserve);
+		const contain = Math.min(w / SCENE_W, visH / SCENE_H);
+		// На телефоні — ближче: кімната ширша за екран, люди більші, а куток з дверима чи кавою видно, якщо потягнути.
+		const raw = this.view.fill ? Math.max(contain, Math.min(Math.max(visH / SCENE_H, (w * 1.4) / SCENE_W), (w * 2) / SCENE_W)) : contain;
 		// Крок — один піксель пристрою: на DPR 2 масштаб 2,5 лишається чітким.
 		this.S = raw < 1 ? raw : Math.max(1, Math.floor(raw * this.DPR) / this.DPR);
-		this.TX = Math.round((w - SCENE_W * this.S) / 2);
-		this.TY = Math.round((h - SCENE_H * this.S) / 2);
+		const aw = SCENE_W * this.S, ah = SCENE_H * this.S;
+		const cx = (w - aw) / 2, cy = (visH - ah) / 2;
+		// Камера не відʼїжджає за край кімнати.
+		this.pan.x = aw > w ? Math.min(-cx, Math.max(w - aw - cx, this.pan.x)) : 0;
+		this.pan.y = ah > visH ? Math.min(-cy, Math.max(visH - ah - cy, this.pan.y)) : 0;
+		this.TX = Math.round(cx + this.pan.x);
+		this.TY = Math.round(cy + this.pan.y);
 		this.draw();
 	}
 
@@ -417,6 +462,7 @@ export class Office {
 		this.objects();
 		this.pendant(night);
 		if (night > 0) this.nightTint(night);
+		if (this.input.still?.party) this.confetti();
 		this.grade(night);
 
 		const c = this.ctx;
@@ -1277,16 +1323,22 @@ export class Office {
 		const near = (q: { gx: number; gy: number }) => Math.hypot(c.gx - q.gx, c.gy - q.gy) < 0.05;
 		const atDesk = !!role && !moving && near(SPOTS[role].desk);
 		const inArm = !!role && !moving && near(ARMCHAIR);
-		const sit = atDesk ? 3 : inArm ? 1 : 0;
+		const onChair = !moving && !!this.input.still?.chair?.includes(k);
+		const sit = atDesk ? 3 : inArm ? 1 : onChair ? 1 : 0;
+
 		const x = Math.round(p.x - SPRITE_W / 2), y = Math.round(p.y - SPRITE_H) + bob + sit;
 		if (!sit) this.poly([{ x: p.x, y: p.y - 3 }, { x: p.x + 8, y: p.y }, { x: p.x, y: p.y + 3 }, { x: p.x - 8, y: p.y }], 'rgba(60,30,15,.28)');
 		const cs = k === 'client' ? clientSprite(this.input.client.gender, this.input.client.look) : null;
 		const pal: Record<string, string> = cs ? cs.pal : PALETTE[k];
 		const legs = (cs ? cs.legs : LEGS[k])[moving ? Math.floor(this.t * 6) % 2 : 0];
-		const rows = atDesk ? BACK[role!].slice(0, 21) : inArm ? BODY[k].slice(0, 21) : (cs ? cs.body : BODY[k]).concat(legs);
 		const blink = Math.sin(this.t * 1.1 + k.length * 2.1) > 0.985;
+		const face = cs ? cs.face : FACE[k];
+		const body = withFace(cs ? cs.body : BODY[k], face, this.expr(k, blink));
+		const rows = atDesk ? BACK[role!].slice(0, 21) : inArm ? body.slice(0, 21) : onChair ? body : body.concat(legs);
 		const filled = (rx: number, ry: number) => ry >= 0 && ry < rows.length && rx >= 0 && rx < SPRITE_W && rows[ry][rx] !== '.';
 		// обводка: темний колір навколо силуету
+		// спинка офісного крісла визирає з-за плечей
+		if (onChair) { this.px(x, y + 9, 16, 9, '#151a22'); this.px(x + 1, y + 10, 14, 7, '#b9bff2'); this.px(x + 1, y + 10, 14, 1, '#e2e5ff'); }
 		this.o.fillStyle = pal.outline;
 		for (let ry = -1; ry <= rows.length; ry++) for (let rx = -1; rx <= SPRITE_W; rx++) {
 			if (filled(rx, ry)) continue;
@@ -1294,9 +1346,8 @@ export class Office {
 		}
 		rows.forEach((row, ry) => {
 			for (let rx = 0; rx < row.length; rx++) {
-				let ch = row[rx];
+				const ch = row[rx];
 				if (ch === '.') continue;
-				if (blink && ry >= 6 && ry <= 9 && (ch === 'E' || ch === 'W')) ch = 'S';
 				const col = pal[ch];
 				if (!col) continue;
 				this.o.fillStyle = col;
@@ -1310,17 +1361,86 @@ export class Office {
 			this.px(x + 7, y + 17, 2, 2, '#f6f8fb');
 			this.px(x + 2, y + 21, 12, 1, '#8f96a0');
 		}
+		const st = this.input.still;
+		if (st?.party) this.partyHat(x, y + (k === 'client' ? 1 : 0), k);
+		if (st?.mic === k) {
+			// мікрофон у правій руці, біля рота
+			this.px(x + 14, y + 12, 1, 6, '#2a2a30');
+			this.px(x + 13, y + 9, 3, 3, '#9aa0b4');
+			this.px(x + 13, y + 9, 1, 1, '#e2e5ff');
+		}
+		if (st?.stickers === k) for (const [sx, sy, col] of [[5, 1, '#ffe27a'], [10, 4, '#ff9fc4'], [3, 16, '#9fe0a0'], [10, 18, '#ffe27a'], [7, 21, '#9fd0ff']] as const) {
+			this.px(x + sx, y + sy, 3, 3, col);
+			this.px(x + sx, y + sy + 2, 3, 1, 'rgba(0,0,0,.15)');
+		}
+		if (onChair) {
+			// сидіння на колінах, газліфт і хрестовина з коліщатами
+			this.px(x, y + 21, 16, 4, '#151a22');
+			this.px(x + 1, y + 21, 14, 2, '#b9bff2');
+			this.px(x + 1, y + 23, 14, 1, '#7f86d6');
+			this.px(x + 7, y + 25, 2, 3, '#5f6578');
+			this.px(x + 2, y + 28, 12, 1, '#5f6578');
+			for (const wx of [1, 7, 13]) this.px(x + wx, y + 29, 2, 2, '#151a22');
+			// лінії швидкості позаду крісла
+			for (const [dx, dy, w] of [[-12, 14, 6], [-15, 18, 8], [-11, 22, 5]] as const) this.px(x + dx, y + dy, w, 1, 'rgba(255,248,230,.85)');
+		}
 		let emote: keyof typeof EMOTE | null = null;
-		if (role && this.input.gptFor === role) emote = 'gpt';
+		if (st?.emote && k in st.emote) emote = st.emote[k] ?? null;
+		else if (role && this.input.gptFor === role) emote = 'gpt';
 		else if (status === 'thinking') emote = 'think';
 		else if (burn >= 80) emote = 'tired';
-		else if (k === 'client' && this.input.speaking.includes('client')) emote = 'angry';
-		if (emote) this.emote(EMOTE[emote], p.x, y - 11, emote === 'gpt' ? C.gptDk : emote === 'tired' ? '#5a6a88' : emote === 'angry' ? '#d8433a' : '#3a2a20');
+		else if (k === 'client' && this.input.speaking.includes('client') && (this.input.clientMood ?? 0) < 60) emote = 'angry';
+		const EMOTE_COL: Partial<Record<keyof typeof EMOTE, string>> = { gpt: C.gptDk, tired: '#5a6a88', angry: '#d8433a', heart: '#e0414f', note: '#3f4f9a', zzz: '#5a6a88', laugh: '#e0a43a' };
+		if (emote) this.emote(EMOTE[emote], p.x, y - 11 - (st?.party ? 6 : 0), EMOTE_COL[emote] ?? '#3a2a20');
 		if (burn >= 65) {
 			const cy = y - 3 + Math.round(Math.sin(this.t * 1.5) * 0.8);
 			this.px(p.x + 6, cy, 6, 2, 'rgba(110,115,140,.8)');
 			this.px(p.x + 7, cy - 1, 4, 1, 'rgba(110,115,140,.8)');
 			if (Math.floor(this.t * 2) % 2) this.px(p.x + 8, cy + 3, 1, 2, 'rgba(140,180,230,.9)');
+		}
+	}
+
+	/**
+	 * Обличчя за станом: говорить — рот рухається, втомлений — повіки донизу, вигорає — сумний,
+	 * висока мораль — усміхається; клієнт — за настроєм. Кліпають усі, крім тих, хто спить.
+	 */
+	private expr(k: SpriteId, blink: boolean): Expr {
+		const forced = this.input.still?.expr?.[k];
+		if (forced) return blink && forced !== 'sleep' && forced !== 'happy' && forced !== 'laugh' ? 'closed' : forced;
+		const talking = this.input.speaking.includes(k === 'client' ? 'client' : k);
+		const mouth = talking && Math.floor(this.t * 5) % 2 === 0;
+		let base: Expr = 'neutral';
+		if (k === 'client') {
+			const m = this.input.clientMood;
+			base = m === undefined ? 'neutral' : m < 40 ? 'angry' : m < 60 ? 'neutral' : 'happy';
+		} else {
+			const a = this.input.agents[k];
+			if (this.input.gptFor === k) base = 'surprised';
+			else if (a.burnout >= 80) base = 'tired';
+			else if (a.burnout >= 65) base = 'sad';
+			else if ((a.morale ?? 50) >= 70) base = 'happy';
+		}
+		if (mouth) return base === 'happy' ? 'laugh' : 'talk';
+		if (blink && base !== 'happy') return 'closed';
+		return base;
+	}
+
+	/** Святковий ковпак у смужку. */
+	private partyHat(x: number, y: number, k: SpriteId) {
+		const col = ({ strategist: ['#5ee6c8', '#1f8f7a'], copywriter: ['#ff9fc4', '#c4486a'], designer: ['#ffd27a', '#e0a43a'], client: ['#9fd0ff', '#3f6fae'] } as const)[k];
+		const cx = x + 8, top = y - 7;
+		for (let i = 0; i < 7; i++) {
+			const hw = Math.floor(i / 2);
+			this.px(cx - hw - 1, top + i, hw * 2 + 2, 1, i % 3 === 1 ? col[1] : col[0]);
+		}
+		this.px(cx - 1, top - 2, 2, 2, '#fffdf2');
+	}
+
+	private confetti() {
+		for (let i = 0; i < 160; i++) {
+			const x = 40 + hash(i, 71) * 280, y = 30 + hash(i, 72) * 200;
+			const flat = hash(i, 73) > 0.5;
+			this.px(x, y, flat ? 2 : 1, flat ? 1 : 2, C.bulb[i % C.bulb.length]);
 		}
 	}
 

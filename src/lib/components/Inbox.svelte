@@ -93,7 +93,7 @@
 	}
 	@media (max-width: 859px) {
 		.sticky {
-			top: var(--top-h);
+			top: -4px;
 		}
 	}
 	.form {
