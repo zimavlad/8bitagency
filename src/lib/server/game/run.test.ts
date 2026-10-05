@@ -88,7 +88,8 @@ describe('бриф від початку до оплати', () => {
 		expect(run.state.steps.find((x) => x.key === 'name')?.lines).toHaveLength(9);
 		expect(run.state.steps.find((x) => x.key === 'logo')?.logos?.length).toBeGreaterThan(1);
 		expect(run.state.strategy?.insight).toBeTruthy();
-		expect(images.prompts[0]).toContain('Stardew Valley');
+		expect(images.prompts[0]).toContain('original characters');
+		expect(images.prompts.join(' ')).not.toMatch(/Stardew/i);
 		expect(readdirSync(join(dataDir, 'images', 'rtest1'))).toHaveLength(2);
 
 		run.decide({ action: 'submit' });

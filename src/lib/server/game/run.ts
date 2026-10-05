@@ -830,7 +830,8 @@ export class Run {
 		const e = this.state.elements;
 		const logoPng = e.logo?.logo ? rasterLogo(e.logo.logo, 256) : null;
 		const refs = logoPng ? [{ mime: 'image/png', data: logoPng }] : [];
-		const STYLE = 'Pixel art in the cozy style of Stardew Valley: chunky visible pixels, warm saturated palette, dark coloured outlines (not black), soft dithering, no photorealism, no 3D-render gradients.';
+		// Стиль описуємо словами, без назв ігор: з назвою Gemini малював персонажів тієї гри.
+		const STYLE = 'Cozy 16-bit pixel art: chunky visible pixels, warm saturated palette, dark coloured outlines (not black), soft dithering, no photorealism, no 3D-render gradients. All people are original characters invented for this ad, ordinary Ukrainians; do not depict or imitate characters from any existing video game, cartoon or film.';
 		const mark = logoPng ? 'Place the provided pixel logo (first image) as the brand mark, keep its shapes and colours exactly.' : '';
 		const colours = `Use the brand colours ${e.logo?.logo?.palette.a ?? ''} and ${e.logo?.logo?.palette.b ?? ''}. All text must be crisp pixel text, spelled exactly, nothing else written.`;
 		// Чим менше тексту просимо намалювати, тим менше Gemini його калічить: на обкладинці — лише назва ролика.
