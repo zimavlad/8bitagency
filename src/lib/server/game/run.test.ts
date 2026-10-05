@@ -279,3 +279,13 @@ describe('гра', () => {
 		expect(run!.state.brief.client.look).toBe('leather');
 	});
 });
+
+describe('вхідні брифи', () => {
+	it('взяті не повертаються, поки є нові свого рівня', () => {
+		const first = inboxFor(3, 50);
+		const next = inboxFor(4, 50, first.map((b) => b.id));
+		expect(next.filter((b) => first.some((f) => f.id === b.id))).toHaveLength(0);
+		expect(next.every((b) => b.tier === 2)).toBe(true);
+		expect(next.every((b) => b.budget)).toBe(true);
+	});
+});

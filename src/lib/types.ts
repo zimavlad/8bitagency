@@ -207,6 +207,8 @@ export interface GameState {
 	/** Інвестор задоволений: тиждень пройдено в плюс. */
 	investorOk: boolean;
 	inbox: Brief[];
+	/** Брифи, які вже брали (зробили чи кинули): у вхідні не повертаються, поки є нові. */
+	taken?: string[];
 	history: HistoryEntry[];
 	activeRun: string | null;
 	bankrupt: boolean;

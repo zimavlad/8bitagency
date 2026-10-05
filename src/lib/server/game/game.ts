@@ -6,7 +6,7 @@ import { ledger, setLedger, spendLedger } from '../ledger';
 import type { ModelClient } from '../model/client';
 import type { ImageModel } from '../model/images';
 import { caseOf } from '$lib/case';
-import { customBrief, inboxFor } from './briefs';
+import { customBrief, inboxFor, takenFrom } from './briefs';
 import { Run, type Models } from './run';
 
 /** Стартові баланси, які Влад назвав 04.10.2026; далі він вводить нові з консолей. */
@@ -116,7 +116,11 @@ export class Game {
 		try {
 			const s = { ...newGame(), ...(JSON.parse(readFileSync(this.file(), 'utf8')) as GameState) };
 			// Сейви до рівнів: брифи без рівня перегенеровуємо.
-			if (s.inbox.some((b) => !b.tier || !b.client.role || (b.tier === 2 && !b.budget))) s.inbox = inboxFor(s.day, s.reputation);
+			if (s.inbox.some((b) => !b.tier || !b.client.role || (b.tier === 2 && !b.budget))) s.inbox = inboxFor(s.day, s.reputation, s.taken ?? []);
+			if (!s.taken) {
+				s.taken = takenFrom(s.history.map((h) => h.business));
+				s.inbox = inboxFor(s.day, s.reputation, s.taken);
+			}
 			if (!s.perks || s.perks.day !== s.day) s.perks = perksFor(s.day);
 			if (typeof s.clock !== 'number') s.clock = DAY_START;
 			s.team = Object.fromEntries(ROLES.map((r) => [r, s.team?.[r] ?? junior()])) as GameState['team'];
@@ -199,6 +203,7 @@ export class Game {
 		this.runs.set(id, run);
 		this.state.activeRun = id;
 		this.state.inbox = this.state.inbox.filter((b) => b.id !== brief!.id);
+		if (!brief.custom) this.state.taken = [...new Set([...(this.state.taken ?? []), brief.id])];
 		// Передплата 20% приходить одразу, щойно береш бриф.
 		this.state.money += brief.prepay;
 		this.save();
@@ -257,7 +262,7 @@ export class Game {
 		s.day += 1;
 		s.clock = DAY_START;
 		s.perks = perksFor(s.day);
-		s.inbox = inboxFor(s.day, s.reputation);
+		s.inbox = inboxFor(s.day, s.reputation, s.taken ?? []);
 		if (s.money < 0) s.over = 'bankrupt';
 		else if (s.day === DEADLINE_DAY && !s.investorOk) {
 			if (s.money > START_MONEY) s.investorOk = true;
