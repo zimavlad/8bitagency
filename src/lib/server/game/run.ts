@@ -862,7 +862,7 @@ export class Run {
 		const jobs: { id: 'instagram' | 'youtube'; prompt: string; aspect: '1:1' | '16:9' }[] = [
 			{
 				id: 'instagram', aspect: '1:1',
-				prompt: `${STYLE}\nA square Instagram ad banner for the brand «${e.name?.text ?? ''}».\nText on the banner, spelled exactly in Ukrainian, nothing else written: the headline «${e.instagram?.text ?? ''}» in big pixel letters${extras ? `, plus these client-requested elements drawn as they are: ${extras}` : ''}.\nScene: ${e.instagram?.details[0] ?? ''}.\n${mark} Put it in a corner.\n${colours}`
+				prompt: `${STYLE}\nA square Instagram ad banner for the brand «${e.name?.text ?? ''}».\nText on the banner, spelled exactly in Ukrainian, nothing else written: the headline «${e.instagram?.text ?? ''}» in big pixel letters${extras ? `, plus these client-requested elements drawn as they are: ${extras}` : ''}.\nScene: ${e.instagram?.details[0] ?? ''}.\nAny phone screen, sign, paper or label in the scene shows simple shapes or blank lines, never small text or made-up words.\n${mark} Put it in a corner.\n${colours}`
 			},
 			{
 				id: 'youtube', aspect: '16:9',
