@@ -118,9 +118,15 @@ export const SCHEMA = {
 	}),
 	positioning: obj({
 		thought: THOUGHT,
-		candidates: list(obj({ text: S('позиціонування, одне речення до 22 слів'), verdict: VERDICT, reason: S('чому, до 10 слів') }), 'рівно 3, один keep'),
-		role: S('роль бренду, 1–2 слова'),
-		enemy: S('ворог бренду, 1–2 слова')
+		options: list(obj({ text: S('позиціонування, одне речення до 22 слів'), role: S('роль бренду, 1–2 слова'), enemy: S('ворог бренду, 1–2 слова'), why: S('чому це сильно, до 10 слів') }), 'рівно 3 сильні варіанти з різних кутів')
+	}),
+	logos: obj({
+		thought: THOUGHT,
+		options: list(obj({
+			concept: S('ідея знака, одне речення до 14 слів'),
+			palette: obj({ a: S('колір головної форми, hex #rrggbb'), b: S('другий колір, hex #rrggbb'), bg: S('тло плитки знака, hex #rrggbb; має контрастувати з a і b') }),
+			shapes: list({ anyOf: [SHAPE.circle, SHAPE.rect, SHAPE.ellipse, SHAPE.polygon] }, 'від 2 до 6 фігур на полотні 100×100, по порядку знизу вгору; кожна видима (розміри не менше 6)')
+		}), 'рівно 3 різні знаки: різні форми й ходи, не варіації одного')
 	}),
 	idea: obj({
 		thought: THOUGHT,
@@ -200,7 +206,17 @@ export const prompt = {
 
 	positioning: (notes: { role: Role; text: string }[], gpt?: string) =>
 		`Колеги відповіли:\n${notes.map((n) => `${ROLE_NAME[n.role]}: ${n.text}`).join('\n')}\n\n` +
-		`Сформулюй позиціонування. 3 кандидати: рівно один keep, два rejected з причиною. Додай роль бренду і ворога.${advice(gpt)}`,
+		`Дай 3 різні сильні позиціонування — з різних кутів: кожне зі своєю роллю бренду і ворогом. Жодного запасного чи слабкого: керівник агенції обере одне, на ньому копірайтер будуватиме ідею й назву.${advice(gpt)}`,
+
+	/** Ще три позиціонування, коли керівнику не сподобались попередні. */
+	repositioning: (rejected: string[]) =>
+		`Керівник забракував усі варіанти:\n${rejected.map((r) => `- ${r}`).join('\n')}\n\nДай 3 нові позиціонування з інших кутів: інші ролі й вороги, сміливіше. Не повторюй забраковане.`,
+
+	logos: (pos: Pos, name: string, slogan: string, idea?: string) =>
+		`Позиціонування: «${pos.positioning}». Роль бренду: ${pos.role}. Ворог: ${pos.enemy}.\n${idea ? `Креативна ідея: «${idea}».\n` : ''}Обрана назва: «${name}». Слоган: «${slogan}».\n\nНамалюй 3 різні знаки під цю назву — різні форми й ходи, не варіації одного. Кожен: одна сильна форма, два кольори на контрастному тлі, від 2 до 6 фігур, без тексту. Знак показуємо піксельним 32×32, тож форма крупна й проста. Керівник обере один.`,
+
+	relogos: (rejected: string[]) =>
+		`Керівник забракував усі знаки:\n${rejected.map((r) => `- ${r}`).join('\n')}\n\nНамалюй 3 нові, зовсім інші знаки з іншими формами. Ті самі правила: від 2 до 6 видимих фігур, два кольори на контрастному тлі, без тексту.`,
 
 	/** Ще три варіанти, коли керівнику не сподобались попередні. */
 	renaming: (rejected: string[]) =>
@@ -327,10 +343,20 @@ export function normHuddle(j: Record<string, unknown>) {
 }
 
 export function normPositioning(j: Record<string, unknown>) {
-	const c = arr(j.candidates).slice(0, 3).map((x) => { const o = (x ?? {}) as Record<string, unknown>; return { text: str(o.text, 300), keep: o.verdict === 'keep', reason: str(o.reason, 120) }; }).filter((x) => x.text);
-	if (!c.length) throw new StepError('стратегиня не дала позиціонування');
-	const keep = c.find((x) => x.keep) ?? c[0];
-	return { thought: str(j.thought, 120), positioning: keep.text, why: keep.reason, rejected: c.filter((x) => x !== keep).map((x) => ({ text: x.text, reason: x.reason })), role: str(j.role, 40), enemy: str(j.enemy, 40) };
+	const options = arr(j.options).slice(0, 3).map((x) => { const o = (x ?? {}) as Record<string, unknown>; return { text: str(o.text, 300), role: str(o.role, 40), enemy: str(o.enemy, 40), why: str(o.why, 120) }; }).filter((x) => x.text);
+	if (!options.length) throw new StepError('стратегиня не дала позиціонування');
+	return { thought: str(j.thought, 120), options };
+}
+
+/** Три знаки; невидимі (менше двох фігур) відкидаємо. */
+export function normLogos(j: Record<string, unknown>) {
+	const options = arr(j.options).slice(0, 3).flatMap((x) => {
+		const o = (x ?? {}) as Record<string, unknown>;
+		const logo = normalizeLogo(o);
+		return logo && logo.shapes.length >= 2 ? [{ concept: str(o.concept, 200), logo, why: '' }] : [];
+	});
+	if (!options.length) throw new StepError('дизайнер не намалював знак');
+	return { thought: str(j.thought, 120), options };
 }
 
 export function normIdea(j: Record<string, unknown>) {

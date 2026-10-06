@@ -11,10 +11,13 @@ import { Run } from './run';
 
 const MODELS = { agent: 'claude-sonnet-5-5', review: 'claude-opus-5-5', client: 'claude-sonnet-5-5', gpt: 'claude-haiku-4-5' };
 const tick = () => new Promise((r) => setTimeout(r, 0));
+/** Прогони, у яких тест не перевіряє вибір позиціонування й знака: обираємо перший варіант за гравця. */
+const watched: Run[] = [];
 async function until(f: () => boolean, ms = 4000) {
 	const t = Date.now();
 	while (!f()) {
 		if (Date.now() - t > ms) throw new Error('timeout');
+		for (const r of watched) if (r.state.phase === 'pick_position' || r.state.phase === 'pick_logo') r.decide({ action: 'pick', index: 0 });
 		await tick();
 	}
 }
@@ -22,6 +25,7 @@ const brief = inboxFor(1, 40)[0];
 const mk = (model = new FakeModel(), images = new FakeImages()) => {
 	const dataDir = mkdtempSync(join(tmpdir(), 'run-'));
 	const run = new Run('rtest1', brief, { model, images, models: MODELS, dataDir, burnout: { strategist: 0, copywriter: 0, designer: 0 }, morale: { strategist: 70, copywriter: 70, designer: 70 } });
+	watched.push(run);
 	return { run, model, images, dataDir };
 };
 const text = (p: unknown) => JSON.stringify(p);
@@ -43,22 +47,13 @@ describe('бриф від початку до оплати', () => {
 		expect(run.state.steps.find((x) => x.key === 'name')?.lines.join(' ')).toMatch(/Забраковано/);
 		void first;
 		expect(run.decide({ action: 'pick', index: 1 })).toBeNull();
-		await until(() => run.state.phase === 'player_core');
+		// знак: три варіанти, гравець обирає — і платформа одразу йде клієнту, без зведення
+		await until(() => run.state.phase === 'client_decision_core');
 		expect(run.state.elements.name?.text).toBe('Свої');
 		expect(run.state.elements.logo?.logo?.shapes.length).toBeGreaterThan(0);
-
-		// один раунд до трьох правок; порожні поля пропускаються
-		expect(run.decide({ action: 'edit', notes: ['', '  '] })).toMatch(/хоча б одну/);
-		expect(run.decide({ action: 'edit', notes: ['сміливіше', '', 'про швидкість'] })).toBeNull();
-		await until(() => model.requests.filter((r) => r.purpose === 'rework').length === 3 && run.state.phase === 'player_core');
-		expect(run.state.editAvailable).toBe(false);
-		expect(run.decide({ action: 'edit', notes: ['ще'] })).toMatch(/вже використано/);
-		const reworks = model.requests.filter((r) => r.purpose === 'rework').map((r) => r.who.split(':')[1]);
-		expect(reworks).toEqual(['strategist', 'copywriter', 'designer']);
+		expect(model.requests.filter((r) => r.purpose === 'rework')).toHaveLength(0);
 
 		// клієнт хоче правок — гравець обирає ще коло
-		expect(run.decide({ action: 'submit' })).toBeNull();
-		await until(() => run.state.phase === 'client_decision_core');
 		expect(run.state.verdicts.at(-1)?.verdict).toBe('rework');
 		expect(run.decide({ action: 'continue' })).toMatch(/ще коло/);
 		expect(run.decide({ action: 'retry' })).toBeNull();
@@ -92,6 +87,11 @@ describe('бриф від початку до оплати', () => {
 		expect(images.prompts.join(' ')).not.toMatch(/Stardew/i);
 		expect(readdirSync(join(dataDir, 'images', 'rtest1'))).toHaveLength(2);
 
+		// один раунд до трьох правок керівника; порожні поля пропускаються
+		expect(run.decide({ action: 'edit', notes: ['', '  '] })).toMatch(/хоча б одну/);
+		expect(run.decide({ action: 'edit', notes: ['сміливіше', '', 'про швидкість'] })).toBeNull();
+		await until(() => model.requests.filter((r) => r.purpose === 'rework').length >= 4 + 6 && run.state.phase === 'player_content' && !run.state.editAvailable);
+		expect(run.decide({ action: 'edit', notes: ['ще'] })).toMatch(/вже використано/);
 		run.decide({ action: 'submit' });
 		await until(() => run.state.phase === 'client_decision_content');
 		run.decide({ action: 'retry' });
@@ -106,7 +106,7 @@ describe('бриф від початку до оплати', () => {
 		expect(run.state.result?.paid).toBe(brief.fee);
 		expect(run.state.result?.pay.map((p) => p.amount)).toEqual([brief.prepay, brief.fee - brief.prepay]);
 		expect(brief.prepay).toBe(brief.fee * 0.2);
-		expect(run.trace.length).toBe(model.requests.length + 4);
+		expect(run.trace.length).toBe(model.requests.length + 6);
 	});
 
 	it('хто що бачить: колеги бачать лише розбір стратегині; копірайтер не бачить знака', async () => {
@@ -135,7 +135,7 @@ describe('бриф від початку до оплати', () => {
 		run.start();
 		await until(() => run.state.phase === 'pick_name');
 		run.decide({ action: 'pick', index: 0 });
-		await until(() => run.state.phase === 'player_core');
+		await until(() => run.state.phase === 'client_decision_core');
 		expect(run.state.elements.logo?.logo?.shapes.length).toBeGreaterThan(1);
 	});
 
@@ -144,8 +144,6 @@ describe('бриф від початку до оплати', () => {
 		run.start();
 		await until(() => run.state.phase === 'pick_name');
 		run.decide({ action: 'pick', index: 0 });
-		await until(() => run.state.phase === 'player_core');
-		run.decide({ action: 'submit' });
 		await until(() => run.state.phase === 'client_decision_core');
 		run.decide({ action: 'giveup' });
 		await until(() => run.state.phase === 'done');
@@ -186,10 +184,9 @@ describe('гра', () => {
 		const g = mkGame();
 		const money = g.state.money;
 		const { run } = g.start({ briefId: g.state.inbox[0].id });
+		watched.push(run!);
 		await until(() => run!.state.phase === 'pick_name');
 		run!.decide({ action: 'pick', index: 0 });
-		await until(() => run!.state.phase === 'player_core');
-		run!.decide({ action: 'submit' });
 		await until(() => run!.state.phase === 'client_decision_core');
 		run!.decide({ action: 'retry' });
 		await until(() => run!.state.phase === 'player_core');
@@ -246,11 +243,10 @@ describe('гра', () => {
 	it('свій бриф: клієнт — гравець, лисий; правки текстом до 3 кіл, потім «беру»', async () => {
 		const g = mkGame();
 		const { run } = g.start({ custom: { business: 'Креативна агенція 8bit', goals: 'більше клієнтів', wishes: 'з гумором', competitors: 'всі', usp: 'піксель' } });
+		watched.push(run!);
 		await until(() => run!.state.phase === 'pick_name');
 		expect(run!.state.brief.client.name).toBe('Ти');
 		run!.decide({ action: 'pick', index: 0 });
-		await until(() => run!.state.phase === 'player_core');
-		run!.decide({ action: 'submit' });
 		await until(() => run!.state.phase === 'client_core');
 		expect(run!.decide({ action: 'feedback', notes: [''] })).toMatch(/хоча б одну/);
 		expect(run!.decide({ action: 'feedback', notes: ['більше гумору'] })).toBeNull();
@@ -287,5 +283,30 @@ describe('вхідні брифи', () => {
 		expect(next.filter((b) => first.some((f) => f.id === b.id))).toHaveLength(0);
 		expect(next.every((b) => b.tier === 2)).toBe(true);
 		expect(next.every((b) => b.budget)).toBe(true);
+	});
+});
+
+describe('три погодження перед клієнтом', () => {
+	it('позиціонування: три варіанти, «ще три», обране йде копірайтеру', async () => {
+		const model = new FakeModel();
+		const dataDir = mkdtempSync(join(tmpdir(), 'run-'));
+		const run = new Run('rtest2', brief, { model, images: new FakeImages(), models: MODELS, dataDir, burnout: { strategist: 0, copywriter: 0, designer: 0 }, morale: { strategist: 70, copywriter: 70, designer: 70 } });
+		run.start();
+		await until(() => run.state.phase === 'pick_position');
+		expect(run.state.posOptions).toHaveLength(3);
+		expect(run.decide({ action: 'more' })).toBeNull();
+		await until(() => run.state.phase === 'pick_position' && run.state.rerolls === 1);
+		expect(run.decide({ action: 'pick', index: 2 })).toBeNull();
+		await until(() => run.state.phase === 'pick_name');
+		expect(run.state.elements.positioning?.text).toBe(run.state.posOptions![2].text);
+		const naming = model.requests.filter((r) => r.who.endsWith('copywriter')).at(-1)!;
+		expect(JSON.stringify(naming.params.messages)).toContain(run.state.posOptions![2].text.slice(0, 20));
+		run.decide({ action: 'pick', index: 0 });
+		await until(() => run.state.phase === 'pick_logo');
+		expect(run.state.logoOptions).toHaveLength(3);
+		expect(run.decide({ action: 'pick', index: 1 })).toBeNull();
+		await until(() => run.state.phase === 'client_decision_core');
+		expect(run.state.elements.logo?.text).toBe(run.state.logoOptions![1].concept);
+		run.drop();
 	});
 });

@@ -17,7 +17,7 @@ import { pickMood } from '$lib/picks';
 import { indexFor, search } from './kb';
 import {
 	GPT_HABIT, GPT_QUESTION, SCHEMA, StepError, briefBlock, guide, normClient, normContent, normGpt, normHuddle, normLogo,
-	normIdea, normNaming, normPersona, normPositioning, normRead, normRename, normReposition, parseJson, prompt, readText, request,
+	normIdea, normLogos, normNaming, normPersona, normPositioning, normRead, normRename, normReposition, parseJson, prompt, readText, request,
 	type Mix, type Msg, type Pos, type Read
 } from './steps';
 
@@ -413,11 +413,12 @@ export class Run {
 				d = { action: 'feedback', notes };
 			}
 		} else if (d.action === 'more') {
-			if (p !== 'pick_name') return 'Зараз не обирають назву.';
-			if (!this.state.rerolls) return 'Копірайтер більше не може: обери з того, що є.';
+			if (p !== 'pick_name' && p !== 'pick_position' && p !== 'pick_logo') return 'Зараз нема з чого обирати.';
+			if (!this.state.rerolls) return 'Команда більше не може: обери з того, що є.';
 		} else if (d.action === 'pick') {
-			if (p !== 'pick_name') return 'Зараз не обирають назву.';
-			if (!Number.isInteger(d.index) || d.index < 0 || d.index >= this.state.options.length) return 'Нема такого варіанта.';
+			const n = p === 'pick_name' ? this.state.options.length : p === 'pick_position' ? (this.state.posOptions?.length ?? 0) : p === 'pick_logo' ? (this.state.logoOptions?.length ?? 0) : -1;
+			if (n < 0) return 'Зараз нема з чого обирати.';
+			if (!Number.isInteger(d.index) || d.index < 0 || d.index >= n) return 'Нема такого варіанта.';
 		} else if (d.action === 'submit') {
 			if (p !== 'player_core' && p !== 'player_content') return 'Зараз нема чого показувати клієнту.';
 		} else if (d.action === 'edit') {
@@ -510,13 +511,37 @@ export class Run {
 		this.step('Стратегиня втискає суть в одне речення');
 		this.phase('position', 'Стратегиня формулює позиціонування', { strategist: 'board', copywriter: 'desk', designer: 'desk' });
 		this.agent('strategist', 'thinking', 'пише позиціонування');
-		const p = normPositioning(await this.ask('strategist', 'core', prompt.positioning(notes), SCHEMA.positioning, () => fake.positioning(b)));
-		this.pos = { positioning: p.positioning, role: p.role, enemy: p.enemy };
-		this.setEl('positioning', p.positioning, [`Роль: ${p.role}`, `Ворог: ${p.enemy}`], { rejected: p.rejected, why: p.why });
-		this.record('strategy', [`Позиціонування: ${p.positioning}`, ...p.rejected.map((r) => `Відкинула: ${r.text} — ${r.reason}`)]);
-		this.say('strategist', p.thought, 'thought', undefined, [p.positioning, ...p.rejected.map((r) => `відкинула: ${r.text} — ${r.reason}`)]);
-		this.agent('strategist', 'done', 'позиціонування готове');
-		this.tick();
+		// Погодження 1 з 3: стратегиня приносить три позиціонування, керівник обирає одне.
+		let p = normPositioning(await this.ask('strategist', 'core', prompt.positioning(notes), SCHEMA.positioning, () => fake.positioning(b)));
+		const posTried: string[] = [];
+		this.state.rerolls = 2;
+		let posPick = 0;
+		for (;;) {
+			this.state.posOptions = p.options;
+			this.say('strategist', p.thought, 'thought', undefined, p.options.map((o) => `${o.text} (роль: ${o.role}, ворог: ${o.enemy})`));
+			this.agent('strategist', 'idle', 'чекає твого вибору');
+			this.tick();
+			this.idle();
+			this.phase('pick_position', 'Твій хід: обери позиціонування', { strategist: 'table', copywriter: 'table', designer: 'table' });
+			const d = await this.wait(['pick_position']);
+			if (d.action === 'pick') { posPick = d.index; break; }
+			this.state.rerolls--;
+			posTried.push(...p.options.map((o) => o.text));
+			this.record('strategy', p.options.map((o) => `Забраковано: ${o.text}`));
+			this.work('platform', 1);
+			this.step('Стратегиня зітхає~ і думає заново');
+			this.phase('position', 'Стратегиня шукає інші кути', { strategist: 'board' });
+			this.agent('strategist', 'thinking', 'шукає інші кути');
+			p = normPositioning(await this.ask('strategist', 'core', prompt.repositioning(posTried), SCHEMA.positioning, () => fake.positioning(b)));
+		}
+		this.state.rerolls = 0;
+		const pc = p.options[posPick];
+		this.pos = { positioning: pc.text, role: pc.role, enemy: pc.enemy };
+		this.setEl('positioning', pc.text, [`Роль: ${pc.role}`, `Ворог: ${pc.enemy}`], { why: pc.why, rejected: p.options.filter((_, i) => i !== posPick).map((o) => ({ text: o.text, reason: o.why })) });
+		this.record('strategy', p.options.map((o, i) => `${i === posPick ? 'Обрано' : 'Варіант'}: ${o.text} (роль: ${o.role}, ворог: ${o.enemy})`));
+		this.note(`Ти обрав позиціонування: ${pc.text}`);
+		this.history.strategist.push({ role: 'user', content: `Керівник обрав позиціонування: ${pc.text} Роль: ${pc.role}. Ворог: ${pc.enemy}.` }, { role: 'assistant', content: '{"ok":true}' });
+		this.agent('strategist', 'done', 'позиціонування погоджене');
 
 		// 4. креативна ідея: навіть під серйозну стратегію — сміливий сучасний прикол
 		await this.gate();
@@ -577,16 +602,40 @@ export class Run {
 		this.work('platform', 1);
 		this.step('Дизайнер мовчки малює знак');
 		this.phase('logo', 'Дизайнер малює знак', { designer: 'desk', copywriter: 'desk' });
-		this.agent('designer', 'thinking', 'малює знак');
-		const lg = await this.drawLogo('core', prompt.logo(this.pos, chosen.name, chosen.slogan, this.state.elements.idea?.text));
-		this.setEl('logo', lg.concept, [], { logo: lg.logo, why: lg.thought });
-		this.record('logo', [lg.concept], lg.logo);
-		this.say('designer', lg.thought, 'thought', undefined, [lg.concept]);
-		this.agent('designer', 'done', 'знак готовий');
-		this.tick();
+		this.agent('designer', 'thinking', 'малює знаки');
+		// Погодження 3 з 3: три знаки, керівник обирає один — і платформа одразу йде клієнту.
+		let lgs = await this.drawLogos(prompt.logos(this.pos, chosen.name, chosen.slogan, this.state.elements.idea?.text));
+		const logoTried: string[] = [];
+		this.state.rerolls = 2;
+		let logoPick = 0;
+		for (;;) {
+			this.state.logoOptions = lgs.options;
+			for (const o of lgs.options) this.record('logo', [o.concept], o.logo);
+			this.say('designer', lgs.thought, 'thought', undefined, lgs.options.map((o) => o.concept));
+			this.agent('designer', 'idle', 'чекає твого вибору');
+			this.tick();
+			this.idle();
+			this.phase('pick_logo', 'Твій хід: обери знак', { designer: 'table', copywriter: 'table', strategist: 'table' });
+			const d = await this.wait(['pick_logo']);
+			if (d.action === 'pick') { logoPick = d.index; break; }
+			this.state.rerolls--;
+			logoTried.push(...lgs.options.map((o) => o.concept));
+			this.work('platform', 1);
+			this.step('Дизайнер мовчки бере новий аркуш');
+			this.phase('logo', 'Дизайнер малює інші знаки', { designer: 'desk' });
+			this.agent('designer', 'thinking', 'малює інші знаки');
+			lgs = await this.drawLogos(prompt.relogos(logoTried));
+		}
+		this.state.rerolls = 0;
+		const lg = lgs.options[logoPick];
+		this.setEl('logo', lg.concept, [], { logo: lg.logo, why: lgs.thought });
+		this.record('logo', [`Обрано: ${lg.concept}`]);
+		this.note(`Ти обрав знак: ${lg.concept}`);
+		this.history.designer.push({ role: 'user', content: `Керівник обрав знак: ${lg.concept}` }, { role: 'assistant', content: '{"ok":true}' });
+		this.agent('designer', 'done', 'знак погоджений');
 
-		// 6–7. гравець і клієнт по основі
-		this.coreAccepted = await this.stage('core');
+		// 6–7. платформа погоджена тобою по частинах — одразу клієнту
+		this.coreAccepted = await this.stage('core', true);
 		if (!this.coreAccepted) return this.finish('reject');
 
 		// 8. канали
@@ -600,6 +649,17 @@ export class Run {
 		this.tick();
 		this.contentAccepted = await this.stage('content');
 		this.finish(this.contentAccepted ? 'ok' : 'reject');
+	}
+
+	/** Три знаки з однією повторною спробою, якщо всі вийшли невидимими. */
+	private async drawLogos(text: string) {
+		try {
+			return normLogos(await this.ask('designer', 'core', text, SCHEMA.logos, () => fake.logos()));
+		} catch (e) {
+			if (!(e instanceof StepError)) throw e;
+			log('warn', 'logo_retry', { run: this.id });
+			return normLogos(await this.ask('designer', 'core', 'Знаки вийшли порожніми: фігури без розміру або злились із тлом. Перемалюй 3 знаки: від 2 до 6 видимих фігур, розміри не менше 6, кольори a і b контрастні до bg.', SCHEMA.logos, () => fake.logos()));
+		}
 	}
 
 	/** Знак з однією повторною спробою: порожній або невидимий знак дизайнер перемальовує. */
@@ -638,7 +698,7 @@ export class Run {
 	 * Етап «гравець → клієнт». Платформа: два кола правок клієнта, на третьому він у захваті.
 	 * Комунікація: одне коло «а додайте QR і АКЦІЮ», на другому — «беру». Гравець може кинути проєкт.
 	 */
-	private async stage(stage: 'core' | 'content'): Promise<boolean> {
+	private async stage(stage: 'core' | 'content', approved = false): Promise<boolean> {
 		const ids: ElementId[] = stage === 'core' ? CORE : CONTENT;
 		const playerPhase: RunPhase = stage === 'core' ? 'player_core' : 'player_content';
 		const decisionPhase: RunPhase = stage === 'core' ? 'client_decision_core' : 'client_decision_content';
@@ -650,7 +710,8 @@ export class Run {
 		const name = this.state.brief.client.name;
 
 		this.state.editAvailable = true;
-		for (;;) {
+		// Платформу керівник уже погодив по частинах (позиціонування, назва, знак) — зведення перед клієнтом не потрібне.
+		for (; !approved; ) {
 			this.idle();
 			this.phase(playerPhase, this.state.editAvailable ? 'Твій хід: зведення чекає' : 'Правки внесли. Несемо клієнту?', { strategist: 'table', copywriter: 'table', designer: 'table' });
 			for (const r of ROLES) this.agent(r, 'idle', 'чекає твого рішення');

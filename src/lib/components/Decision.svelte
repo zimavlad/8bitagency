@@ -47,7 +47,7 @@
 
 	const sent = $derived(live.sent === key);
 	const kind = $derived(
-		phase === 'pick_name' ? 'pick' : phase === 'player_core' || phase === 'player_content' ? 'review' : run.brief.custom && (phase === 'client_core' || phase === 'client_content') ? 'self' : phase === 'client_decision_core' || phase === 'client_decision_content' ? 'verdict' : phase === 'done' && run.result ? 'result' : null
+		phase === 'pick_name' ? 'pick' : phase === 'pick_position' ? 'pickpos' : phase === 'pick_logo' ? 'picklogo' : phase === 'player_core' || phase === 'player_content' ? 'review' : run.brief.custom && (phase === 'client_core' || phase === 'client_content') ? 'self' : phase === 'client_decision_core' || phase === 'client_decision_content' ? 'verdict' : phase === 'done' && run.result ? 'result' : null
 	);
 	const visible = $derived(!!kind && !sent && !minimized && (kind !== 'verdict' || ready));
 	$effect(() => {
@@ -70,9 +70,48 @@
 	}
 </script>
 
+{#snippet more(who: string)}
+	<div class="actions">
+		{#if run.rerolls > 0}
+			<button class="btn" disabled={live.busy} onclick={() => live.act({ action: 'more' })}><Icon name="reset" size={16} />Усе не те — ще три ({run.rerolls})</button>
+		{:else}
+			<span class="faint small">Нових варіантів більше не буде: {who} видихся.</span>
+		{/if}
+	</div>
+{/snippet}
+
 {#if visible}
-	{#if kind === 'pick'}
-		<Modal title="Обери назву й слоган" onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
+	{#if kind === 'pickpos'}
+		<Modal title="Погодження 1 з 3: позиціонування" wide onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
+			{#if s}<p class="muted small"><b>Інсайт:</b> {s.insight} · <b>Напрям:</b> {s.direction}</p>{/if}
+			<p class="muted">Стратегиня принесла три кути. На обраному копірайтер будуватиме ідею й назву.</p>
+			<div class="opts3">
+				{#each run.posOptions ?? [] as o, i}
+					<button class="opt paper" disabled={live.busy} onclick={() => live.act({ action: 'pick', index: i })}>
+						<span class="op">{o.text}</span>
+						<span class="ow">Роль: {o.role} · Ворог: {o.enemy}</span>
+						{#if o.why}<span class="ow">{o.why}</span>{/if}
+					</button>
+				{/each}
+			</div>
+			{@render more('стратегиня')}
+		</Modal>
+	{:else if kind === 'picklogo'}
+		<Modal title="Погодження 3 з 3: знак" wide onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
+			<p class="muted">{e.name?.text ?? ''} — «{e.slogan?.text ?? ''}». Дизайнер намалював три знаки. Обраний одразу піде клієнту разом з усією платформою.</p>
+			<div class="opts3">
+				{#each run.logoOptions ?? [] as o, i}
+					<button class="opt paper logo-opt" disabled={live.busy} onclick={() => live.act({ action: 'pick', index: i })}>
+						<PixelLogo logo={o.logo} size={112} />
+						<span class="ow">{o.concept}</span>
+					</button>
+				{/each}
+			</div>
+			{@render more('дизайнер')}
+		</Modal>
+	{:else if kind === 'pick'}
+		<Modal title="Погодження 2 з 3: назва й слоган" onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
+			{#if e.idea}<p class="muted small"><b>Ідея:</b> {e.idea.text}</p>{/if}
 			<p class="muted">Копірайтер приніс три. Під обрану назву дизайнер малюватиме знак, решта підуть в архів.</p>
 			{#each run.options as o, i}
 				<button class="opt paper" disabled={live.busy} onclick={() => live.act({ action: 'pick', index: i })}>
@@ -81,13 +120,7 @@
 					<span class="ow">{o.why}</span>
 				</button>
 			{/each}
-			<div class="actions">
-				{#if run.rerolls > 0}
-					<button class="btn" disabled={live.busy} onclick={() => live.act({ action: 'more' })}><Icon name="reset" size={16} />Усе не те — ще три ({run.rerolls})</button>
-				{:else}
-					<span class="faint small">Нових варіантів більше не буде: копірайтер видихся.</span>
-				{/if}
-			</div>
+			{@render more('копірайтер')}
 		</Modal>
 	{:else if kind === 'review'}
 		<Modal title={(run.verdicts.some((x) => x.stage === (phase === 'player_core' ? 'core' : 'content')) ? 'Після правок клієнта: ' : '') + (phase === 'player_core' ? 'бренд-платформа' : 'комунікація')} wide onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
@@ -394,6 +427,25 @@
 			filter: brightness(1.05);
 			border-image: var(--frame-gold) 3 / 3px stretch;
 		}
+	}
+	.opts3 {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 10px;
+		align-items: stretch;
+		@media (max-width: 760px) {
+			grid-template-columns: 1fr;
+		}
+	}
+	.op {
+		font-size: 16px;
+		font-weight: 500;
+		line-height: 1.4;
+	}
+	.logo-opt {
+		justify-items: center;
+		text-align: center;
+		gap: 8px;
 	}
 	.on {
 		font-family: var(--pixel);

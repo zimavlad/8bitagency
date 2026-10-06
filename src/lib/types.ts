@@ -241,7 +241,9 @@ export type RunPhase =
 	| 'huddle'
 	| 'position'
 	| 'naming'
+	| 'pick_position'
 	| 'pick_name'
+	| 'pick_logo'
 	| 'logo'
 	| 'player_core'
 	| 'rework_core'
@@ -359,6 +361,10 @@ export interface RunState {
 	task: Task | null;
 	/** Варіанти назви й слогана, з яких обирає гравець. */
 	options: NamingOption[];
+	/** Три позиціонування на вибір керівнику. */
+	posOptions?: { text: string; role: string; enemy: string; why: string }[];
+	/** Три знаки на вибір керівнику. */
+	logoOptions?: { concept: string; logo: LogoSpec; why: string }[];
 	/** Чи ще можна дати раунд правок на поточному етапі. */
 	editAvailable: boolean;
 	clientRound: number;

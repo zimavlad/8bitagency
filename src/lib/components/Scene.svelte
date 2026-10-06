@@ -99,7 +99,7 @@
 	/** Скільки нотаток на дошці: рівно по ходу брифу — від розбору до оплати, 12 наприкінці. */
 	function boardNotes(r: RunState): number {
 		const RANK: Partial<Record<RunState['phase'], number>> = {
-			read: 0, huddle: 1, position: 2, naming: 3, pick_name: 3, logo: 4,
+			read: 0, huddle: 1, position: 2, pick_position: 2, naming: 3, pick_name: 3, logo: 4, pick_logo: 4,
 			player_core: 5, rework_core: 5, client_core: 5, client_decision_core: 5,
 			content: 8, images: 9, player_content: 10, rework_content: 10, client_content: 10, client_decision_content: 10, done: 12, failed: 0
 		};
