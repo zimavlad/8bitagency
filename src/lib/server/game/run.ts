@@ -79,9 +79,11 @@ const realNotes = (notes: unknown[]) => notes.map((n) => String(n ?? '').trim())
 
 /** Для розкадровки — лише що в кадрі: без цитат, цифр, «акцій» і телефонів, щоб Gemini не малював плакат замість кадру. */
 export function sceneOnly(x: string): string {
-	return x
+	// Лапки прибираємо разом із прийменником («в «Двері-Люкс»»): замість них стояло «a sign», і Gemini писав це в кадрі.
+	const s = x
 		.replace(/^[^,.:]{2,20}:\s*/u, '')
-		.replace(/[«"“][^»"”]*[»"”]/g, 'a sign')
+		.replace(/(^|\s)(?:в|у|на|з|із|від|до|для)\s+[«"“][^»"”]*[»"”]/giu, '$1')
+		.replace(/[«"“][^»"”]*[»"”]/g, '')
 		.replace(/[+]?\d[\d\s()−-]{4,}\d/g, '')
 		.replace(/[−-]?\d+\s?%/g, '')
 		.replace(/(АКЦІЯ|акці[яїю]|знижк\S*|QR-?код|сайт|телефон\S*|номер\S*)/giu, '')
@@ -89,7 +91,9 @@ export function sceneOnly(x: string): string {
 		.replace(/\s+([,.;:])/g, '$1')
 		.replace(/[,;:]+\./g, '.')
 		.replace(/,\s*,/g, ',')
+		.replace(/^[\s,.;:—-]+/, '')
 		.trim();
+	return s.length > 2 ? s : 'порожня табличка на стіні';
 }
 /** У своєму брифі гравець-клієнт може повернути роботу з правками до трьох разів на етап. */
 const SELF_ROUNDS = 3;

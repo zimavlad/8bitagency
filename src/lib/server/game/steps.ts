@@ -81,7 +81,9 @@ export function clean(s: string, lines = false): string {
 	// пости Threads тримають переноси: «ніхто: / абсолютно ніхто: / ми:» без них не працює
 	return (lines ? t.replace(/[^\S\n]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n') : t.replace(/\s+/g, ' ')).trim();
 }
-const str = (v: unknown, max = 400): string => (typeof v === 'string' ? clean(v).slice(0, max) : '');
+/** Задовге обрізаємо по слову з «…»: рілс, що обривається на «як під», читається як баг. */
+const cut = (s: string, max: number): string => (s.length <= max ? s : `${s.slice(0, max - 1).replace(/\s+\S*$/u, '')}…`);
+const str = (v: unknown, max = 400): string => (typeof v === 'string' ? cut(clean(v), max) : '');
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const strs = (v: unknown, n: number, max = 200): string[] => arr(v).map((x) => str(x, max)).filter(Boolean).slice(0, n);
 
@@ -496,13 +498,13 @@ export function normContent(id: ContentElement, j: Record<string, unknown>): { t
 	const thought = str(j.thought, 120);
 	switch (id) {
 		case 'threads':
-			return { thought, text: str(j.voice, 160), details: arr(j.posts).map((x) => (typeof x === 'string' ? clean(x, true).slice(0, 240) : '')).filter(Boolean).slice(0, 3) };
+			return { thought, text: str(j.voice, 160), details: arr(j.posts).map((x) => (typeof x === 'string' ? cut(clean(x, true), 240) : '')).filter(Boolean).slice(0, 3) };
 		case 'instagram':
 			return { thought, text: str(j.headline, 80), details: [str(j.visual, 200)].filter(Boolean) };
 		case 'reels':
-			return { thought, text: 'Три ідеї', details: strs(j.hooks, 3, 140) };
+			return { thought, text: 'Три ідеї', details: strs(j.hooks, 3, 200) };
 		case 'youtube':
-			return { thought, text: str(j.title, 80), details: strs(j.scenes, 4, 120) };
+			return { thought, text: str(j.title, 80), details: strs(j.scenes, 4, 160) };
 	}
 }
 
