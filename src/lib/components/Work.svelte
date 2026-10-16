@@ -57,7 +57,7 @@
 		</div>
 	</header>
 	<p class="muted quote">«{run.brief.text}»</p>
-	<p class="faint tiny">Рівень {run.brief.tier}: {TIER_NAME[run.brief.tier]} · 20% уже на рахунку, 80% — коли клієнт скаже «беру»</p>
+	<p class="faint tiny">Рівень {run.brief.tier}: {TIER_NAME[run.brief.tier]}</p>
 
 	<ol class="stages" aria-label="Етапи брифу">
 		{#each STAGES as st, i}
@@ -91,7 +91,7 @@
 	{/if}
 
 	{#if !run.result}
-		<button class="btn ghost sm drop" onclick={() => confirm(run.phase === 'failed' ? 'Закрити бриф?' : 'Кинути проєкт? Клієнт нічого не заплатить, репутація трохи впаде, мораль теж.') && live.act({ action: 'drop' })}><Icon name="x" size={14} />{run.phase === 'failed' ? 'Закрити бриф' : 'Кинути проєкт'}</button>
+		<button class="btn ghost sm drop" onclick={() => confirm(run.phase === 'failed' ? 'Закрити бриф?' : 'Кинути проєкт? Лишиться тільки передплата. Репутація й мораль просядуть.') && live.act({ action: 'drop' })}><Icon name="x" size={14} />{run.phase === 'failed' ? 'Закрити бриф' : 'Кинути проєкт'}</button>
 	{/if}
 
 	<p class="faint tiny">{run.demo ? 'Демо: відповідає підставна модель, грошей не коштує.' : `Claude · викликів ${run.calls} · $${run.costUsd.toFixed(3)}${run.imagesUsd ? ` · картинки $${run.imagesUsd.toFixed(2)}` : ''}`}</p>

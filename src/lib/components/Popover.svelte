@@ -37,7 +37,7 @@
 	{#if role && stats}
 		<header>
 			<Avatar who={role} size={40} />
-			<div><div class="nm">{ROLE_NAME[role]} <span class="grade">{GRADE_NAME[g.team[role].grade]}</span></div><div class="faint small">{g.team[role].sulk ? 'ображений(а): працює абияк до вихідного' : stats.doing}</div></div>
+			<div><div class="nm">{ROLE_NAME[role]} <span class="grade">{GRADE_NAME[g.team[role].grade]}</span></div><div class="faint small">{g.team[role].sulk ? `${role === 'strategist' ? 'ображена' : 'ображений'}: працює абияк до вихідного` : stats.doing}</div></div>
 		</header>
 		<Bar label="Здоровʼя" value={stats.hp} kind="hp" />
 		<Bar label="Стрес" value={stats.burnout} kind="stress" />
@@ -69,7 +69,7 @@
 		{#if g.activeRun && run}
 			<p class="small muted">Посеред брифу ніхто не піде додому. Спершу закінчи проєкт.</p>
 		{:else}
-			<p class="small muted">Вихідний: стрес −35, мораль +10, образи минають. День минає, оренда й зарплати −{dailyCost(g.reputation, g.team).toLocaleString('uk-UA')} ₴.</p>
+			<p class="small muted">Вихідний: стрес −35, мораль +10, образи забуваються. День минає, оренда й зарплати −{dailyCost(g.reputation, g.team).toLocaleString('uk-UA')} ₴.</p>
 			<div class="acts"><button class="btn sm primary" disabled={live.busy || g.bankrupt} onclick={() => { onClose(); onRest(); }}><Icon name="door" size={14} />Відпустити всіх</button></div>
 		{/if}
 	{/if}

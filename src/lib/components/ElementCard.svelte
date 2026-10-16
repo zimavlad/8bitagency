@@ -28,9 +28,9 @@
 		<ul class:num={el.id === 'youtube'}>{#each el.details as d, i}<li>{#if el.id === 'youtube'}<span class="n px">{i + 1}</span>{/if}{d}</li>{/each}</ul>
 	{/if}
 	{#if el.rejected?.length}
-		<button class="link faint" onclick={() => (showRejected = !showRejected)}>{showRejected ? 'сховати' : 'що відкинули'} ({el.rejected.length})</button>
+		<button class="link faint" onclick={() => (showRejected = !showRejected)}>{showRejected ? 'сховати' : 'інші варіанти'} ({el.rejected.length})</button>
 		{#if showRejected}
-			<ul class="rejected">{#each el.rejected as r}<li><s>{r.text}</s> <span class="faint">— {r.reason}</span></li>{/each}</ul>
+			<ul class="rejected">{#each el.rejected as r}<li>{r.text} <span class="faint">— {r.reason}</span></li>{/each}</ul>
 		{/if}
 	{/if}
 </article>

@@ -14,7 +14,7 @@
 			<div class="body">
 				<div class="top"><b class="px">{handle}</b><span class="t">{[2, 5, 9][i] ?? 1} год</span></div>
 				<p>{p}</p>
-				<div class="meta px"><span>♡ {[48, 213, 17][i] ?? 7}</span><span>💬 {[6, 31, 2][i] ?? 1}</span></div>
+				<div class="meta px"><span>♡ {[48, 213, 17][i] ?? 7}</span><span>{[6, 31, 2][i] ?? 1} відп.</span></div>
 			</div>
 		</article>
 	{/each}

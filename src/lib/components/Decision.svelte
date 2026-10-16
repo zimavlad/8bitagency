@@ -75,7 +75,7 @@
 		{#if run.rerolls > 0}
 			<button class="btn" disabled={live.busy} onclick={() => live.act({ action: 'more' })}><Icon name="reset" size={16} />Усе не те — ще три ({run.rerolls})</button>
 		{:else}
-			<span class="faint small">Нових варіантів більше не буде: {who} видихся.</span>
+			<span class="faint small">{who}. Обирай з цих трьох.</span>
 		{/if}
 	</div>
 {/snippet}
@@ -94,7 +94,7 @@
 					</button>
 				{/each}
 			</div>
-			{@render more('стратегиня')}
+			{@render more('Стратегиня видихлася')}
 		</Modal>
 	{:else if kind === 'picklogo'}
 		<Modal title="Погодження 3 з 3: знак" wide onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
@@ -107,7 +107,7 @@
 					</button>
 				{/each}
 			</div>
-			{@render more('дизайнер')}
+			{@render more('Дизайнер видихся')}
 		</Modal>
 	{:else if kind === 'pick'}
 		<Modal title="Погодження 2 з 3: назва й слоган" onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
@@ -120,10 +120,10 @@
 					<span class="ow">{o.why}</span>
 				</button>
 			{/each}
-			{@render more('копірайтер')}
+			{@render more('Копірайтер видихся')}
 		</Modal>
 	{:else if kind === 'review'}
-		<Modal title={(run.verdicts.some((x) => x.stage === (phase === 'player_core' ? 'core' : 'content')) ? 'Після правок клієнта: ' : '') + (phase === 'player_core' ? 'бренд-платформа' : 'комунікація')} wide onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
+		<Modal title={(run.verdicts.some((x) => x.stage === (phase === 'player_core' ? 'core' : 'content')) ? 'Після правок клієнта: ' : '') + (phase === 'player_core' ? 'бренд-платформа' : 'реклама')} wide onClose={() => (minimized = true)} closeLabel="Згорнути, подивитись офіс">
 			{#if !editing}
 				{@render summary(phase === 'player_core' || phase === 'client_core')}
 				<div class="actions">
@@ -133,7 +133,7 @@
 					<button class="btn primary" disabled={live.busy} onclick={() => live.act({ action: 'submit' })}><Icon name="send" size={16} />Показати клієнту</button>
 				</div>
 			{:else}
-				<p class="muted">До трьох правок. Порожнє поле — не чіпаємо. Зміниш суть — команда підтягне назву й знак.</p>
+				<p class="muted">До трьох правок. Порожнє поле — не чіпаємо.{phase === 'player_core' ? ' Зміниш суть — команда підтягне назву й знак.' : ''}</p>
 				{#each notes as _, i}
 					<textarea rows="2" maxlength="280" placeholder="Правка {i + 1}" bind:value={notes[i]}></textarea>
 				{/each}
@@ -292,7 +292,7 @@
 			{/if}
 			{#if e.youtube}
 				<section class="sum paper">
-					<h3>YouTube: {e.youtube.text} {#if isNew('youtube')}<span class="new">нове</span>{/if}</h3>
+					<h3>Ролик: {e.youtube.text} {#if isNew('youtube')}<span class="new">нове</span>{/if}</h3>
 					{#if e.youtube.image}<img src={e.youtube.image} alt="Розкадровка" />{/if}
 					<ol class="scenes">{#each e.youtube.details as d, i}<li><span class="n px">{i + 1}</span>{d}</li>{/each}</ol>
 				</section>

@@ -24,7 +24,7 @@ export function checkElement(e: ElementValue): CheckNote[] {
 	const junk = has(t, JUNK);
 	if (junk.length) notes.push({ element: e.id, ok: false, text: `загальники: ${junk.join(', ')}` });
 	const perf = has(all, PERFORMANCE);
-	if (perf.length) notes.push({ element: e.id, ok: false, text: `перфоманс-штампи: ${perf.join(', ')}` });
+	if (perf.length) notes.push({ element: e.id, ok: false, text: `знижки й акції: ${perf.join(', ')}` });
 
 	switch (e.id) {
 		case 'positioning':
@@ -55,7 +55,7 @@ export function qualityOf(elements: ElementValue[]): { quality: number; notes: C
 	let performanceHits = 0;
 	for (const n of notes) {
 		if (n.ok) continue;
-		if (n.text.startsWith('перфоманс')) {
+		if (n.text.startsWith('знижки й акції')) {
 			q -= 12;
 			performanceHits++;
 		} else q -= 7;

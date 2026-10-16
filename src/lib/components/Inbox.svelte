@@ -61,7 +61,7 @@
 					<textarea id="f-{f.key}" rows="2" maxlength="400" placeholder={f.hint} bind:value={form[f.key]}></textarea>
 				{/if}
 			{/each}
-			<p class="faint small">Чек на твоєму рівні — {[0, 4000, 15000, 45000][tierOf(g.reputation)].toLocaleString('uk-UA')} ₴, 20% одразу. Клієнта-персонажа вигадаємо під твій бізнес.</p>
+			<p class="faint small">Чек на твоєму рівні — {[0, 4000, 15000, 45000][tierOf(g.reputation)].toLocaleString('uk-UA')} ₴, 20% одразу. Клієнт тут ти: сам дивишся роботу і сам пишеш правки.</p>
 			<div class="row">
 				<button class="btn ghost" onclick={() => (custom = false)}>Скасувати</button>
 				<button class="btn primary" disabled={locked || live.busy || form.business.trim().length < 3} onclick={async () => { if (await live.start({ custom: form })) { custom = false; form = empty(); } }}>Взяти бриф</button>

@@ -24,13 +24,13 @@
 
 <section class="wrap">
 	<h2>Команда</h2>
-	<p class="faint small">Рівень {tier}: {TIER_NAME[tier]} · щодня −{dailyCost(g.reputation, g.team).toLocaleString('uk-UA')} ₴ оренди й зарплат · клікай на людей і предмети в офісі</p>
+	<p class="faint small">Рівень {tier}: {TIER_NAME[tier]} · щодня −{dailyCost(g.reputation, g.team).toLocaleString('uk-UA')} ₴ оренди й зарплат</p>
 	{#each ROLES as r}
 		{@const a = run ? run.agents[r] : { burnout: g.burnout[r], morale: g.morale[r], hp: g.hp[r], doing: 'між брифами' }}
 		<button class="member panel" onclick={() => (openRole = openRole === r ? null : r)} aria-expanded={openRole === r}>
 			<Avatar who={r} size={52} />
 			<div class="mb">
-				<div class="top"><span class="name">{g.team[r].grade}-{ROLE_NAME[r].toLowerCase()}</span><span class="faint doing">{g.team[r].sulk ? 'ображений(а)' : a.doing}</span></div>
+				<div class="top"><span class="name">{g.team[r].grade}-{ROLE_NAME[r].toLowerCase()}</span><span class="faint doing">{g.team[r].sulk ? (r === 'strategist' ? 'ображена' : 'ображений') : a.doing}</span></div>
 				<p class="faint small">Проєктів: {g.team[r].done}{g.team[r].grade === 'junior' ? '/5 до розмови «я вже middle»' : ''}</p>
 				<Bar label="Здоровʼя" value={a.hp} kind="hp" />
 				<Bar label="Стрес" value={a.burnout} kind="stress" />

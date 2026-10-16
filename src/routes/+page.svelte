@@ -297,7 +297,7 @@
 	{#if open}<Thoughts who={open} run={live.run} onClose={() => (open = null)} />{/if}
 
 	{#if briefOpen && live.run}
-		<Modal title="Бриф: {live.run.brief.client.name}" onClose={() => (briefOpen = false)}>
+		<Modal title={live.run.brief.custom ? 'Твій бриф' : `Бриф: ${live.run.brief.client.name}`} onClose={() => (briefOpen = false)}>
 			<p class="muted">{live.run.brief.client.business}</p>
 			<p class="paper briefbox">«{live.run.brief.text}»</p>
 			<p class="faint small">Чек {live.run.brief.fee.toLocaleString('uk-UA')} ₴ · передплата {live.run.brief.prepay.toLocaleString('uk-UA')} ₴ уже на рахунку · решта — коли клієнт прийме все</p>
