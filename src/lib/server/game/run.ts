@@ -368,8 +368,9 @@ export class Run {
 		this.alive();
 		const started = Date.now();
 		// Творчі кроки думають довше: з effort low модель віддає першу чернетку і не перевіряє себе.
-		const deep = o.purpose === 'read' || o.purpose === 'core' || o.purpose === 'content' || o.purpose === 'rework';
-		const r = await this.deps.model.call(request({ model: o.model, system: o.system, messages: o.messages, schema: o.schema, effort: deep ? 'medium' : 'low', maxTokens: deep ? 12000 : 4000 }), {
+		const deep = o.purpose === 'read' || o.purpose === 'core';
+		const mid = o.purpose === 'content' || o.purpose === 'rework';
+		const r = await this.deps.model.call(request({ model: o.model, system: o.system, messages: o.messages, schema: o.schema, effort: deep ? 'high' : mid ? 'medium' : 'low', maxTokens: deep ? 16000 : mid ? 8000 : 4000 }), {
 			purpose: o.purpose,
 			who: `${this.id}:${o.who}`,
 			signal: this.abort.signal,
@@ -517,8 +518,6 @@ export class Run {
 		this.say('strategist', this.read.thought, 'thought', undefined, readText(this.read).split('\n'));
 		this.state.strategy = { problem: this.read.problem, insight: this.read.insight, advantage: this.read.advantage, direction: this.read.direction };
 		this.record('strategy', readText(this.read).split('\n'));
-		// Копірайтер і дизайнер бачать сам бриф, а не лише переказ стратегині: інакше заповнюють порожнечу штампами.
-		for (const r of ['copywriter', 'designer'] as const) this.history[r].push({ role: 'user', content: `Новий бриф.\n${briefBlock(b)}\n\nРозбір стратегині:\n${readText(this.read)}` }, { role: 'assistant', content: '{"ok":true}' });
 		if (this.read.gptTake) this.note(`Стратегиня про Джіпітенка: ${this.read.gptTake}`);
 		this.tick();
 
@@ -541,6 +540,7 @@ export class Run {
 			return { role: r as Role, text: `${h.ok ? 'ок' : 'сумнів'} — ${h.note}` };
 		}));
 		this.record('strategy', notes.map((n) => `${ROLE_NAME[n.role]}: ${n.text}`));
+		for (const n of notes) this.history[n.role].push({ role: 'user', content: prompt.team(b, this.read, n.text) }, { role: 'assistant', content: '{"ok":true}' });
 		this.tick();
 
 		// 3. позиціонування
@@ -839,7 +839,9 @@ export class Run {
 			// Гравець відмітив, які правки беремо; решту команда тихо ігнорує.
 			const picks = d.action === 'retry' && d.picks ? d.picks : c.demands.map((_, i) => i);
 			const pm = pickMood(c.mood, c.demands.length, picks, c.cringe);
+			const TAG: Record<string, string> = { air: '(смакова дрібниця) ', question: '(питання про сенс) ', fear: '(страх) ' };
 			const taken = picks.map((i) => c.demands[i]).filter(Boolean);
+			const tagged = picks.map((i) => (c.demands[i] ? `${TAG[c.kinds?.[i] ?? ''] ?? ''}${c.demands[i]}` : '')).filter(Boolean);
 			const skipped = c.demands.filter((_, i) => !picks.includes(i));
 			this.state.verdicts = this.state.verdicts.map((x) => (x === v ? { ...x, picked: picks, mood: pm.mood } : x));
 			this.record(them, [`Беремо в роботу: ${taken.join('; ')}`, ...(skipped.length ? [`Тихо ігноруємо: ${skipped.join('; ')}`] : [])]);
@@ -849,7 +851,7 @@ export class Run {
 				this.note(`${name} відчуває, що ${this.state.brief.client.gender === 'f' ? 'її' : 'його'} не почули: буде ще одне коло`);
 				this.cheer(-3);
 			}
-			await this.rework(stage, 'клієнт', taken);
+			await this.rework(stage, 'клієнт', tagged);
 			for (const r of ROLES) this.tire(r, 3);
 			// Після переробки — знову зведення: гравець бачить, яким став проєкт, і несе клієнту.
 			this.idle();

@@ -41,7 +41,7 @@ export const ELEMENT_OWNER: Record<ElementId, Role> = {
 	threads: 'copywriter',
 	instagram: 'designer',
 	reels: 'copywriter',
-	youtube: 'strategist'
+	youtube: 'copywriter'
 };
 
 /** Знак описують фігури з числами, SVG з них будує наш код (src/lib/logo.ts). */
@@ -295,6 +295,8 @@ export interface ClientVerdict {
 	demands: string[];
 	/** Які з вимог «кринжові» (вбивають ідею) — гравцю не показуємо, рахує настрій. */
 	cringe?: number[];
+	/** Тип кожної вимоги: air — смакова дрібниця, question — тупе питання, fear — страх. */
+	kinds?: string[];
 	/** Які вимоги гравець узяв у роботу. */
 	picked?: number[];
 	verdict: 'ok' | 'rework' | 'reject';
