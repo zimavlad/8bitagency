@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { sceneOnly } from './run';
-import { clean, mixText } from './steps';
+import { SCHEMA, clean, mixText } from './steps';
 import type { ElementValue } from '$lib/types';
 import { qualityOf, quoteFound, reputationDelta } from './checks';
 
@@ -38,6 +38,13 @@ describe('перевірки', () => {
 	it('цитата шукається дослівно', () => {
 		expect(quoteFound('«Клієнт сам не знає»', '- клієнт сам не знає, кому продає')).toBe(true);
 		expect(quoteFound('вигадана цитата', '- клієнт сам не знає')).toBe(false);
+	});
+});
+
+describe('схеми', () => {
+	it('без поля drafts: з ним моделі 5.5 відмовляють на ідеї й назви', () => {
+		expect(JSON.stringify(SCHEMA)).not.toMatch(/"drafts"/);
+		expect(SCHEMA.idea.properties.variants).toBeTruthy();
 	});
 });
 
