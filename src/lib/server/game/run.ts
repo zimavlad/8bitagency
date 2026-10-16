@@ -23,6 +23,8 @@ import {
 
 export interface Models {
 	agent: string;
+	/** Розбір брифу, позиціонування, ідея, назви, знаки — найсильніша модель (без неї — agent). */
+	creative?: string;
 	review: string;
 	client: string;
 	gpt: string;
@@ -349,7 +351,9 @@ export class Run {
 	private async call(o: { purpose: CallPurpose; who: string; model: string; system: string; messages: Msg[]; schema: Record<string, unknown>; fake: () => unknown }) {
 		this.alive();
 		const started = Date.now();
-		const r = await this.deps.model.call(request({ model: o.model, system: o.system, messages: o.messages, schema: o.schema }), {
+		// Творчі кроки думають довше: з effort low модель віддає першу чернетку і не перевіряє себе.
+		const deep = o.purpose === 'read' || o.purpose === 'core' || o.purpose === 'content' || o.purpose === 'rework';
+		const r = await this.deps.model.call(request({ model: o.model, system: o.system, messages: o.messages, schema: o.schema, effort: deep ? 'medium' : 'low', maxTokens: deep ? 12000 : 4000 }), {
 			purpose: o.purpose,
 			who: `${this.id}:${o.who}`,
 			signal: this.abort.signal,
@@ -375,7 +379,8 @@ export class Run {
 	private ask(role: Role, purpose: CallPurpose, user: string, schema: Record<string, unknown>, fakeFn: () => unknown): Promise<Record<string, unknown>> {
 		const job = this.locks[role].catch(() => undefined).then(async () => {
 			const messages: Msg[] = [...this.history[role], { role: 'user', content: user + guide(schema) }];
-			const r = await this.call({ purpose, who: role, model: this.deps.models.agent, system: this.sys(role), messages, schema, fake: fakeFn });
+			const model = purpose === 'read' || purpose === 'core' ? (this.deps.models.creative ?? this.deps.models.agent) : this.deps.models.agent;
+			const r = await this.call({ purpose, who: role, model, system: this.sys(role), messages, schema, fake: fakeFn });
 			this.history[role] = [...messages, { role: 'assistant', content: r.content }];
 			this.tire(role, 3);
 			return parseJson(r.text);
@@ -496,6 +501,8 @@ export class Run {
 		this.say('strategist', this.read.thought, 'thought', undefined, readText(this.read).split('\n'));
 		this.state.strategy = { problem: this.read.problem, insight: this.read.insight, advantage: this.read.advantage, direction: this.read.direction };
 		this.record('strategy', readText(this.read).split('\n'));
+		// Копірайтер і дизайнер бачать сам бриф, а не лише переказ стратегині: інакше заповнюють порожнечу штампами.
+		for (const r of ['copywriter', 'designer'] as const) this.history[r].push({ role: 'user', content: `Новий бриф.\n${briefBlock(b)}\n\nРозбір стратегині:\n${readText(this.read)}` }, { role: 'assistant', content: '{"ok":true}' });
 		if (this.read.gptTake) this.note(`Стратегиня про Джіпітенка: ${this.read.gptTake}`);
 		this.tick();
 
@@ -509,7 +516,7 @@ export class Run {
 			await this.gate();
 			this.agent(r, 'thinking', 'слухає стратегиню');
 			const h = normHuddle(await this.once({
-				purpose: 'review', who: r, model: this.deps.models.review, system: this.sys(r),
+				purpose: 'review', who: r, model: this.deps.models.agent, system: this.sys(r),
 				user: prompt.huddle(r, b, this.read!), schema: SCHEMA.huddle, fake: () => fake.huddle(r)
 			}));
 			this.tire(r, 2);
@@ -564,6 +571,7 @@ export class Run {
 		this.agent('copywriter', 'thinking', 'вигадує ідею');
 		const idea = normIdea(await this.ask('copywriter', 'core', prompt.idea(this.pos, this.read, b.budget), SCHEMA.idea, () => fake.idea()));
 		this.setEl('idea', idea.idea, idea.how, { why: idea.why });
+		this.firstIdea = idea.idea;
 		this.record('name', [`Ідея: ${idea.idea}`, ...idea.how.map((h) => `Як живе: ${h}`)]);
 		this.say('copywriter', idea.thought, 'thought', undefined, [idea.idea, ...idea.how]);
 		this.tick();
@@ -765,7 +773,8 @@ export class Run {
 				this.cheer(-3);
 				// кинув правки — і пішов: команда переробляє без нього
 				this.state.clientInOffice = false;
-				await this.rework(stage, 'клієнт', d.notes);
+				// Свій бриф: гравець — розумний замовник, тож команда виконує суть правки, а не вписує її дослівно.
+				await this.rework(stage, 'керівник агенції', d.notes);
 				for (const r of ROLES) this.tire(r, 3);
 				this.idle();
 				this.phase(playerPhase, 'Переробили під твої правки. Тепер подивись очима клієнта', { strategist: 'table', copywriter: 'table', designer: 'table' });
@@ -903,17 +912,23 @@ export class Run {
 		}
 	}
 
+	/** Ідея, як її принесла команда, — до того, як клієнт її пожував. */
+	private firstIdea = '';
+
 	private pack(): string {
 		const e = this.state.elements;
 		const budget = this.state.brief.budget;
-		return [`- Позиціонування: ${this.pos.positioning}`, `- Роль бренду: ${this.pos.role}; ворог: ${this.pos.enemy}`, `- Креативна ідея: ${e.idea?.text ?? '—'}`, ...(budget ? [`- Рекламний бюджет: ${budget.toLocaleString('uk-UA')} ₴ — шукаємо дешеві віральні ходи, телевізор і білборди його зʼїдять`] : []), `- Назва: ${e.name?.text ?? '—'}`, `- Слоган: ${e.slogan?.text ?? '—'}`, `- Знак: ${e.logo?.text ?? '—'}`].join('\n');
+		const eaten = this.firstIdea && e.idea?.text !== this.firstIdea;
+		return [`${briefBlock(this.state.brief)}\n\nЗатверджена платформа:`, `- Позиціонування: ${this.pos.positioning}`, `- Роль бренду: ${this.pos.role}; ворог: ${this.pos.enemy}`, `- Креативна ідея: ${e.idea?.text ?? '—'}`, ...(budget ? [`- Рекламний бюджет: ${budget.toLocaleString('uk-UA')} ₴ — шукаємо дешеві віральні ходи, телевізор і білборди його зʼїдять`] : []), `- Назва: ${e.name?.text ?? '—'}`, `- Слоган: ${e.slogan?.text ?? '—'}`, `- Знак: ${e.logo?.text ?? '—'}`, ...(eaten ? [`- Початкова ідея команди, до правок клієнта: ${this.firstIdea}. Клієнт її підрізав; у межах затвердженого тихо поверни їй сміливість, де можна.`] : [])].join('\n');
 	}
 
 	private async contentStep(id: ContentElement) {
 		const r = ELEMENT_OWNER[id];
 		await this.gate();
 		this.agent(r, 'thinking', DOING[id][0]);
-		const out = normContent(id, await this.ask(r, 'content', prompt.content(id, this.pack()), SCHEMA[id], () => fake.content(id)));
+		// Свіжий контекст: без історії правок «виконуй дослівно», лише бриф і затверджена платформа.
+		const out = normContent(id, await this.once({ purpose: 'content', who: r, model: this.deps.models.agent, system: this.sys(r), user: prompt.content(id, this.pack()), schema: SCHEMA[id], fake: () => fake.content(id) }));
+		this.tire(r, 3);
 		this.setEl(id, out.text, out.details);
 		this.say(r, out.thought, 'thought', undefined, [out.text, ...out.details]);
 		this.record('content', [`${ELEMENT_TITLE[id]}: ${[out.text, ...out.details].join(' · ')}`]);

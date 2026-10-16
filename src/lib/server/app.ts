@@ -27,6 +27,7 @@ function boot() {
 		dataDir: env.DATA_DIR ?? './data',
 		models: {
 			agent: env.AGENCY_MODEL ?? 'claude-sonnet-5-5',
+			creative: env.CREATIVE_MODEL ?? 'claude-opus-5-5',
 			review: env.REVIEW_MODEL ?? 'claude-opus-5-5',
 			client: env.CLIENT_MODEL ?? 'claude-sonnet-5-5',
 			gpt: env.GPT_MODEL ?? 'claude-haiku-4-5'

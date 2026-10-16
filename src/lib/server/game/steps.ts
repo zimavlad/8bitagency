@@ -40,7 +40,7 @@ export function guide(schema: Record<string, unknown>): string {
 }
 
 /** Один формат запиту для всіх кроків: системна картка в кеші, історія тільки дописується, JSON за схемою. */
-export function request(o: { model: string; system: string; messages: Msg[]; schema: Record<string, unknown>; maxTokens?: number }): RequestParams {
+export function request(o: { model: string; system: string; messages: Msg[]; schema: Record<string, unknown>; maxTokens?: number; effort?: 'low' | 'medium' | 'high' }): RequestParams {
 	const haiku = o.model.startsWith('claude-haiku');
 	return {
 		model: o.model,
@@ -48,7 +48,7 @@ export function request(o: { model: string; system: string; messages: Msg[]; sch
 		system: [{ type: 'text', text: o.system, cache_control: { type: 'ephemeral' } }],
 		messages: o.messages,
 		...(haiku ? {} : { thinking: { type: 'adaptive' } }),
-		output_config: { ...(haiku ? {} : { effort: 'low' }), format: { type: 'json_schema', schema: bare(o.schema) } }
+		output_config: { ...(haiku ? {} : { effort: o.effort ?? 'low' }), format: { type: 'json_schema', schema: bare(o.schema) } }
 	} as RequestParams;
 }
 

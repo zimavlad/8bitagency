@@ -117,7 +117,7 @@ describe('бриф від початку до оплати', () => {
 		expect(reads).toHaveLength(1);
 		expect(reads[0].who).toMatch(/strategist$/);
 		for (const r of model.requests.filter((r) => r.purpose === 'review')) {
-			expect(r.params.model).toBe('claude-opus-5-5');
+			expect(r.params.model).toBe('claude-sonnet-5-5');
 			expect(r.params.messages).toHaveLength(1);
 			expect(text(r.params.messages)).toContain('Інсайт:');
 		}
