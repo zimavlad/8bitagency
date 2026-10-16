@@ -93,12 +93,19 @@ const DESKS: Record<Role, { gx: number; gy: number }> = { strategist: { gx: 0.75
 const DESK_W = 1.55, DESK_D = 0.9, DESK_H = 16;
 /** Крісло біля вікна: туди іноді йдуть з ноутом. */
 const ARMCHAIR = { gx: 0.62, gy: 4.02 };
+/** Двері в лівій стіні (проріз gy 4,6…5,65): точка одразу за порогом у кімнаті й точка за дверима, де людини вже не видно. */
+const DOOR_IN = { gx: 0.42, gy: 5.12 };
+const DOOR_OUT = { gx: -0.55, gy: 5.12 };
+/** Наскільки людину видно: за дверима 0, на порозі проявляється, у кімнаті 1. */
+const doorVis = (c: { gx: number }) => Math.max(0, Math.min(1, (c.gx - DOOR_OUT.gx) / (0.2 - DOOR_OUT.gx)));
+/** Дверний проріз і смужка підлоги перед ним: крізь це видно того, хто стоїть на порозі. */
+const DOORWAY = [wL(4.6, 0), wL(5.65, 0), wL(5.65, 49), wL(4.6, 49)];
+const APRON = [s(0, 4.6), s(0.4, 4.6), s(0.4, 5.65), s(0, 5.65)];
 const SPOTS: Record<Role, Record<Spot, { gx: number; gy: number }>> = {
-	strategist: { desk: { gx: 1.45, gy: 1.55 }, table: { gx: 1.7, gy: 4.2 }, board: { gx: 0.5, gy: 2.1 }, coffee: { gx: 5.75, gy: 4.25 }, away: { gx: 0.3, gy: 5.1 }, armchair: ARMCHAIR },
-	copywriter: { desk: { gx: 3.85, gy: 1.55 }, table: { gx: 3.4, gy: 2.95 }, board: { gx: 0.5, gy: 2.1 }, coffee: { gx: 5.85, gy: 5.45 }, away: { gx: 0.3, gy: 5.1 }, armchair: ARMCHAIR },
-	designer: { desk: { gx: 6.25, gy: 1.55 }, table: { gx: 5.3, gy: 4.95 }, board: { gx: 0.5, gy: 2.1 }, coffee: { gx: 7.5, gy: 5.75 }, away: { gx: 0.3, gy: 5.1 }, armchair: ARMCHAIR }
+	strategist: { desk: { gx: 1.45, gy: 1.55 }, table: { gx: 1.7, gy: 4.2 }, board: { gx: 0.5, gy: 2.1 }, coffee: { gx: 5.75, gy: 4.25 }, away: DOOR_OUT, armchair: ARMCHAIR },
+	copywriter: { desk: { gx: 3.85, gy: 1.55 }, table: { gx: 3.4, gy: 2.95 }, board: { gx: 0.5, gy: 2.1 }, coffee: { gx: 5.85, gy: 5.45 }, away: DOOR_OUT, armchair: ARMCHAIR },
+	designer: { desk: { gx: 6.25, gy: 1.55 }, table: { gx: 5.3, gy: 4.95 }, board: { gx: 0.5, gy: 2.1 }, coffee: { gx: 7.5, gy: 5.75 }, away: DOOR_OUT, armchair: ARMCHAIR }
 };
-const CLIENT_DOOR = { gx: 0.35, gy: 5.15 };
 const CLIENT_TABLE = { gx: 3.45, gy: 5.85 };
 
 /* ─────────── обхід меблів ─────────── */
@@ -126,9 +133,12 @@ function blocked(): boolean[] {
 const cellOf = (p: G) => [Math.max(0, Math.min(COLS - 1, Math.floor(p.gx / CELL))), Math.max(0, Math.min(ROWS_N - 1, Math.floor(p.gy / CELL)))];
 function clearLine(a: G, b: G): boolean {
 	const B = blocked();
+	const [ax, ay] = cellOf(a), [bx, by] = cellOf(b);
 	const n = Math.ceil(Math.hypot(b.gx - a.gx, b.gy - a.gy) / (CELL / 3));
 	for (let i = 1; i < n; i++) {
 		const [x, y] = cellOf({ gx: a.gx + ((b.gx - a.gx) * i) / n, gy: a.gy + ((b.gy - a.gy) * i) / n });
+		// клітинки старту й цілі прохідні, як і в A*: інакше ціль біля стіни дає зайвий гачок наприкінці шляху
+		if ((x === ax && y === ay) || (x === bx && y === by)) continue;
 		if (B[y * COLS + x]) return false;
 	}
 	return true;
@@ -190,7 +200,10 @@ export class Office {
 	private TX = 0;
 	private TY = 0;
 	private DPR = 1;
-	private pos: Record<SpriteId, { gx: number; gy: number; tx: number; ty: number; path?: G[] }>;
+	private pos: Record<SpriteId, { gx: number; gy: number; tx: number; ty: number; path?: G[]; wait?: number; walk?: number }>;
+	/** Двері: 0 — зачинені, 1 — відчинені; doorHold — скільки ще тримати відчиненими після останнього, хто пройшов. */
+	private door = 0;
+	private doorHold = 0;
 	private raf = 0;
 	private last = 0;
 	private t = 0;
@@ -209,7 +222,7 @@ export class Office {
 			strategist: { ...SPOTS.strategist.desk, tx: 0, ty: 0 },
 			copywriter: { ...SPOTS.copywriter.desk, tx: 0, ty: 0 },
 			designer: { ...SPOTS.designer.desk, tx: 0, ty: 0 },
-			client: { ...CLIENT_DOOR, tx: 0, ty: 0 }
+			client: { ...DOOR_OUT, tx: 0, ty: 0 }
 		};
 		for (const k of Object.keys(this.pos) as SpriteId[]) { this.pos[k].tx = this.pos[k].gx; this.pos[k].ty = this.pos[k].gy; }
 		this.ro = new ResizeObserver(() => this.fit());
@@ -228,22 +241,30 @@ export class Office {
 
 	private onVis = () => {
 		this.hidden = document.hidden;
+		// Кадр, замовлений до приховування, браузер виконає після повернення: скасовуємо його, інакше циклів стає два, три…
+		cancelAnimationFrame(this.raf);
 		if (!this.hidden) { this.last = 0; this.raf = requestAnimationFrame(this.loop); }
 	};
 
 	update(input: SceneInput) {
 		this.input = input;
+		let queue = 0;
 		const go = (k: SpriteId, t: G) => {
 			const c = this.pos[k];
 			if (c.tx === t.gx && c.ty === t.gy) return;
 			c.tx = t.gx;
 			c.ty = t.gy;
-			c.path = findPath(c, t);
+			// Крізь двері — лише через поріг: за стіною сітки нема, тож шлях = поріг + обхід меблів у кімнаті.
+			const fromOut = c.gx < 0.05, toOut = t.gx < 0;
+			if (fromOut && toOut) { c.path = [t]; return; }
+			c.path = [...(fromOut ? [DOOR_IN] : []), ...findPath(fromOut ? DOOR_IN : c, toOut ? DOOR_IN : t), ...(toOut ? [t] : [])];
+			// хто заходить разом (повернулись з вихідного) — по одному, а не купою в одній точці
+			if (fromOut) c.wait = 0.55 * queue++;
 		};
 		const pl = input.still?.place ?? {};
 		for (const r of ROLES) go(r, pl[r] ?? SPOTS[r][input.away ? 'away' : input.agents[r].spot]);
-		go('client', pl.client ?? (input.clientInOffice ? CLIENT_TABLE : CLIENT_DOOR));
-		if (input.reducedMotion) for (const k of Object.keys(this.pos) as SpriteId[]) { this.pos[k].gx = this.pos[k].tx; this.pos[k].gy = this.pos[k].ty; }
+		go('client', pl.client ?? (input.clientInOffice ? CLIENT_TABLE : DOOR_OUT));
+		if (input.reducedMotion) for (const k of Object.keys(this.pos) as SpriteId[]) { const c = this.pos[k]; c.gx = c.tx; c.gy = c.ty; c.path = undefined; c.wait = 0; }
 	}
 
 	/**
@@ -299,8 +320,7 @@ export class Office {
 		}
 		const k: SpriteId = who === 'client' ? 'client' : who;
 		if (k === 'client' && !this.input.clientInOffice) return null;
-		const c = this.pos[k];
-		const p = s(c.gx, c.gy);
+		const p = this.feet(k);
 		return { x: this.TX + p.x * this.S, y: this.TY + (p.y - SPRITE_H - 6) * this.S };
 	}
 
@@ -335,8 +355,8 @@ export class Office {
 		const ax = (x - this.TX) / this.S, ay = (y - this.TY) / this.S;
 		const order = (['strategist', 'copywriter', 'designer', 'client'] as SpriteId[]).sort((a, b) => this.pos[b].gx + this.pos[b].gy - (this.pos[a].gx + this.pos[a].gy));
 		for (const k of order) {
-			if (k === 'client' && !this.input.clientInOffice) continue;
-			const p = s(this.pos[k].gx, this.pos[k].gy);
+			if ((k === 'client' && !this.input.clientInOffice) || doorVis(this.pos[k]) < 0.5) continue;
+			const p = this.feet(k);
 			if (ax >= p.x - 9 && ax <= p.x + 9 && ay >= p.y - SPRITE_H - 2 && ay <= p.y + 2) return k;
 		}
 		return null;
@@ -349,13 +369,24 @@ export class Office {
 		if (!this.input.reducedMotion) this.t += dt;
 		for (const k of Object.keys(this.pos) as SpriteId[]) {
 			const c = this.pos[k];
-			// іде по шляху в обхід меблів: точка за точкою
-			const wp = c.path?.[0] ?? { gx: c.tx, gy: c.ty };
-			const dx = wp.gx - c.gx, dy = wp.gy - c.gy;
-			const d = Math.hypot(dx, dy);
-			const step = 2.2 * dt;
-			if (d <= step || d < 0.01) { c.gx = wp.gx; c.gy = wp.gy; c.path?.shift(); } else { c.gx += (dx / d) * step; c.gy += (dy / d) * step; }
+			if (c.wait) { c.wait = Math.max(0, c.wait - dt); continue; }
+			// за дверима чекає, поки двері відчиняться: спершу двері, потім людина
+			if (c.gx < 0.05 && c.tx >= 0 && this.door < 0.8) continue;
+			// іде по шляху в обхід меблів: точка за точкою; залишок кроку переходить на наступний відрізок — без зупинки на поворотах
+			let left = 2.2 * dt;
+			while (left > 0) {
+				const wp = c.path?.[0] ?? { gx: c.tx, gy: c.ty };
+				const dx = wp.gx - c.gx, dy = wp.gy - c.gy;
+				const d = Math.hypot(dx, dy);
+				if (d > left) { c.gx += (dx / d) * left; c.gy += (dy / d) * left; c.walk = (c.walk ?? 0) + left; break; }
+				c.gx = wp.gx; c.gy = wp.gy; c.walk = (c.walk ?? 0) + d; left -= d;
+				if (!c.path?.length) break;
+				c.path.shift();
+			}
 		}
+		// двері: відчиняються за 0,3 с, стоять ще 0,4 с після останнього, зачиняються за 0,45 с
+		this.doorHold = this.doorWanted() ? 0.4 : Math.max(0, this.doorHold - dt);
+		this.door = this.doorHold > 0 ? Math.min(1, this.door + dt / 0.3) : Math.max(0, this.door - dt / 0.45);
 		this.draw();
 		this.raf = requestAnimationFrame(this.loop);
 	};
@@ -445,6 +476,7 @@ export class Office {
 	}
 
 	/* ─────────── кадр ─────────── */
+	private bg: HTMLCanvasElement | null = null;
 	private draw() {
 		const o = this.o;
 		o.setTransform(1, 0, 0, 1, 0, 0);
@@ -452,9 +484,19 @@ export class Office {
 		o.imageSmoothingEnabled = false;
 
 		const night = this.night();
-		this.shadow();
-		this.walls();
-		this.floor();
+		// Стіни й підлога не змінюються: малюємо раз у запасне полотно, далі тільки копіюємо (≈1,5 тис. викликів менше на кадр).
+		if (!this.bg) {
+			this.bg = document.createElement('canvas');
+			this.bg.width = SCENE_W;
+			this.bg.height = SCENE_H;
+			const keep = this.o;
+			this.o = this.bg.getContext('2d')!;
+			this.shadow();
+			this.walls();
+			this.floor();
+			this.o = keep;
+		}
+		o.drawImage(this.bg, 0, 0);
 		if (night < 0.6 && (this.input.sky === 'clear' || this.input.sky === 'clouds')) this.sunBeam(1 - night);
 		this.windowView();
 		this.decor();
@@ -748,9 +790,12 @@ export class Office {
 	 */
 	private lightCanvas: HTMLCanvasElement | null = null;
 	private nightTint(k: number) {
-		const lc = (this.lightCanvas ??= document.createElement('canvas'));
-		lc.width = SCENE_W;
-		lc.height = SCENE_H;
+		if (!this.lightCanvas) {
+			this.lightCanvas = document.createElement('canvas');
+			this.lightCanvas.width = SCENE_W;
+			this.lightCanvas.height = SCENE_H;
+		}
+		const lc = this.lightCanvas;
 		const l = lc.getContext('2d')!;
 		l.clearRect(0, 0, SCENE_W, SCENE_H);
 		// темрява тільки в межах кімнати
@@ -820,24 +865,23 @@ export class Office {
 
 	/* ─────────── настінне ─────────── */
 	private decor() {
-		// двері: відчиняються всередину, коли хтось проходить
+		// двері: полотно на петлях (gy 4,6) плавно відчиняється всередину кімнати й так само зачиняється
+		const dk = this.door, ang = dk * dk * (3 - 2 * dk) * (Math.PI / 2);
 		this.qL(4.5, 5.75, 0, 52, C.doorDk);
-		if (this.doorOpen()) {
+		if (dk > 0) {
 			this.qL(4.6, 5.65, 0, 49, '#1c140e');
-			this.qL(4.6, 5.65, 0, 6, 'rgba(255,220,150,.25)');
-			this.qFace(0, 0.85, 4.6, 0, 49, C.door);
-			this.qFace(0.08, 0.77, 4.6, 6, 24, C.doorDk);
-			this.qFace(0.08, 0.77, 4.6, 28, 44, C.doorDk);
-			this.line([at(0, 4.6, 0), at(0.85, 4.6, 0), at(0.85, 4.6, 49), at(0, 4.6, 49)], C.ink, 1, true);
-			this.line([wL(4.5, 0), wL(4.5, 52), wL(5.75, 52), wL(5.75, 0)], C.ink);
-		} else {
-		this.qL(4.6, 5.65, 0, 49, C.door);
-		this.qL(4.75, 5.08, 28, 44, C.doorDk); this.qL(5.18, 5.5, 28, 44, C.doorDk);
-		this.qL(4.75, 5.08, 6, 24, C.doorDk); this.qL(5.18, 5.5, 6, 24, C.doorDk);
-		this.qL(4.79, 5.04, 29, 43, C.doorLt); this.qL(5.22, 5.46, 29, 43, C.doorLt);
-		const kn = wL(5.55, 24); this.px(kn.x - 1, kn.y - 1, 2, 2, C.brass);
-		this.line([wL(4.5, 0), wL(4.5, 52), wL(5.75, 52), wL(5.75, 0)], C.ink);
+			this.qL(4.6, 5.65, 0, 6, `rgba(255,220,150,${0.25 * dk})`);
 		}
+		const ex = 0.85 * Math.sin(ang), ey = 4.6 + 1.05 * Math.cos(ang);
+		const L = (u: number, h: number) => at(ex * u, 4.6 + (ey - 4.6) * u, h);
+		const leaf = (u1: number, u2: number, h1: number, h2: number, f: string) => this.poly([L(u1, h1), L(u2, h1), L(u2, h2), L(u1, h2)], f);
+		leaf(0, 1, 0, 49, C.door);
+		leaf(0.143, 0.457, 28, 44, C.doorDk); leaf(0.552, 0.857, 28, 44, C.doorDk);
+		leaf(0.143, 0.457, 6, 24, C.doorDk); leaf(0.552, 0.857, 6, 24, C.doorDk);
+		leaf(0.181, 0.419, 29, 43, C.doorLt); leaf(0.59, 0.819, 29, 43, C.doorLt);
+		const kn = L(0.905, 24); this.px(kn.x - 1, kn.y - 1, 2, 2, C.brass);
+		if (dk > 0) this.line([L(0, 0), L(1, 0), L(1, 49), L(0, 49)], C.ink, 1, true);
+		this.line([wL(4.5, 0), wL(4.5, 52), wL(5.75, 52), wL(5.75, 0)], C.ink);
 		// коркова дошка: чотири слоти пакета + нотатки, графіки й скетчі, що зʼявляються з прогресом брифу
 		const b1 = 0.45, b2 = 3.2, bh1 = 31, bh2 = 70;
 		this.qL(b1 - 0.16, b2 + 0.16, bh1 - 3, bh2 + 3, C.woodDk);
@@ -953,10 +997,17 @@ export class Office {
 		for (const dd of [d1 - 0.03, d2 - 0.1]) this.qL(dd, dd + 0.13, h2 - 2, h2 + 1.5, 'rgba(240,226,180,.85)');
 	}
 
-	/** Двері відчинені, коли хтось біля них ходить (виходять на вихідний, клієнт заходить). */
-	private doorOpen(): boolean {
-		const near = (q: { gx: number; gy: number; tx: number; ty: number }) => Math.hypot(q.gx - 0.3, q.gy - 5.1) < 1.3 && (Math.abs(q.tx - q.gx) > 0.01 || Math.abs(q.ty - q.gy) > 0.01);
-		return Object.values(this.pos).some(near);
+	/**
+	 * Комусь треба крізь двері: стоїть за дверима чи на порозі й рушає, або йде до виходу й уже за пів секунди від порога.
+	 * Хто просто проходить повз (до крісла біля вікна) — двері не чіпає.
+	 */
+	private doorWanted(): boolean {
+		return Object.values(this.pos).some((q) => {
+			const moving = Math.abs(q.tx - q.gx) > 0.01 || Math.abs(q.ty - q.gy) > 0.01;
+			if (!moving) return false;
+			if (q.gx < 0.3 && Math.abs(q.gy - DOOR_IN.gy) < 0.6) return true;
+			return q.tx < 0 && Math.hypot(q.gx - DOOR_IN.gx, q.gy - DOOR_IN.gy) < 1.5;
+		});
 	}
 
 	private poster(d1: number, d2: number, h1: number, h2: number) {
@@ -1016,12 +1067,12 @@ export class Office {
 			add(sp.gx + sp.gy + 0.3, () => this.chairBack(r, sp.gx, sp.gy));
 		}
 		for (const k of ['strategist', 'copywriter', 'designer', 'client'] as SpriteId[]) {
-			if (k === 'client' && !this.input.clientInOffice && this.pos.client.gx === CLIENT_DOOR.gx) continue;
 			const c = this.pos[k];
-			if (k !== 'client' && this.input.away && Math.hypot(c.gx - SPOTS.strategist.away.gx, c.gy - SPOTS.strategist.away.gy) < 0.25) continue;
+			const vis = doorVis(c);
+			if (vis <= 0) continue;
 			// у кріслі біля вікна людина сидить поверх сидіння
 			const inArmchair = k !== 'client' && Math.hypot(c.gx - ARMCHAIR.gx, c.gy - ARMCHAIR.gy) < 0.05;
-			add(c.gx + c.gy + (inArmchair ? 1.3 : 0), () => this.sprite(k));
+			add(c.gx + c.gy + (inArmchair ? 1.3 : 0), () => this.sprite(k, vis));
 		}
 		// Глибина столу — по його центру: хто стоїть спереду (клієнт, дизайнер), малюється поверх, хто ззаду — під ним.
 		add(2.2 + 3.6 + 1.2 + 0.8, () => this.meetingTable(2.2, 3.6));
@@ -1310,9 +1361,30 @@ export class Office {
 	}
 
 	/* ─────────── персонажі ─────────── */
-	private sprite(k: SpriteId) {
+	/** Ноги спрайта в цілих пікселях арту: тіло, тінь, емоція, підпис і бабл рухаються одним кроком, а не «пливуть» окремо. */
+	private feet(k: SpriteId): P {
+		const c = this.pos[k], p = s(c.gx, c.gy);
+		return { x: Math.round(p.x), y: Math.round(p.y) };
+	}
+
+	/** На порозі людина проявляється (або тане) і видна лише крізь дверний проріз — заходить у двері, а не зʼявляється з повітря. */
+	private sprite(k: SpriteId, vis = 1) {
+		const o = this.o, clip = this.pos[k].gx < 0.05;
+		if (vis >= 1 && !clip) return this.figure(k);
+		o.save();
+		o.globalAlpha = vis;
+		if (clip) {
+			o.beginPath();
+			for (const q of [DOORWAY, APRON]) { o.moveTo(q[0].x, q[0].y); for (const pt of q.slice(1)) o.lineTo(pt.x, pt.y); o.closePath(); }
+			o.clip();
+		}
+		this.figure(k);
+		o.restore();
+	}
+
+	private figure(k: SpriteId) {
 		const c = this.pos[k];
-		const p = s(c.gx, c.gy);
+		const p = this.feet(k);
 		const moving = Math.abs(c.tx - c.gx) > 0.01 || Math.abs(c.ty - c.gy) > 0.01;
 		const role = k === 'client' ? null : (k as Role);
 		const status = role ? this.input.agents[role].status : 'idle';
@@ -1330,7 +1402,8 @@ export class Office {
 		if (!sit) this.poly([{ x: p.x, y: p.y - 3 }, { x: p.x + 8, y: p.y }, { x: p.x, y: p.y + 3 }, { x: p.x - 8, y: p.y }], 'rgba(60,30,15,.28)');
 		const cs = k === 'client' ? clientSprite(this.input.client.gender, this.input.client.look) : null;
 		const pal: Record<string, string> = cs ? cs.pal : PALETTE[k];
-		const legs = (cs ? cs.legs : LEGS[k])[moving ? Math.floor(this.t * 6) % 2 : 0];
+		// крок — від пройденої відстані, а не від годинника: ноги не ковзають і не «біжать на місці»
+		const legs = (cs ? cs.legs : LEGS[k])[moving ? Math.floor((c.walk ?? 0) / 0.36) % 2 : 0];
 		const blink = Math.sin(this.t * 1.1 + k.length * 2.1) > 0.985;
 		const face = cs ? cs.face : FACE[k];
 		const body = withFace(cs ? cs.body : BODY[k], face, this.expr(k, blink));
@@ -1478,11 +1551,14 @@ export class Office {
 		c.textBaseline = 'middle';
 		const fs = Math.max(10, Math.min(13, 4 * this.S));
 		c.font = `${fs}px Tiny5, Onest, system-ui, sans-serif`;
-		// Хто вже вийшов у двері на вихідний — без підпису (сам спрайт теж не малюється).
-		const gone = (r: Role) => this.input.away && Math.hypot(this.pos[r].gx - SPOTS[r].away.gx, this.pos[r].gy - SPOTS[r].away.gy) < 0.25;
-		const items: [string, P][] = ROLES.filter((r) => !gone(r)).map((r) => [ROLE_NAME[r], s(this.pos[r].gx, this.pos[r].gy)]);
-		if (this.input.clientInOffice || this.pos.client.gx !== CLIENT_DOOR.gx) items.push(['Клієнт', s(this.pos.client.gx, this.pos.client.gy)]);
-		for (const [name, p] of items) {
+		// Хто за дверима — без підпису; на порозі підпис тане разом з людиною.
+		const items: [string, P, number][] = [];
+		for (const k of ['strategist', 'copywriter', 'designer', 'client'] as SpriteId[]) {
+			const v = doorVis(this.pos[k]);
+			if (v > 0) items.push([k === 'client' ? 'Клієнт' : ROLE_NAME[k], this.feet(k), v]);
+		}
+		for (const [name, p, v] of items) {
+			c.globalAlpha = v;
 			const x = this.TX + p.x * this.S, y = this.TY + (p.y + 7) * this.S;
 			const w = c.measureText(name).width + 10;
 			c.fillStyle = 'rgba(30,20,16,.82)';
@@ -1492,5 +1568,6 @@ export class Office {
 			c.fillStyle = '#fbefd9';
 			c.fillText(name, x, y + 0.5);
 		}
+		c.globalAlpha = 1;
 	}
 }

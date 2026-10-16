@@ -175,23 +175,23 @@
 			const w = stage.clientWidth;
 			// Бабли не налазять: ставимо зліва направо, і той, що перетинається з уже поставленим, піднімаємо вище.
 			const placed: { l: number; r: number; t: number; b: number }[] = [];
+			// спершу всі виміри, потім усі записи: інакше кожен бабл змушує браузер перераховувати розкладку посеред кадру
 			const items = live
-				.map((s) => ({ s, el: els[s.who], a: office!.anchor(s.who) }))
+				.map((s) => ({ s, el: els[s.who], a: office!.anchor(s.who), bw: els[s.who]?.offsetWidth ?? 0, bh: els[s.who]?.offsetHeight ?? 0 }))
 				.sort((x, y) => (x.a?.y ?? 0) - (y.a?.y ?? 0));
 			const h = stage.clientHeight;
-			for (const { s, el, a } of items) {
+			for (const { s, el, a, bw, bh } of items) {
 				if (!el) continue;
 				// Джіпітенко говорить з «екрана» в нижньому лівому куті — там порожня підлога, бабли людей не перекриває.
 				if (s.who === 'gpt') {
 					el.style.opacity = a ? '1' : '0';
-					el.style.transform = `translate(8px, ${h - reserve - el.offsetHeight - 8}px)`;
+					el.style.transform = `translate(8px, ${h - reserve - bh - 8}px)`;
 					continue;
 				}
 				if (!a) {
 					el.style.opacity = '0';
 					continue;
 				}
-				const bw = el.offsetWidth, bh = el.offsetHeight;
 				const left = Math.min(Math.max(a.x - bw / 2, 6), w - bw - 6);
 				let top = a.y - bh - 4;
 				for (let guard = 0; guard < 6; guard++) {

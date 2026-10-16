@@ -101,18 +101,36 @@
 	}
 	const hhmm = $derived(`${String(Math.floor(hour)).padStart(2, '0')}:${String(Math.floor((hour % 1) * 4) * 15).padStart(2, '0')}`);
 
+	/** Плавно перевести світло до години to (можна за північ: 33 — це 9:00 наступного дня). */
+	function fadeHour(to: number, ms: number) {
+		const from = shown;
+		override = to;
+		return new Promise<void>((done) => {
+			const t0 = performance.now();
+			const step = (t: number) => {
+				const k = Math.min(1, Math.max(0, (t - t0) / ms));
+				shown = from + (to - from) * k;
+				if (k < 1) requestAnimationFrame(step);
+				else done();
+			};
+			requestAnimationFrame(step);
+		});
+	}
+
 	/** Вихідний: усі виходять у двері, за вікном вечір і ніч, повертаються зранку — інше світло. */
 	async function dayOff() {
 		away = true;
 		live.say('Команда пішла на вихідний');
-		await new Promise((r) => setTimeout(r, 2200));
-		setHour(22.5);
+		// від найдальшого столу до порога й за двері ~3,7 с: ніч настає, коли останній уже вийшов
+		await new Promise((r) => setTimeout(r, 3800));
+		await fadeHour(22.5, 1000);
 		const ok = await live.gameAction({ action: 'rest' });
 		if (ok) live.say('Офіс порожній. Ніч…');
-		await new Promise((r) => setTimeout(r, 2200));
+		await new Promise((r) => setTimeout(r, 1200));
+		await fadeHour(33, 1400);
 		setHour(null);
 		shown = 9;
-		await new Promise((r) => setTimeout(r, 900));
+		await new Promise((r) => setTimeout(r, 300));
 		away = false;
 		if (ok) live.say('Ранок. Повернулись відпочилими: стрес −35, мораль +10');
 	}
