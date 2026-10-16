@@ -6,6 +6,7 @@ import { FakeModel } from '../model/fake';
 import { FakeImages } from '../model/images';
 import { inboxFor } from './briefs';
 import { resetLedgerCache } from '../ledger';
+import { fake } from './fake';
 import { Game } from './game';
 import { Run } from './run';
 
@@ -273,6 +274,81 @@ describe('гра', () => {
 		expect(run!.state.brief.text).toContain('Цілі: більше гостей зранку');
 		await until(() => run!.state.brief.client.name !== 'Замовник');
 		expect(run!.state.brief.client.look).toBe('leather');
+	});
+});
+
+describe('правки гравця з прогону 15.10', () => {
+	const last = (s: unknown) => { const m = (s as { messages: { content: unknown }[] }).messages; return JSON.stringify(m.at(-1)?.content); };
+
+	it('свій бриф: правка розбору оновлює картку «Стратегія», правка лого не тече в ідею, «все» — не правка', async () => {
+		resetLedgerCache(mkdtempSync(join(tmpdir(), 'ledger-')));
+		const model = new FakeModel();
+		const orig = model.call.bind(model);
+		model.call = (p, o) => {
+			if (o.purpose !== 'rework') return orig(p, o);
+			if (o.who.endsWith('strategist')) return orig(p, { ...o, fake: () => ({ thought: 'Переписала~', changed: true, positioning: 'Для тих, хто вибирає фільм на вечір: переказ, після якого ясно, чи дивитись.', role: 'розвідник', enemy: 'кінолотерея', problem: '', insight: '', advantage: 'Голос, з яким сюжет ясний за пʼять хвилин.', direction: '', why: 'прибрала посуд' }) });
+			if (o.who.endsWith('copywriter')) return orig(p, { ...o, fake: () => ({ thought: 'Ок.', changed: true, idea: 'Пʼятихвилинний вердикт: дивитись чи ні', how: 'Щопʼятниці один фільм і чесне «так» або «ні»', name: 'Розвідник', slogan: 'Дивитись чи ні', why: 'прибрав посуд' }) });
+			return orig(p, o);
+		};
+		const g = new Game({ dataDir: mkdtempSync(join(tmpdir(), 'game-')), model, images: new FakeImages(), models: MODELS });
+		const { run } = g.start({ custom: { business: 'Ютуб-канал коротких переказів фільмів', goals: '1000 підписників', wishes: 'можна дивитись на фоні', competitors: 'Територія кіно', usp: 'гарний голос' } });
+		watched.push(run!);
+		await until(() => run!.state.phase === 'pick_name');
+		run!.decide({ action: 'pick', index: 0 });
+		await until(() => run!.state.phase === 'client_core');
+		const before = run!.state.strategy!.advantage;
+		expect(run!.decide({ action: 'feedback', notes: ['Прибери з переваги все про миття посуду', 'Зроби логотип у стилі відьмака', 'все'] })).toBeNull();
+		await until(() => run!.state.verdicts.length > 0);
+		expect(run!.state.verdicts.at(-1)?.demands).toHaveLength(2);
+		await until(() => run!.state.phase === 'player_core');
+		// картка «Стратегія» оновилась, і гравець бачить це на екрані платформи
+		expect(run!.state.strategy!.advantage).toBe('Голос, з яким сюжет ясний за пʼять хвилин.');
+		expect(run!.state.strategy!.advantage).not.toBe(before);
+		expect(run!.state.strategy!.insight).toBeTruthy();
+		// ідея й рядок «як живе» міняються разом
+		expect(run!.state.elements.idea?.text).toBe('Пʼятихвилинний вердикт: дивитись чи ні');
+		expect(run!.state.elements.idea?.details).toEqual(['Щопʼятниці один фільм і чесне «так» або «ні»']);
+		const reworks = model.requests.filter((r) => r.purpose === 'rework');
+		const strat = reworks.find((r) => r.who.endsWith('strategist'))!;
+		expect(last(strat.params)).toContain('Перевага:');
+		expect(last(strat.params)).toContain('advantage');
+		for (const r of reworks.filter((x) => !x.who.endsWith('designer'))) expect(last(r.params)).toMatch(/робота дизайнера/);
+		run!.drop();
+	});
+
+	it('правка керівника про банер не переписує інші канали й не перемальовує розкадровку', async () => {
+		const model = new FakeModel();
+		const images = new FakeImages();
+		const orig = model.call.bind(model);
+		model.call = (p, o) => {
+			if (o.purpose !== 'rework' || !last(p).includes('Керівник агенції дав правки до каналів')) return orig(p, o);
+			const banner = last(p).includes('Instagram: банер');
+			return orig(p, { ...o, fake: () => ({ ...(fake.content(banner ? 'instagram' : 'threads') as object), changed: banner }) });
+		};
+		const { run } = mk(model, images);
+		run.start();
+		await until(() => run.state.phase === 'pick_name');
+		run.decide({ action: 'pick', index: 0 });
+		for (let i = 0; i < 3; i++) {
+			await until(() => run.state.phase === 'client_decision_core');
+			if (run.state.verdicts.at(-1)?.verdict === 'ok') break;
+			run.decide({ action: 'retry' });
+			await until(() => run.state.phase === 'player_core');
+			run.decide({ action: 'submit' });
+		}
+		run.decide({ action: 'continue' });
+		await until(() => run.state.phase === 'player_content');
+		const youtube = run.state.elements.youtube!;
+		const threads = run.state.elements.threads!;
+		const pics = images.prompts.length;
+		expect(run.decide({ action: 'edit', notes: ['банер для інстаграму переробити, він крінж'] })).toBeNull();
+		await until(() => run.state.phase === 'player_content' && !run.state.editAvailable);
+		expect(run.state.changed).toEqual(['instagram']);
+		expect(run.state.elements.youtube).toEqual(youtube);
+		expect(run.state.elements.threads).toEqual(threads);
+		expect(images.prompts.length).toBe(pics + 1);
+		expect(images.prompts.at(-1)).toContain('Instagram');
+		run.drop();
 	});
 });
 

@@ -22,6 +22,12 @@ describe('перевірки', () => {
 
 	it('перфоманс-штампи рахуються окремо', () => {
 		expect(qualityOf([el('instagram', 'Купуй зараз', ['Підпис: знижка 30%'])]).performanceHits).toBe(1);
+		expect(qualityOf([el('instagram', 'Велика АКЦІЯ для всіх')]).performanceHits).toBe(1);
+	});
+
+	it('штамп — лише з початку слова: «реакція» не «акція»', () => {
+		const reels = el('reels', 'Три ідеї', ['Біля кінотеатру пропонуємо переказ до сеансу. Перша реакція: «ви шо, спойлери?!»']);
+		expect(qualityOf([reels])).toMatchObject({ quality: 100, performanceHits: 0 });
 	});
 
 	it('репутація: відмова тупого клієнта при чесній роботі не топить', () => {

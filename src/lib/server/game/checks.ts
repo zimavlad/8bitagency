@@ -9,7 +9,11 @@ const JUNK = ['якість', 'якісн', 'інновац', 'найкращ', 
 const PERFORMANCE = ['знижк', '%', 'акці', 'дзвоніть', 'купуй', 'безкоштовн', 'тільки сьогодні', 'встигни', 'розпродаж', 'хіт продаж', 'супер ціна', 'вигідн'];
 
 const words = (s: string) => s.trim().split(/\s+/).filter(Boolean);
-const has = (s: string, list: string[]) => list.filter((w) => s.toLowerCase().includes(w));
+/** Штамп рахуємо лише з початку слова: «реакція» — не «акція» (так прогін 15.10 отримав мінус за чистий рілс). */
+const has = (s: string, list: string[]) => {
+	const t = s.toLowerCase();
+	return list.filter((w) => (/^\p{L}/u.test(w) ? new RegExp(`(^|[^\\p{L}'ʼ’])${w}`, 'u').test(t) : t.includes(w)));
+};
 
 export interface CheckNote {
 	element: ElementId;

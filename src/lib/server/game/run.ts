@@ -17,7 +17,7 @@ import { pickMood } from '$lib/picks';
 import { indexFor, search } from './kb';
 import {
 	AIR_POOL, FEAR_POOL, GPT_HABIT, GPT_QUESTION, SCHEMA, TV_POOL, StepError, briefBlock, guide, normClient, normContent, normGpt, normHuddle, normLogo,
-	normIdea, normLogos, normNaming, normPersona, normPositioning, normRead, normRename, normReposition, parseJson, prompt, readText, request,
+	normIdea, normLogos, normNaming, normPersona, normPositioning, normRead, normRename, normReposition, parseJson, prompt, readText, request, reworkSchema,
 	type Mix, type Msg, type Pos, type Read
 } from './steps';
 
@@ -73,6 +73,9 @@ export interface TraceEntry {
 }
 
 const NOTE_MAX = 280;
+/** «все», «ок», крапка — не правка: у прогоні 15.10 «все» третім рядком пішло команді як вимога. */
+const FILLER = /^(все|всьо|усе|це все|та все|ок|ok|ага|\.+|-+)[.!]*$/iu;
+const realNotes = (notes: unknown[]) => notes.map((n) => String(n ?? '').trim()).filter((n) => n && !FILLER.test(n));
 
 /** Для розкадровки — лише що в кадрі: без цитат, цифр, «акцій» і телефонів, щоб Gemini не малював плакат замість кадру. */
 export function sceneOnly(x: string): string {
@@ -392,11 +395,16 @@ export class Run {
 		return r;
 	}
 
+	/** Найсильніша модель — на роботу команди, яку гравець бачить як її власну: розбір, платформа, перша реклама, правки керівника. */
+	private get creative() {
+		return this.deps.models.creative ?? this.deps.models.agent;
+	}
+
 	/** Хід у власній розмові агента: історія лише дописується, ходи одного агента — по черзі. */
-	private ask(role: Role, purpose: CallPurpose, user: string, schema: Record<string, unknown>, fakeFn: () => unknown): Promise<Record<string, unknown>> {
+	private ask(role: Role, purpose: CallPurpose, user: string, schema: Record<string, unknown>, fakeFn: () => unknown, strong = false): Promise<Record<string, unknown>> {
 		const job = this.locks[role].catch(() => undefined).then(async () => {
 			const messages: Msg[] = [...this.history[role], { role: 'user', content: user + guide(schema) }];
-			const model = purpose === 'read' || purpose === 'core' ? (this.deps.models.creative ?? this.deps.models.agent) : this.deps.models.agent;
+			const model = strong || purpose === 'read' || purpose === 'core' ? this.creative : this.deps.models.agent;
 			const r = await this.call({ purpose, who: role, model, system: this.sys(role), messages, schema, fake: fakeFn });
 			// В історії лише текст: системний текст ролі міняється з утомою й настроєм, а блоки thinking з чужим system API відхиляє.
 			const text = (Array.isArray(r.content) ? r.content : []).filter((x) => (x as { type?: string }).type === 'text');
@@ -445,7 +453,7 @@ export class Run {
 			if (!this.state.brief.custom || (p !== 'client_core' && p !== 'client_content')) return 'Зараз не твоя черга як клієнта.';
 			if (d.action === 'feedback') {
 				if (this.state.clientRound > SELF_ROUNDS) return 'Три кола правок минуло — тепер тільки «беру».';
-				const notes = d.notes.map((n) => String(n ?? '').trim()).filter(Boolean);
+				const notes = realNotes(d.notes);
 				if (!notes.length) return 'Напиши хоча б одну правку.';
 				if (notes.length > EDIT_SLOTS || notes.some((n) => n.length > NOTE_MAX)) return `До ${EDIT_SLOTS} правок по ${NOTE_MAX} знаків.`;
 				d = { action: 'feedback', notes };
@@ -462,7 +470,7 @@ export class Run {
 		} else if (d.action === 'edit') {
 			if (p !== 'player_core' && p !== 'player_content') return 'Зараз правки не приймаються.';
 			if (!this.state.editAvailable) return 'Раунд правок на цьому етапі вже використано.';
-			const notes = d.notes.map((n) => String(n ?? '').trim()).filter(Boolean);
+			const notes = realNotes(d.notes);
 			if (!notes.length) return 'Напиши хоча б одну правку.';
 			if (notes.length > EDIT_SLOTS) return `Не більше ${EDIT_SLOTS} правок.`;
 			if (notes.some((n) => n.length > NOTE_MAX)) return `Кожна правка — до ${NOTE_MAX} знаків.`;
@@ -706,13 +714,13 @@ export class Run {
 	}
 
 	/** Знак з однією повторною спробою: порожній або невидимий знак дизайнер перемальовує. */
-	private async drawLogo(purpose: 'core' | 'rework', text: string) {
+	private async drawLogo(purpose: 'core' | 'rework', text: string, strong = false) {
 		try {
-			return normLogo(await this.ask('designer', purpose, text, SCHEMA.logo, () => fake.logo()));
+			return normLogo(await this.ask('designer', purpose, text, SCHEMA.logo, () => fake.logo(), strong));
 		} catch (e) {
 			if (!(e instanceof StepError)) throw e;
 			log('warn', 'logo_retry', { run: this.id });
-			return normLogo(await this.ask('designer', purpose, 'Знак вийшов порожнім: фігури без розміру або злились із тлом. Перемалюй: від 2 до 6 видимих фігур, радіуси й розміри не менше 6, кольори a і b контрастні до bg.', SCHEMA.logo, () => fake.logo()));
+			return normLogo(await this.ask('designer', purpose, 'Знак вийшов порожнім: фігури без розміру або злились із тлом. Перемалюй: від 2 до 6 видимих фігур, радіуси й розміри не менше 6, кольори a і b контрастні до bg.', SCHEMA.logo, () => fake.logo(), strong));
 		}
 	}
 
@@ -878,14 +886,21 @@ export class Run {
 			this.step(who === 'клієнт' ? 'Стратегиня рятує суть від правок' : 'Стратегиня звіряє суть з твоїми правками');
 			await this.gate();
 			this.agent('strategist', 'thinking', 'переглядає позиціонування');
-			const rp = normReposition(await this.ask('strategist', 'rework', prompt.reposition(who, notes, this.pos), SCHEMA.reposition, () => fake.reposition(who === 'клієнт')), this.pos);
+			// Керівник бачить картку «Стратегія» і може правити сам розбір; правки клієнта розбір не чіпають.
+			const lead = who !== 'клієнт' && this.read ? this.read : undefined;
+			const rp = normReposition(await this.ask('strategist', 'rework', prompt.reposition(who, notes, this.pos, lead), lead ? SCHEMA.repositionLead : SCHEMA.reposition, () => fake.reposition(who === 'клієнт'), !!lead), this.pos, lead);
 			if (rp.changed) {
 				this.pos = rp.pos;
 				this.setEl('positioning', rp.pos.positioning, [`Роль: ${rp.pos.role}`, `Ворог: ${rp.pos.enemy}`], rp.why ? { why: rp.why } : {});
 				this.bump('positioning');
 			}
-			this.say('strategist', rp.thought, 'thought', undefined, [rp.changed ? `Змінила: ${rp.why}` : 'Позиціонування лишила']);
-			this.agent('strategist', 'done', rp.changed ? 'оновила позиціонування' : 'лишила позиціонування');
+			if (rp.read) {
+				this.read = rp.read;
+				this.state.strategy = { problem: rp.read.problem, insight: rp.read.insight, advantage: rp.read.advantage, direction: rp.read.direction };
+				this.record('strategy', ['Після твоїх правок:', ...readText(rp.read).split('\n')]);
+			}
+			this.say('strategist', rp.thought, 'thought', undefined, [rp.changed || rp.read ? `Змінила: ${rp.why}` : 'Позиціонування лишила']);
+			this.agent('strategist', 'done', rp.changed || rp.read ? 'оновила стратегію' : 'лишила позиціонування');
 			this.tick();
 			this.step(who === 'клієнт' ? 'Копірайтер перекладає правку з клієнтської на людську' : 'Копірайтер підкручує слоган');
 
@@ -893,9 +908,13 @@ export class Run {
 			const name = this.state.elements.name?.text ?? '', slogan = this.state.elements.slogan?.text ?? '';
 			this.agent('copywriter', 'thinking', 'переглядає назву й слоган');
 			const curIdea = this.state.elements.idea?.text ?? '';
-			const rn = normRename(await this.ask('copywriter', 'rework', prompt.rename(who, notes, this.pos, rp.changed, name, slogan, curIdea), SCHEMA.rename, () => fake.rename(who === 'клієнт')), name, slogan);
+			const curHow = this.state.elements.idea?.details[0] ?? '';
+			const rn = normRename(await this.ask('copywriter', 'rework', prompt.rename(who, notes, this.pos, rp.changed || !!rp.read, name, slogan, curIdea, curHow), SCHEMA.rename, () => fake.rename(who === 'клієнт'), !!lead), name, slogan);
 			if (rn.changed) {
-				if (rn.idea && rn.idea !== curIdea) { this.setEl('idea', rn.idea, this.state.elements.idea?.details ?? []); this.bump('idea'); }
+				// Ідея і рядок «як живе» міняються разом: інакше прибране гравцем лишається в деталях («тарілки вже чисті»).
+				const idea = rn.idea || curIdea;
+				const how = rn.how || (idea === curIdea ? curHow : '');
+				if (idea && (idea !== curIdea || how !== curHow)) { this.setEl('idea', idea, how ? [how] : [], rn.why ? { why: rn.why } : {}); this.bump('idea'); }
 				if (rn.name !== name) { this.setEl('name', rn.name, [], rn.why ? { why: rn.why } : {}); this.bump('name'); }
 				if (rn.slogan !== slogan) { this.setEl('slogan', rn.slogan, []); this.bump('slogan'); }
 			}
@@ -906,7 +925,7 @@ export class Run {
 
 			await this.gate();
 			this.agent('designer', 'thinking', 'переглядає знак');
-			const lg = await this.drawLogo('rework', prompt.relogo(who, notes, this.pos, this.state.elements.name?.text ?? ''));
+			const lg = await this.drawLogo('rework', prompt.relogo(who, notes, this.pos, this.state.elements.name?.text ?? ''), !!lead);
 			this.setEl('logo', lg.concept, [], { logo: lg.logo, why: lg.thought });
 			this.record('logo', [`Після правок (${who}): ${lg.concept}`], lg.logo);
 			this.bump('logo');
@@ -916,21 +935,35 @@ export class Run {
 		} else {
 			this.work('comms', CONTENT.length + 1);
 			this.step(who === 'клієнт' ? 'Вносять правки клієнта. Ідея поки дихає' : 'Враховують твої правки');
+			// Правка керівника про банер не має переписувати Threads і ролик: канал, якого правки не стосуються, лишається як був.
+			const lead = who !== 'клієнт';
+			const redone: ContentElement[] = [];
 			await Promise.all(CONTENT.map(async (id) => {
 				const r = ELEMENT_OWNER[id];
 				const cur = this.state.elements[id];
 				if (!cur) return;
 				await this.gate();
 				this.agent(r, 'thinking', DOING[id][2]);
-				const out = normContent(id, await this.ask(r, 'rework', prompt.recontent(id, who, notes, cur), SCHEMA[id], () => fake.content(id)));
+				const raw = await this.ask(r, 'rework', prompt.recontent(id, who, notes, cur), lead ? reworkSchema(id) : SCHEMA[id], () => fake.content(id), lead);
+				const out = normContent(id, raw);
+				if (lead && raw.changed === false) {
+					this.say(r, out.thought);
+					this.agent(r, 'done', 'лишив як було');
+					this.tick();
+					return;
+				}
 				this.setEl(id, out.text || cur.text, out.details.length ? out.details : cur.details);
 				this.bump(id);
+				redone.push(id);
 				this.say(r, out.thought);
 				this.agent(r, 'done', 'правки внесено');
 				this.tick();
 			}));
-			this.step('Дизайнер перемальовує банер і розкадровку');
-			await this.images();
+			const pics = redone.filter((id): id is 'instagram' | 'youtube' => id === 'instagram' || id === 'youtube');
+			if (pics.length) {
+				this.step(pics.length > 1 ? 'Дизайнер перемальовує банер і розкадровку' : pics[0] === 'instagram' ? 'Дизайнер перемальовує банер' : 'Дизайнер перемальовує розкадровку');
+				await this.images(pics);
+			}
 			this.tick();
 		}
 	}
@@ -953,7 +986,7 @@ export class Run {
 		await this.gate();
 		this.agent(r, 'thinking', DOING[id][0]);
 		// Свіжий контекст: без історії правок «виконуй дослівно», лише бриф і затверджена платформа.
-		const out = normContent(id, await this.once({ purpose: 'content', who: r, model: this.deps.models.agent, system: this.sys(r), user: prompt.content(id, this.pack()), schema: SCHEMA[id], fake: () => fake.content(id) }));
+		const out = normContent(id, await this.once({ purpose: 'content', who: r, model: this.creative, system: this.sys(r), user: prompt.content(id, this.pack()), schema: SCHEMA[id], fake: () => fake.content(id) }));
 		this.tire(r, 3);
 		this.setEl(id, out.text, out.details);
 		this.say(r, out.thought, 'thought', undefined, [out.text, ...out.details]);
@@ -962,10 +995,10 @@ export class Run {
 	}
 
 	/** Банер Instagram і обкладинка YouTube у піксельному стилі гри (Gemini). Без ключа — заглушки; збій картинки бриф не валить. */
-	private async images() {
+	private async images(only?: ('instagram' | 'youtube')[]) {
 		await this.gate();
-		this.phase('images', 'Дизайнер малює банер і розкадровку ролика', { designer: 'desk' });
-		this.agent('designer', 'thinking', 'малює банер і розкадровку');
+		this.phase('images', only?.length === 1 ? (only[0] === 'instagram' ? 'Дизайнер перемальовує банер' : 'Дизайнер перемальовує розкадровку ролика') : 'Дизайнер малює банер і розкадровку ролика', { designer: 'desk' });
+		this.agent('designer', 'thinking', only?.length === 1 ? (only[0] === 'instagram' ? 'малює банер' : 'малює розкадровку') : 'малює банер і розкадровку');
 		const e = this.state.elements;
 		const logoPng = e.logo?.logo ? rasterLogo(e.logo.logo, 256) : null;
 		const refs = logoPng ? [{ mime: 'image/png', data: logoPng }] : [];
@@ -985,7 +1018,7 @@ export class Run {
 				prompt: `${STYLE}\nA simple storyboard sheet for a short funny ad video: a 2×2 grid of four pixel-art frames with thin dark borders on a light paper background.\nThe ONLY text allowed: one big digit in the top-left corner of each frame — 1, 2, 3, 4. No words, no captions, no titles anywhere.\nFrames (describe only the picture; any sign, screen, poster or paper in a frame stays blank, without letters; never write frame titles or labels):\n${(e.youtube?.details ?? []).slice(0, 4).map((x, i) => `${i + 1}. ${sceneOnly(x)}`).join('\n')}\n${mark ? 'In frame 4 show the provided logo small.' : ''}\nUse the brand colours ${e.logo?.logo?.palette.a ?? ''} and ${e.logo?.logo?.palette.b ?? ''}.`
 			}
 		];
-		await Promise.all(jobs.map(async (j) => {
+		await Promise.all(jobs.filter((j) => !only || only.includes(j.id)).map(async (j) => {
 			try {
 				const started = Date.now();
 				const img = await this.deps.images.generate(j.prompt, refs, { aspect: j.aspect, who: `${this.id}:${j.id}`, signal: this.abort.signal });
