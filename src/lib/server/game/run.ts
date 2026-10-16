@@ -398,7 +398,9 @@ export class Run {
 			const messages: Msg[] = [...this.history[role], { role: 'user', content: user + guide(schema) }];
 			const model = purpose === 'read' || purpose === 'core' ? (this.deps.models.creative ?? this.deps.models.agent) : this.deps.models.agent;
 			const r = await this.call({ purpose, who: role, model, system: this.sys(role), messages, schema, fake: fakeFn });
-			this.history[role] = [...messages, { role: 'assistant', content: r.content }];
+			// В історії лише текст: системний текст ролі міняється з утомою й настроєм, а блоки thinking з чужим system API відхиляє.
+			const text = (Array.isArray(r.content) ? r.content : []).filter((x) => (x as { type?: string }).type === 'text');
+			this.history[role] = [...messages, { role: 'assistant', content: text.length ? text : r.text }];
 			this.tire(role, 3);
 			return parseJson(r.text);
 		});
@@ -500,6 +502,7 @@ export class Run {
 		const b = this.state.brief;
 		// Свій бриф: клієнт — сам гравець, кумедний лисий тіп; правки пише сам.
 		if (b.custom) {
+			this.teamBrief = b;
 			this.state.brief = { ...b, client: { ...b.client, name: 'Ти', role: 'замовник', gender: 'm', look: 'leather', archetype: 'лисий, при грошах і точно знає, як краще', voice: '' } };
 			this.emit();
 		}
@@ -573,6 +576,8 @@ export class Run {
 		}
 		this.state.rerolls = 0;
 		const pc = p.options[posPick];
+		// попереду ідея й назви — найдовші кроки, смужка прогресу має бути видна
+		this.work('platform', 2);
 		this.pos = { positioning: pc.text, role: pc.role, enemy: pc.enemy };
 		this.setEl('positioning', pc.text, [`Роль: ${pc.role}`, `Ворог: ${pc.enemy}`], { why: pc.why, rejected: p.options.filter((_, i) => i !== posPick).map((o) => ({ text: o.text, reason: o.why })) });
 		this.record('strategy', p.options.map((o, i) => `${i === posPick ? 'Обрано' : 'Варіант'}: ${o.text} (роль: ${o.role}, ворог: ${o.enemy})`));
@@ -851,7 +856,7 @@ export class Run {
 				this.note(`${name} відчуває, що ${this.state.brief.client.gender === 'f' ? 'її' : 'його'} не почули: буде ще одне коло`);
 				this.cheer(-3);
 			}
-			await this.rework(stage, 'клієнт', tagged);
+			await this.rework(stage, 'клієнт', stage === 'core' ? tagged : taken);
 			for (const r of ROLES) this.tire(r, 3);
 			// Після переробки — знову зведення: гравець бачить, яким став проєкт, і несе клієнту.
 			this.idle();
@@ -932,12 +937,15 @@ export class Run {
 
 	/** Ідея, як її принесла команда, — до того, як клієнт її пожував. */
 	private firstIdea = '';
+	/** Бриф для підказок команди: у своєму брифі клієнт у грі — «Ти», а команді він — «Замовник». */
+	private teamBrief: Brief | null = null;
 
 	private pack(): string {
 		const e = this.state.elements;
 		const budget = this.state.brief.budget;
-		const eaten = this.firstIdea && e.idea?.text !== this.firstIdea;
-		return [`${briefBlock(this.state.brief)}\n\nЗатверджена платформа:`, `- Позиціонування: ${this.pos.positioning}`, `- Роль бренду: ${this.pos.role}; ворог: ${this.pos.enemy}`, `- Креативна ідея: ${e.idea?.text ?? '—'}`, ...(budget ? [`- Рекламний бюджет: ${budget.toLocaleString('uk-UA')} ₴ — шукаємо дешеві віральні ходи, телевізор і білборди його зʼїдять`] : []), `- Назва: ${e.name?.text ?? '—'}`, `- Слоган: ${e.slogan?.text ?? '—'}`, `- Знак: ${e.logo?.text ?? '—'}`, ...(eaten ? [`- Початкова ідея команди, до правок клієнта: ${this.firstIdea}. Клієнт її підрізав; у межах затвердженого тихо поверни їй сміливість, де можна.`] : [])].join('\n');
+		// У своєму брифі ідею міняв сам гравець — повертати її назад не треба.
+		const eaten = !this.state.brief.custom && this.firstIdea && e.idea?.text !== this.firstIdea;
+		return [`${briefBlock(this.teamBrief ?? this.state.brief)}\n\nЗатверджена платформа:`, `- Позиціонування: ${this.pos.positioning}`, `- Роль бренду: ${this.pos.role}; ворог: ${this.pos.enemy}`, `- Креативна ідея: ${e.idea?.text ?? '—'}`, ...(budget ? [`- Рекламний бюджет: ${budget.toLocaleString('uk-UA')} ₴ — шукаємо дешеві віральні ходи, телевізор і білборди його зʼїдять`] : []), `- Назва: ${e.name?.text ?? '—'}`, `- Слоган: ${e.slogan?.text ?? '—'}`, `- Знак: ${e.logo?.text ?? '—'}`, ...(eaten ? [`- Початкова ідея команди, до правок клієнта: ${this.firstIdea}. Клієнт її підрізав; у межах затвердженого тихо поверни їй сміливість, де можна.`] : [])].join('\n');
 	}
 
 	private async contentStep(id: ContentElement) {

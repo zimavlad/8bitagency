@@ -4,7 +4,7 @@
 	import { ROLE_NAME, ROLES, type Role, type RunState, type Speaker, type Speech } from '$lib/types';
 
 	type Target = Role | 'client' | Thing;
-	let { run, hour, sky, bubbles = true, away = false, frozen = false, coffee = 0, reserve = 0, fill = false, onPick }: { run: RunState | null; hour: number; sky: Sky; bubbles?: boolean; away?: boolean; frozen?: boolean; coffee?: number; reserve?: number; fill?: boolean; onPick?: (what: Target, x: number, y: number) => void } = $props();
+	let { run, hour, sky, bubbles = true, away = false, frozen = false, coffee = 0, reserve = 0, fill = false, onPick, onCamera }: { run: RunState | null; hour: number; sky: Sky; bubbles?: boolean; away?: boolean; frozen?: boolean; coffee?: number; reserve?: number; fill?: boolean; onPick?: (what: Target, x: number, y: number) => void; onCamera?: () => void } = $props();
 
 	let stage: HTMLDivElement;
 	let canvas: HTMLCanvasElement;
@@ -192,6 +192,7 @@
 			const o = local(pinch.x, pinch.y);
 			if (pinch.d > 0 && n.d > 0) office.zoomAt(n.d / pinch.d, o.x, o.y);
 			office.panBy(n.x - pinch.x, n.y - pinch.y);
+			onCamera?.();
 			pinch = n;
 			return;
 		}
@@ -206,6 +207,7 @@
 			}
 		}
 		office.panBy(dx, dy);
+		onCamera?.();
 		p.x = e.clientX;
 		p.y = e.clientY;
 	}
@@ -220,7 +222,12 @@
 		if (t - tap.t < 320 && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 24) {
 			tap.t = 0;
 			// Другий клік уже не відкриває поп-ап у новому кадрі.
-			if (office?.resetView()) dragged = true;
+			// лише по порожньому місцю: подвійний клік по людині чи предмету — це два кліки, а не скидання камери
+			const l = local(e.clientX, e.clientY);
+			if (office && !office.hit(l.x, l.y) && !office.thing(l.x, l.y) && office.resetView()) {
+				dragged = true;
+				onCamera?.();
+			}
 		} else tap = { t, x: e.clientX, y: e.clientY };
 	}
 
@@ -235,11 +242,13 @@
 		const dx = e.deltaX * unit, dy = e.deltaY * unit;
 		if (!e.ctrlKey && Math.abs(dx) > Math.abs(dy)) {
 			office.panBy(-dx, 0);
+			onCamera?.();
 			return;
 		}
 		// Щипок на тачпаді приходить як ctrl+wheel з дрібними кроками — чутливіше; клац колеса ≈ ×1,22.
 		const k = e.ctrlKey ? 0.01 : 0.002;
 		office.zoomAt(Math.exp(Math.max(-0.4, Math.min(0.4, -dy * k))), x, y);
+		onCamera?.();
 	}
 	// Safari на Mac: щипок тачпада — gesturestart/gesturechange з накопиченим scale, без ctrl+wheel.
 	type Gesture = Event & { scale: number; clientX: number; clientY: number };
@@ -256,6 +265,7 @@
 			const r = canvas.getBoundingClientRect();
 			const p = Number.isFinite(g.clientX) ? local(g.clientX, g.clientY) : { x: r.width / 2, y: r.height / 2 };
 			office.zoomAt(g.scale / gesture, p.x, p.y);
+			onCamera?.();
 		}
 		gesture = g.scale || gesture;
 	}

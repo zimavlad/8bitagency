@@ -244,7 +244,7 @@
 
 	<main class="main" style:--top-real="{topH}px">
 		<div class="scene" bind:this={sceneEl} data-tour="scene" style:--reserve="{wide ? 0 : sheetH + 12}px">
-			<Scene run={live.run} {hour} {sky} {away} {coffee} reserve={wide ? 0 : sheetH + 12} fill={!wide} frozen={menu || screen === 'title' || !!mail || tour} onPick={(what, x, y) => (pop = { what, x, y })} />
+			<Scene run={live.run} {hour} {sky} {away} {coffee} reserve={wide ? 0 : sheetH + 12} fill={!wide} frozen={menu || screen === 'title' || !!mail || tour} onPick={(what, x, y) => (pop = { what, x, y })} onCamera={() => (pop = null)} />
 			<div class="tools" data-tour="scene-tools">
 				<button class="btn sm" onclick={openMenu} title="Пауза й меню (Esc)"><Icon name="pause" size={14} />Пауза</button>
 				{#if run}<button class="btn sm" onclick={() => (briefOpen = true)}><Icon name="inbox" size={14} />Бриф</button>{/if}
