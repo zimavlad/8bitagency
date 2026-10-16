@@ -373,23 +373,35 @@ export class Run {
 		// Творчі кроки думають довше: з effort low модель віддає першу чернетку і не перевіряє себе.
 		const deep = o.purpose === 'read' || o.purpose === 'core';
 		const mid = o.purpose === 'content' || o.purpose === 'rework';
-		const r = await this.deps.model.call(request({ model: o.model, system: o.system, messages: o.messages, schema: o.schema, effort: deep ? 'high' : mid ? 'medium' : 'low', maxTokens: deep ? 16000 : mid ? 8000 : 4000 }), {
+		const send = (model: string) => this.deps.model.call(request({ model, system: o.system, messages: o.messages, schema: o.schema, effort: deep ? 'high' : mid ? 'medium' : 'low', maxTokens: deep ? 16000 : mid ? 8000 : 4000 }), {
 			purpose: o.purpose,
 			who: `${this.id}:${o.who}`,
 			signal: this.abort.signal,
 			fake: o.fake
 		});
+		const count = (r: Awaited<ReturnType<typeof send>>) => {
+			const usd = costUsd(r.model, r.usage);
+			this.state.calls++;
+			this.state.costUsd += usd;
+			this.deps.onSpend?.('claude', usd);
+			this.trace.push({ t: new Date().toISOString(), purpose: o.purpose, who: o.who, model: r.model, prompt: lastUser(o.messages), response: r.text, stop: r.stopReason, ms: Date.now() - started, usd });
+		};
+		let r = await send(o.model);
 		this.alive();
+		// Найсильніша модель інколи відмовляє на звичайний бриф (живий тест 16.10: ідея для магазину дверей, порожня відповідь).
+		// Тоді той самий хід робить основна модель — вона на цих брифах відмов не давала.
+		if (r.stopReason === 'refusal' && o.model !== this.deps.models.agent) {
+			count(r);
+			log('warn', 'refusal_fallback', { run: this.id, who: o.who, purpose: o.purpose, from: o.model, to: this.deps.models.agent });
+			r = await send(this.deps.models.agent);
+			this.alive();
+		}
 		const left = (this.deps.paceMs ?? 0) - (Date.now() - started);
 		if (left > 0) {
 			await new Promise((res) => setTimeout(res, left));
 			this.alive();
 		}
-		const usd = costUsd(r.model, r.usage);
-		this.state.calls++;
-		this.state.costUsd += usd;
-		this.deps.onSpend?.('claude', usd);
-		this.trace.push({ t: new Date().toISOString(), purpose: o.purpose, who: o.who, model: r.model, prompt: lastUser(o.messages), response: r.text, stop: r.stopReason, ms: Date.now() - started, usd });
+		count(r);
 		if (r.stopReason === 'refusal') throw new StepError('Claude відмовився відповідати на цей бриф');
 		if (r.stopReason === 'max_tokens') throw new StepError('відповідь обірвалась на півслові');
 		return r;

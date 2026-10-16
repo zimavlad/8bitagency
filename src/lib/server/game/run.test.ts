@@ -316,6 +316,26 @@ describe('правки гравця з прогону 15.10', () => {
 		run!.drop();
 	});
 
+	it('відмова найсильнішої моделі: той самий хід робить основна, бриф не падає', async () => {
+		const model = new FakeModel();
+		const orig = model.call.bind(model);
+		let refused = 0;
+		model.call = async (p, o) => {
+			if (p.model === 'claude-opus-5-5' && o.purpose === 'core' && o.who.endsWith('copywriter') && !refused && ++refused) return { content: [], text: '', stopReason: 'refusal', model: p.model, usage: { input_tokens: 1395, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } };
+			return orig(p, o);
+		};
+		const run = new Run('rtest3', brief, { model, images: new FakeImages(), models: { ...MODELS, creative: 'claude-opus-5-5' }, dataDir: mkdtempSync(join(tmpdir(), 'run-')), burnout: { strategist: 0, copywriter: 0, designer: 0 }, morale: { strategist: 70, copywriter: 70, designer: 70 } });
+		watched.push(run);
+		run.start();
+		await until(() => run.state.phase === 'pick_name');
+		expect(refused).toBe(1);
+		expect(run.state.elements.idea?.text).toBeTruthy();
+		const idea = run.trace.filter((t) => t.who === 'copywriter' && t.purpose === 'core');
+		expect(idea.map((t) => t.stop)).toEqual(['refusal', 'end_turn', 'end_turn']);
+		expect(run.state.costUsd).toBeGreaterThan(0);
+		run.drop();
+	});
+
 	it('правка керівника про банер не переписує інші канали й не перемальовує розкадровку', async () => {
 		const model = new FakeModel();
 		const images = new FakeImages();
