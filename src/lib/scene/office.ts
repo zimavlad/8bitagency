@@ -47,6 +47,8 @@ const OX = GH * TW + PAD;
 const OY = WH + PAD;
 export const SCENE_W = (GW + GH) * TW + PAD * 2; // 358
 export const SCENE_H = (GW + GH) * TH + WH + PAD * 2; // 270
+/** Наскільки можна наблизити офіс понад «вся кімната в кадрі». */
+const ZOOM_MAX = 3;
 
 type P = { x: number; y: number };
 const s = (gx: number, gy: number): P => ({ x: OX + (gx - gy) * TW, y: OY + (gx + gy) * TH });
@@ -270,34 +272,79 @@ export class Office {
 	/**
 	 * Як показувати офіс. На телефоні він — фон на весь екран: reserve — скільки знизу закриває шторка інтерфейсу,
 	 * fill — збільшити, щоб кімната заповнила видиму висоту (боки тоді виходять за край і їх видно, якщо потягнути).
+	 * Поверх цього — наближення гравця: zoom 1 = як вписано, до ZOOM_MAX — ближче (колесо, щипок, два пальці).
 	 */
 	private view = { reserve: 0, fill: false };
 	private pan = { x: 0, y: 0 };
+	private zoom = 1;
+	/** Розмір сцени в CSS-пікселях з останнього вимірювання (fit). */
+	private W = 320;
+	private H = 240;
 
 	setView(v: { reserve?: number; fill?: boolean }) {
 		if ((v.reserve ?? this.view.reserve) === this.view.reserve && (v.fill ?? this.view.fill) === this.view.fill) return;
+		// Телефон ↔ компʼютер: інший базовий масштаб — наближення й зсув з нуля.
+		if (v.fill !== undefined && v.fill !== this.view.fill) { this.zoom = 1; this.pan.x = this.pan.y = 0; }
 		Object.assign(this.view, v);
 		this.fit();
 	}
 
-	/** Потягнути камеру пальцем (CSS-пікселі). */
+	/** Потягнути камеру пальцем чи мишею (CSS-пікселі). Кадр домалює loop. */
 	panBy(dx: number, dy: number) {
 		this.pan.x += dx;
 		this.pan.y += dy;
-		this.fit();
+		this.layout();
+	}
+
+	/** Наблизити (f > 1) чи віддалити (f < 1) так, щоб точка (x, y) сцени лишилась під курсором чи пальцями. */
+	zoomAt(f: number, x: number, y: number) {
+		if (!Number.isFinite(f) || f <= 0) return;
+		const z = Math.min(ZOOM_MAX, Math.max(1, this.zoom * f));
+		if (z === this.zoom) return;
+		const S0 = this.S, X0 = this.TX, Y0 = this.TY;
+		this.zoom = z;
+		this.layout();
+		// Масштаб іде кроками в піксель пристрою: поки крок не змінився — картинка стоїть.
+		if (this.S === S0) return;
+		this.pan.x += x - ((x - X0) * this.S) / S0 - this.TX;
+		this.pan.y += y - ((y - Y0) * this.S) / S0 - this.TY;
+		this.layout();
+	}
+
+	/** Назад до всієї кімнати. true — якщо камера справді зрушила. */
+	resetView(): boolean {
+		if (this.zoom === 1 && !this.pan.x && !this.pan.y) return false;
+		this.zoom = 1;
+		this.pan.x = this.pan.y = 0;
+		this.layout();
+		return true;
+	}
+
+	/** Чи є куди тягнути камеру: кімната більша за видиму частину сцени. */
+	get movable(): boolean {
+		const visH = Math.max(140, this.H - this.view.reserve);
+		return SCENE_W * this.S > this.W + 0.5 || SCENE_H * this.S > visH + 0.5;
 	}
 
 	private fit() {
-		const w = this.stage.clientWidth || 320;
-		const h = this.stage.clientHeight || 240;
+		this.W = this.stage.clientWidth || 320;
+		this.H = this.stage.clientHeight || 240;
 		this.DPR = Math.min(window.devicePixelRatio || 1, 2);
-		const cw = Math.round(w * this.DPR), ch = Math.round(h * this.DPR);
+		const cw = Math.round(this.W * this.DPR), ch = Math.round(this.H * this.DPR);
 		if (this.canvas.width !== cw) this.canvas.width = cw;
 		if (this.canvas.height !== ch) this.canvas.height = ch;
+		this.layout();
+		this.draw();
+	}
+
+	/** Масштаб і зсув з виміряного розміру, наближення й панорами. Без перемальовування — кадр малює loop. */
+	private layout() {
+		const w = this.W, h = this.H;
 		const visH = Math.max(140, h - this.view.reserve);
 		const contain = Math.min(w / SCENE_W, visH / SCENE_H);
 		// На телефоні — ближче: кімната ширша за екран, люди більші, а куток з дверима чи кавою видно, якщо потягнути.
-		const raw = this.view.fill ? Math.max(contain, Math.min(Math.max(visH / SCENE_H, (w * 1.4) / SCENE_W), (w * 2) / SCENE_W)) : contain;
+		const base = this.view.fill ? Math.max(contain, Math.min(Math.max(visH / SCENE_H, (w * 1.4) / SCENE_W), (w * 2) / SCENE_W)) : contain;
+		const raw = base * this.zoom;
 		// Крок — один піксель пристрою: на DPR 2 масштаб 2,5 лишається чітким.
 		this.S = raw < 1 ? raw : Math.max(1, Math.floor(raw * this.DPR) / this.DPR);
 		const aw = SCENE_W * this.S, ah = SCENE_H * this.S;
@@ -305,9 +352,9 @@ export class Office {
 		// Камера не відʼїжджає за край кімнати.
 		this.pan.x = aw > w ? Math.min(-cx, Math.max(w - aw - cx, this.pan.x)) : 0;
 		this.pan.y = ah > visH ? Math.min(-cy, Math.max(visH - ah - cy, this.pan.y)) : 0;
-		this.TX = Math.round(cx + this.pan.x);
-		this.TY = Math.round(cy + this.pan.y);
-		this.draw();
+		// Зсув теж кратний пікселю пристрою — арт не розмивається на DPR 1,5 і не «пливе» при наближенні.
+		this.TX = Math.round((cx + this.pan.x) * this.DPR) / this.DPR;
+		this.TY = Math.round((cy + this.pan.y) * this.DPR) / this.DPR;
 	}
 
 	/** Точка над головою мовця в CSS-пікселях усередині сцени — для баблів. */

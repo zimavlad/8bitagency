@@ -145,25 +145,123 @@
 		office?.setView(v);
 	});
 
-	// Тягнеш пальцем — камера їде; коротке торкання — клік по людині чи предмету.
-	let drag: { x: number; y: number; moved: boolean } | null = null;
+	/**
+	 * Камера. Тягнеш пальцем чи мишею — їде (коли є куди); коротке торкання — клік по людині чи предмету.
+	 * Колесо миші, щипок на тачпаді (ctrl+wheel; у Safari — gesture*) і два пальці — наближення до точки під курсором.
+	 * Подвійний клік чи тап по порожньому місцю — назад до всієї кімнати.
+	 */
+	const pts = new Map<number, { x: number; y: number }>();
+	let pinch: { d: number; x: number; y: number } | null = null;
+	let moved = false;
 	let dragged = false;
+	let panning = $state(false);
+	let tap = { t: 0, x: 0, y: 0 };
+	/** Клієнтські координати → CSS-пікселі всередині сцени (як у hit/thing/anchor). */
+	const local = (cx: number, cy: number) => {
+		const r = canvas.getBoundingClientRect();
+		return { x: cx - r.left, y: cy - r.top };
+	};
+	function span() {
+		const [a, b] = [...pts.values()];
+		return { d: Math.hypot(a.x - b.x, a.y - b.y), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+	}
 	function down(e: PointerEvent) {
-		if (!fill) return;
-		drag = { x: e.clientX, y: e.clientY, moved: false };
-		dragged = false;
+		if (e.pointerType === 'mouse' && e.button !== 0) return;
+		// Перший палець чи миша — новий жест; загублені pointerup з минулого не заважають.
+		if (e.isPrimary) pts.clear();
+		if (!pts.size) moved = dragged = false;
+		pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+		if (pts.size === 2) {
+			pinch = span();
+			moved = dragged = true;
+		}
 	}
 	function move(e: PointerEvent) {
-		if (!drag) return;
-		const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-		if (!drag.moved && Math.hypot(dx, dy) < 8) return;
-		drag.moved = dragged = true;
-		office?.panBy(dx, dy);
-		drag.x = e.clientX;
-		drag.y = e.clientY;
+		const p = pts.get(e.pointerId);
+		if (!p || !office) return;
+		if (e.pointerType === 'mouse' && !(e.buttons & 1)) {
+			pts.delete(e.pointerId);
+			return;
+		}
+		if (pts.size >= 2) {
+			p.x = e.clientX;
+			p.y = e.clientY;
+			if (!pinch) return;
+			const n = span();
+			// Точка арту між пальцями: спершу масштаб навколо старої середини, потім — туди, куди вона з'їхала.
+			const o = local(pinch.x, pinch.y);
+			if (pinch.d > 0 && n.d > 0) office.zoomAt(n.d / pinch.d, o.x, o.y);
+			office.panBy(n.x - pinch.x, n.y - pinch.y);
+			pinch = n;
+			return;
+		}
+		const dx = e.clientX - p.x, dy = e.clientY - p.y;
+		if (!moved) {
+			if (Math.hypot(dx, dy) < 8 || !office.movable) return;
+			moved = dragged = panning = true;
+			try {
+				canvas.setPointerCapture(e.pointerId);
+			} catch {
+				/* вказівник уже відпущено */
+			}
+		}
+		office.panBy(dx, dy);
+		p.x = e.clientX;
+		p.y = e.clientY;
 	}
-	function up() {
-		drag = null;
+	function up(e: PointerEvent) {
+		if (!pts.delete(e.pointerId)) return;
+		// Лишився один палець — далі просто тягне, без стрибка; два з трьох — щипок від нової пари.
+		pinch = pts.size >= 2 ? span() : null;
+		if (pts.size) return;
+		panning = false;
+		if (moved || e.type !== 'pointerup') return;
+		const t = performance.now();
+		if (t - tap.t < 320 && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 24) {
+			tap.t = 0;
+			// Другий клік уже не відкриває поп-ап у новому кадрі.
+			if (office?.resetView()) dragged = true;
+		} else tap = { t, x: e.clientX, y: e.clientY };
+	}
+
+	function wheel(e: WheelEvent) {
+		if (!office) return;
+		// Над офісом колесо й щипок — камера, а не прокрутка чи масштаб сторінки. Поза полотном усе як було.
+		e.preventDefault();
+		if (e.ctrlKey && gesture) return;
+		const { x, y } = local(e.clientX, e.clientY);
+		// Firefox рахує рядками (3 на клац колеса), Chrome — пікселями (~100 на клац).
+		const unit = e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? canvas.clientHeight : 1;
+		const dx = e.deltaX * unit, dy = e.deltaY * unit;
+		if (!e.ctrlKey && Math.abs(dx) > Math.abs(dy)) {
+			office.panBy(-dx, 0);
+			return;
+		}
+		// Щипок на тачпаді приходить як ctrl+wheel з дрібними кроками — чутливіше; клац колеса ≈ ×1,22.
+		const k = e.ctrlKey ? 0.01 : 0.002;
+		office.zoomAt(Math.exp(Math.max(-0.4, Math.min(0.4, -dy * k))), x, y);
+	}
+	// Safari на Mac: щипок тачпада — gesturestart/gesturechange з накопиченим scale, без ctrl+wheel.
+	type Gesture = Event & { scale: number; clientX: number; clientY: number };
+	let gesture = 0;
+	function gstart(e: Event) {
+		e.preventDefault();
+		gesture = (e as Gesture).scale || 1;
+	}
+	function gchange(e: Event) {
+		e.preventDefault();
+		const g = e as Gesture;
+		// На iPhone щипок уже рахують pointer-події двох пальців — тут лише гасимо масштаб сторінки.
+		if (gesture && !pts.size && office && g.scale > 0) {
+			const r = canvas.getBoundingClientRect();
+			const p = Number.isFinite(g.clientX) ? local(g.clientX, g.clientY) : { x: r.width / 2, y: r.height / 2 };
+			office.zoomAt(g.scale / gesture, p.x, p.y);
+		}
+		gesture = g.scale || gesture;
+	}
+	function gend(e: Event) {
+		e.preventDefault();
+		gesture = 0;
 	}
 
 	const els: Partial<Record<Speaker, HTMLElement>> = {};
@@ -193,7 +291,8 @@
 					continue;
 				}
 				const left = Math.min(Math.max(a.x - bw / 2, 6), w - bw - 6);
-				let top = a.y - bh - 4;
+				// наближено мовець може бути нижче за видиме — бабл тоді біля нижнього краю, а не під шторкою
+				let top = Math.min(a.y - bh - 4, h - reserve - bh - 6);
 				for (let guard = 0; guard < 6; guard++) {
 					const hit = placed.find((p) => left < p.r + 4 && left + bw > p.l - 4 && top < p.b + 4 && top + bh > p.t - 4);
 					if (!hit) break;
@@ -222,9 +321,19 @@
 		office = new Office(canvas, stage, input);
 		office.setView({ reserve, fill });
 		if (import.meta.env.DEV) (window as unknown as { __office: Office }).__office = office;
+		// Не пасивні: інакше preventDefault не спинить масштаб сторінки від щипка над офісом.
+		const opt = { passive: false };
+		canvas.addEventListener('wheel', wheel, opt);
+		canvas.addEventListener('gesturestart', gstart, opt);
+		canvas.addEventListener('gesturechange', gchange, opt);
+		canvas.addEventListener('gestureend', gend, opt);
 		raf = requestAnimationFrame(place);
 		return () => {
 			cancelAnimationFrame(raf);
+			canvas.removeEventListener('wheel', wheel);
+			canvas.removeEventListener('gesturestart', gstart);
+			canvas.removeEventListener('gesturechange', gchange);
+			canvas.removeEventListener('gestureend', gend);
 			office?.destroy();
 		};
 	});
@@ -237,7 +346,7 @@
 <div class="stage" bind:this={stage}>
 	<canvas
 		bind:this={canvas}
-		class:fill
+		class:panning
 		aria-label="Офіс агенції. Торкнись персонажа або предмета, щоб побачити, що можна зробити."
 		onpointerdown={down}
 		onpointermove={move}
@@ -271,6 +380,8 @@
 		height: 100%;
 		overflow: hidden;
 		background: var(--scene-bg);
+		-webkit-user-select: none;
+		user-select: none;
 	}
 	canvas {
 		cursor: pointer;
@@ -280,8 +391,10 @@
 		height: 100%;
 		display: block;
 		image-rendering: pixelated;
-		&.fill {
-			touch-action: none;
+		/* жести над офісом — камері: без прокрутки, масштабу сторінки й подвійного тапу браузера */
+		touch-action: none;
+		&.panning {
+			cursor: grabbing;
 		}
 	}
 	.bubble {
