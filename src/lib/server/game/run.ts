@@ -16,7 +16,7 @@ import { fake } from './fake';
 import { pickMood } from '$lib/picks';
 import { indexFor, search } from './kb';
 import {
-	GPT_HABIT, GPT_QUESTION, SCHEMA, StepError, briefBlock, guide, normClient, normContent, normGpt, normHuddle, normLogo,
+	AIR_POOL, FEAR_POOL, GPT_HABIT, GPT_QUESTION, SCHEMA, TV_POOL, StepError, briefBlock, guide, normClient, normContent, normGpt, normHuddle, normLogo,
 	normIdea, normLogos, normNaming, normPersona, normPositioning, normRead, normRename, normReposition, parseJson, prompt, readText, request,
 	type Mix, type Msg, type Pos, type Read
 } from './steps';
@@ -94,7 +94,7 @@ const SELF_ROUNDS = 3;
 /** Типові побажання клієнтів до платформи й реклами: з них щоразу випадково 3 підказки. */
 const HINTS_CORE = [
 	'логотип більший, щоб видно з маршрутки', 'золото або корона в логотипі', 'щоб було «як у Києві»', 'назва англійською для солідності',
-	'фото власника десь поруч', 'червоний, бо червоний продає', '{spouse} каже — надто сумно', 'додати «з 1998 року»', 'щоб мама зрозуміла',
+	'фото власника десь поруч', 'червоний, бо червоний продає', '{spouse} каже — надто сумно', 'рік відкриття великими цифрами', 'щоб мама зрозуміла',
 	'слово «найкращий»', 'як у конкурента, тільки краще', 'більше кольорів, щоб весело', 'герб міста', 'щоб пахло грошима', 'слоган у риму'
 ];
 const HINTS_CONTENT = [
@@ -279,12 +279,28 @@ export class Run {
 
 	/** Скільки правок і яких: від 1 до 7, більшість — «повітря» й тупі питання, решта — «серйозні» зі страху. */
 	private mix(stage: 'core' | 'content', round: number): Mix {
-		const n = 1 + Math.floor(chance(`${this.id}:mix:${stage}:${round}`) * 7);
-		let serious = Math.round((n * 3) / 7);
+		const n = 1 + Math.floor(chance(`${this.id}:mix:${stage}:${round}`) * 5);
+		let serious = Math.round((n * 2) / 5);
 		const dumb = n - serious >= 2 ? 1 : n === 1 && chance(`${this.id}:dumb:${stage}:${round}`) > 0.5 ? 1 : 0;
 		// з рекламним бюджетом клієнт обовʼязково хоче телевізор
 		if (stage === 'content' && this.state.brief.budget && !serious) serious = 1;
-		return { empty: Math.max(0, n - serious - dumb), dumb, serious };
+		const empty = Math.max(0, n - serious - dumb);
+		const from = (pool: string[], k: number, tag: string) => {
+			const out: string[] = [];
+			for (let i = 0; out.length < k && i < 30; i++) {
+				const x = pool[Math.floor(chance(`${this.id}:${tag}:${stage}:${round}:${i}`) * pool.length)];
+				if (!out.includes(x)) out.push(x);
+			}
+			return out;
+		};
+		return { empty, dumb, serious, air: from(AIR_POOL, empty, 'air'), fear: from(FEAR_POOL, serious, 'fear'), tv: from(TV_POOL, 1, 'tv')[0] };
+	}
+
+	/** Кому клієнт показав роботу між колами — щоразу комусь іншому. */
+	private adviser(round: number): string {
+		const f = this.state.brief.client.gender === 'f';
+		const pool = [f ? 'чоловікові' : 'дружині', 'бухгалтерці', 'племінниці, яка веде інсту', 'партнерові по бізнесу', 'знайомому маркетологу з фейсбуку', 'мамі', 'сусідові по офісу'];
+		return pool[Math.floor(chance(`${this.id}:adviser:${round}`) * pool.length)];
 	}
 
 	private sys(r: Role) {
@@ -790,7 +806,7 @@ export class Run {
 			const items = ids.map((id) => this.state.elements[id]).filter((e): e is ElementValue => !!e);
 			const c = normClient(await this.once({
 				purpose: 'client', who: 'client', model: this.deps.models.client, system: clientCard(this.state.brief.client, this.state.brief.text),
-				user: prompt.client(items, stage, round, stage === 'content' ? `Бренд-платформу (${this.state.elements.name?.text}, «${this.state.elements.slogan?.text}») ти вже затвердив.` : undefined, this.state.verdicts.flatMap((v) => v.demands), round < rounds ? this.hints(stage, round) : [], this.state.brief.client.gender, round < rounds ? this.mix(stage, round) : undefined, this.state.brief.budget, round >= rounds),
+				user: prompt.client(items, stage, round, stage === 'content' ? `Бренд-платформу (${this.state.elements.name?.text}, «${this.state.elements.slogan?.text}») ти вже затвердив.` : undefined, this.state.verdicts.flatMap((v) => v.demands), round < rounds ? this.hints(stage, round) : [], this.state.brief.client.gender, round < rounds ? this.mix(stage, round) : undefined, this.state.brief.budget, round >= rounds, this.adviser(round)),
 				schema: SCHEMA.client, fake: () => fake.client(round, stage)
 			}), stage, round, rounds);
 			this.tick();

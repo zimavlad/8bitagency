@@ -68,9 +68,11 @@ describe('сміття від моделі', () => {
 
 describe('правки клієнта', () => {
 	it('рахує склад і просить телевізор, коли є бюджет', () => {
-		const t = mixText({ empty: 4, dumb: 1, serious: 2 }, 250000);
-		expect(t).toMatch(/рівно 7 вимог/);
-		expect(t).toMatch(/телебаченні/);
+		const t = mixText({ empty: 2, dumb: 1, serious: 2, air: ['шрифт «якийсь не такий»'], fear: ['юрист просить прибрати жарт'], tv: 'усе на білборди на трасі' }, 250000);
+		expect(t).toMatch(/рівно 5 вимог/);
+		expect(t).toMatch(/білборди на трасі/);
+		expect(t).toMatch(/юрист просить/);
+		expect(t).not.toMatch(/ми ж ні з ким не воюємо/);
 		expect(mixText({ empty: 1, dumb: 0, serious: 0 })).toMatch(/рівно 1 вимога/);
 	});
 });
